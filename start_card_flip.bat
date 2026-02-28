@@ -1,6 +1,8 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
+echo [launcher] start_card_flip.bat entered
+
 set "SCRIPT_DIR=%~dp0"
 set "ROOT="
 set "WITH_PROXY=false"
@@ -26,21 +28,25 @@ if not defined ROOT call :check_root "%USERPROFILE%\Desktop\xyzw_web_helper"
 if not defined ROOT call :probe_desktop
 if not defined ROOT goto :root_not_found
 
+echo [launcher] root=%ROOT%
+
+echo [launcher] before cd
 cd /d "%ROOT%" || goto :fail
+echo [launcher] after cd
 
 set "PKG=npm"
-where pnpm >nul 2>nul
-if not errorlevel 1 (
-  pnpm --version >nul 2>nul
-  if not errorlevel 1 set "PKG=pnpm"
-)
+echo [launcher] package manager forced to npm (skip pnpm check due to corepack issue)
 where curl >nul 2>nul
 if not errorlevel 1 set "HAVE_CURL=true"
+echo [launcher] after curl check HAVE_CURL=%HAVE_CURL%
+
+echo [launcher] after package checks PKG=%PKG% curl=%HAVE_CURL%
 
 set "BACKEND_REQ_HASH="
 set "BACKEND_STAMP_FILE=backend\.venv\.requirements.sha256"
 set "BACKEND_STAMP_VALUE="
 set "INSTALL_BACKEND_DEPS=true"
+echo [launcher] hashing backend\\requirements.txt
 call :hash_file "backend\requirements.txt" BACKEND_REQ_HASH
 if defined BACKEND_REQ_HASH set "BACKEND_STAMP_VALUE=%BACKEND_REQ_HASH%"
 if "%FORCE_INSTALL%"=="false" (
@@ -50,6 +56,7 @@ if "%FORCE_INSTALL%"=="false" (
   )
 )
 
+echo [launcher] compute front stamp
 call :compute_front_stamp
 set "FRONT_STAMP_FILE=node_modules\.deps.sha256"
 set "INSTALL_FRONTEND_DEPS=true"
