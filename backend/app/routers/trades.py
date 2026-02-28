@@ -234,3 +234,8 @@ def mark_sold(trade_id: int, payload: MarkSoldIn) -> dict:
 @router.get("/metrics")
 def metrics() -> dict:
     return repo.get_dashboard_metrics()
+
+
+@router.get("/metrics-summary")
+def metrics_summary() -> dict:
+    return repo.get_dashboard_metrics()

@@ -83,7 +83,7 @@ const cardFlipApi = {
     });
   },
   getMetrics() {
-    return cardFlipRequest.get("/trades/metrics");
+    return cardFlipRequest.get("/trades/metrics-summary");
   },
 };
 
