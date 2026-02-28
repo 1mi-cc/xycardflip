@@ -12,6 +12,7 @@ set "BACKEND_PORT=8000"
 set "FRONTEND_PORT=3000"
 set "PROXY_PORT=8899"
 set "HAVE_CURL=false"
+set "CURL_EXE=curl.exe"
 
 for %%A in (%*) do (
   if /i "%%~A"=="proxy" set "WITH_PROXY=true"
@@ -37,8 +38,13 @@ echo [launcher] after cd
 set "PKG=npm"
 echo [launcher] package manager forced to npm (skip pnpm check due to corepack issue)
 where curl >nul 2>nul
-if not errorlevel 1 set "HAVE_CURL=true"
-echo [launcher] after curl check HAVE_CURL=%HAVE_CURL%
+if not errorlevel 1 (
+  set "HAVE_CURL=true"
+  for %%C in (%SystemRoot%\System32\curl.exe curl.exe curl) do (
+    if exist "%%~fC" set "CURL_EXE=%%~fC"
+  )
+)
+echo [launcher] after curl check HAVE_CURL=%HAVE_CURL% CURL_EXE=%CURL_EXE%
 
 echo [launcher] after package checks PKG=%PKG% curl=%HAVE_CURL%
 
@@ -228,7 +234,7 @@ echo Waiting for %WAIT_NAME% ready: %WAIT_URL%
 set /a "WAIT_I=0"
 :wait_http_loop
 set /a "WAIT_I+=1"
-curl -fsS --max-time 2 "%WAIT_URL%" >nul 2>nul
+"%CURL_EXE%" -fsS --max-time 2 "%WAIT_URL%" >nul 2>nul
 if not errorlevel 1 (
   echo %WAIT_NAME% is ready.
   exit /b 0
