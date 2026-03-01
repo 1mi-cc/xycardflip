@@ -143,7 +143,8 @@ class XianyuClient:
         payload = resp.json()
         ret = payload.get("ret") or []
         if ret and not any("SUCCESS" in str(r) for r in ret):
-            raise XianyuHttpError(resp.status_code, ";".join([str(r) for r in ret])[:200])
+            # Non-success mtop response; fall back to HTML parsing instead of hard failing.
+            return None
 
         data = payload.get("data") or {}
         items_raw = self._extract_mtop_items(data)

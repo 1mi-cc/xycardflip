@@ -79,16 +79,25 @@ class DataCollectionEngine:
     def scan_once(self) -> dict[str, int]:
         fetched = 0
         inserted = 0
+        errors: list[str] = []
         for keyword in list(self.keywords):
-            f, i = self._scan_keyword(keyword)
-            fetched += f
-            inserted += i
+            try:
+                f, i = self._scan_keyword(keyword)
+                fetched += f
+                inserted += i
+            except Exception as exc:
+                msg = f"{keyword}: {exc}"
+                errors.append(msg)
+                logger.error("scan keyword error: %s", msg)
         with self._lock:
             self._last_run_at = datetime.now(timezone.utc).isoformat()
             self._last_fetched = fetched
             self._last_inserted = inserted
-            self._last_error = ""
-        return {"fetched": fetched, "inserted": inserted}
+            self._last_error = "; ".join(errors)
+        result = {"fetched": fetched, "inserted": inserted}
+        if errors:
+            result["errors"] = errors
+        return result
 
     def _scan_loop(self) -> None:
         while self.active and not self._stop_event.is_set():
