@@ -13,6 +13,7 @@ import requests
 from ..config import settings
 from ..repositories import insert_listings
 from ..schemas import ListingIn
+from .cookie_provider import CookieProvider
 from .notifier import format_circuit_email, send_alert_email
 from .xianyu_client import XianyuClient, XianyuHttpError
 
@@ -41,6 +42,7 @@ class MarketMonitorService:
         self._consecutive_403 = 0
         self._error_count = 0
         self._xianyu = XianyuClient()
+        self._cookie_provider = CookieProvider()
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -59,6 +61,7 @@ class MarketMonitorService:
                 "error_count": self._error_count,
                 "keyword": settings.monitor_keyword,
                 "max_price": settings.monitor_max_price,
+                "cookie_error": self._cookie_provider.last_error if hasattr(self, "_cookie_provider") else "",
             }
 
     def start(self) -> dict[str, Any]:
@@ -142,8 +145,9 @@ class MarketMonitorService:
                 items: list[dict[str, Any]] = []
                 pages = max(1, min(10, settings.monitor_pages))
                 proxies = self._get_proxies()
+                cookie = self._cookie_provider.get_cookie()
                 for p in range(1, pages + 1):
-                    items.extend(self._xianyu.fetch(page=p, proxies=proxies))
+                    items.extend(self._xianyu.fetch(page=p, proxies=proxies, cookie_override=cookie))
                 return items
             return self._fetch_generic()
         except XianyuHttpError as exc:

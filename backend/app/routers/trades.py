@@ -110,6 +110,16 @@ def _build_trade_pricing_payload(
     }
 
 
+@router.get("/metrics-summary")
+def metrics_summary() -> dict:
+    return repo.get_dashboard_metrics()
+
+
+@router.get("/metrics")
+def metrics_alias() -> dict:
+    return repo.get_dashboard_metrics()
+
+
 @router.get("/{trade_id}/pricing-plan")
 def get_trade_pricing_plan(
     trade_id: int,
@@ -229,13 +239,3 @@ def mark_sold(trade_id: int, payload: MarkSoldIn) -> dict:
         raise HTTPException(status_code=404, detail="Trade not found")
     repo.update_trade_sold(trade_id, payload.sold_price, payload.note)
     return {"trade_id": trade_id, "status": "sold", "sold_price": payload.sold_price}
-
-
-@router.get("/metrics")
-def metrics() -> dict:
-    return repo.get_dashboard_metrics()
-
-
-@router.get("/metrics-summary")
-def metrics_summary() -> dict:
-    return repo.get_dashboard_metrics()

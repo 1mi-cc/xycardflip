@@ -85,6 +85,9 @@ const cardFlipApi = {
   getMetrics() {
     return cardFlipRequest.get("/trades/metrics-summary");
   },
+  getListing(listingRowId) {
+    return cardFlipRequest.get(`/listings/${listingRowId}`);
+  },
 };
 
 export default cardFlipApi;

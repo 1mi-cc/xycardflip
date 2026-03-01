@@ -25,16 +25,19 @@ import json
 import requests
 
 from app.services.xianyu_client import XianyuClient
+from app.services.cookie_provider import CookieProvider
 
 
 def main() -> None:
     client = XianyuClient()
+    cookie_provider = CookieProvider()
+    cookie = cookie_provider.get_cookie()
     proxies = _get_proxies() if settings.monitor_use_proxy_pool else None
     pages = max(1, min(10, settings.monitor_pages))
     all_items: list[dict[str, Any]] = []
     for p in range(1, pages + 1):
         print(f"[spider] fetch page {p}")
-        items = client.fetch(page=p, proxies=proxies)
+        items = client.fetch(page=p, proxies=proxies, cookie_override=cookie)
         all_items.extend(items)
 
     print(f"[spider] fetched {len(all_items)} raw items")

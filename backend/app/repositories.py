@@ -131,6 +131,54 @@ def insert_listings(rows: list[ListingIn]) -> int:
     return len(values)
 
 
+def get_listing_by_source_listing_id(source: str, listing_id: str) -> sqlite3.Row | None:
+    normalized_id = _normalize_optional_id(listing_id)
+    if not normalized_id:
+        return None
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT *
+            FROM listings_raw
+            WHERE source = ? AND listing_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(source), normalized_id),
+        )
+        return cur.fetchone()
+
+
+def upsert_listing(row: ListingIn) -> tuple[int | None, bool]:
+    listing_id = _normalize_optional_id(row.listing_id)
+    seller_id = _normalize_optional_id(row.seller_id)
+    if listing_id:
+        existing = get_listing_by_source_listing_id(row.source, listing_id)
+        if existing:
+            return int(existing["id"]), False
+
+    sql = """
+    INSERT INTO listings_raw(source, listing_id, seller_id, title, description, list_price, listed_at, status, raw_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            sql,
+            (
+                row.source,
+                listing_id,
+                seller_id,
+                row.title,
+                row.description,
+                row.list_price,
+                row.listed_at.isoformat(),
+                row.status,
+                json.dumps(row.raw, ensure_ascii=True),
+            ),
+        )
+        return int(cur.lastrowid), True
+
+
 def get_listing(row_id: int) -> sqlite3.Row | None:
     with get_conn() as conn:
         cur = conn.execute("SELECT * FROM listings_raw WHERE id = ?", (row_id,))
@@ -362,6 +410,21 @@ def get_opportunity(opportunity_id: int) -> sqlite3.Row | None:
             WHERE o.id = ?
             """,
             (opportunity_id,),
+        )
+        return cur.fetchone()
+
+
+def get_opportunity_by_listing_row_id(listing_row_id: int) -> sqlite3.Row | None:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            SELECT o.*, l.list_price, v.suggested_list_price
+            FROM opportunities o
+            JOIN listings_raw l ON l.id = o.listing_row_id
+            JOIN valuation_records v ON v.id = o.valuation_id
+            WHERE o.listing_row_id = ?
+            """,
+            (listing_row_id,),
         )
         return cur.fetchone()
 

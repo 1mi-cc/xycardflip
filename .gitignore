@@ -4,6 +4,11 @@ node_modules/
 # Python backend local artifacts
 backend/data/
 backend/.venv/
+backend/.venv_pack/
+backend/_dotenv_check.py
+backend/tmp_uvicorn_pid.txt
+backend/backend/
+backend/*.spec
 **/__pycache__/
 *.pyc
 npm-debug.log*
@@ -42,6 +47,7 @@ Thumbs.db
 # Logs
 logs
 *.log
+runlog.txt
 
 # Runtime data
 pids
@@ -83,8 +89,8 @@ temp/
 !start_proxy_pool.bat
 *.exe
 node_modules/
+node-v24.13.0-x64.msi
 
 # IPProxyPool runtime files
 third_party/IPProxyPool/.venv/
 third_party/IPProxyPool/db/*.db
-!backend/data/.gitkeep

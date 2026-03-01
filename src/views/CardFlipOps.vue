@@ -79,6 +79,9 @@
                   <td>{{ item.score }}</td>
                   <td>
                     <n-space>
+                      <n-button size="small" @click="openListing(item)">
+                        查看商品
+                      </n-button>
                       <n-button size="small" type="primary" @click="openApprove(item)">
                         审批买入
                       </n-button>
@@ -163,6 +166,9 @@
                   </td>
                   <td>
                     <n-space>
+                      <n-button size="small" @click="openListing(item)">
+                        查看商品
+                      </n-button>
                       <n-button size="small" type="primary" @click="sendToReview(item)">
                         申请复核
                       </n-button>
@@ -493,11 +499,62 @@
         <n-empty v-else description="暂无重定价结果" />
       </n-space>
     </n-modal>
+
+    <n-modal
+      v-model:show="listingModalVisible"
+      preset="card"
+      title="商品信息"
+      style="width: 90%; max-width: 760px"
+    >
+      <n-spin :show="listingLoading">
+        <div v-if="listingPayload">
+          <n-descriptions bordered :column="2" label-placement="left">
+            <n-descriptions-item label="标题">
+              {{ listingPayload.title }}
+            </n-descriptions-item>
+            <n-descriptions-item label="当前价">
+              楼{{ toMoney(listingPayload.list_price) }}
+            </n-descriptions-item>
+            <n-descriptions-item label="来源">
+              {{ listingPayload.source || "-" }}
+            </n-descriptions-item>
+            <n-descriptions-item label="状态">
+              {{ listingPayload.status || "-" }}
+            </n-descriptions-item>
+            <n-descriptions-item label="卖家ID">
+              {{ listingPayload.seller_id || "-" }}
+            </n-descriptions-item>
+            <n-descriptions-item label="上架时间">
+              {{ listingPayload.listed_at || "-" }}
+            </n-descriptions-item>
+            <n-descriptions-item label="商品ID">
+              {{ listingPayload.listing_id || "-" }}
+            </n-descriptions-item>
+            <n-descriptions-item label="链接">
+              <span v-if="listingPayload.listing_url">
+                <a :href="listingPayload.listing_url" target="_blank" rel="noreferrer">打开链接</a>
+              </span>
+              <span v-else>-</span>
+            </n-descriptions-item>
+          </n-descriptions>
+          <div class="listing-description">
+            <div class="listing-label">描述</div>
+            <div class="listing-text">
+              {{ listingPayload.description || "-" }}
+            </div>
+          </div>
+          <div class="listing-raw" v-if="rawListingJson">
+            <div class="listing-label">原始数据</div>
+            <pre>{{ rawListingJson }}</pre>
+          </div>
+        </div>
+      </n-spin>
+    </n-modal>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useMessage } from "naive-ui";
 import cardFlipApi from "@/api/cardFlip";
 
@@ -560,6 +617,9 @@ const pricingPlanPayload = ref(null);
 const batchPricingModalVisible = ref(false);
 const batchPricingResult = ref(null);
 const pricingPreviewMap = ref({});
+const listingModalVisible = ref(false);
+const listingPayload = ref(null);
+const listingLoading = ref(false);
 
 const toMoney = (value) => Number(value || 0).toFixed(2);
 const toPercent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`;
@@ -612,6 +672,20 @@ const riskReasonTextMap = {
   suspicious_listing_keywords: "命中可疑关键词",
 };
 const getRiskReasonText = (reason) => riskReasonTextMap[reason] || reason;
+const rawListingJson = computed(() => {
+  if (!listingPayload.value)
+    return "";
+  const raw = listingPayload.value.raw_json;
+  if (raw == null)
+    return "";
+  if (typeof raw === "string")
+    return raw;
+  try {
+    return JSON.stringify(raw, null, 2);
+  } catch {
+    return String(raw);
+  }
+});
 
 const cachePricingItems = (items = []) => {
   const merged = { ...pricingPreviewMap.value };
@@ -743,6 +817,19 @@ const sendToReview = async (item) => {
     await loadData();
   } catch (error) {
     message.error(`申请复核失败: ${error.message}`);
+  }
+};
+
+const openListing = async (item) => {
+  listingLoading.value = true;
+  listingModalVisible.value = true;
+  try {
+    listingPayload.value = await cardFlipApi.getListing(item.listing_row_id);
+  } catch (error) {
+    message.error(`获取商品信息失败: ${error.message}`);
+    listingModalVisible.value = false;
+  } finally {
+    listingLoading.value = false;
   }
 };
 
@@ -1038,6 +1125,33 @@ onMounted(loadData);
   margin-bottom: 8px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+}
+
+.listing-description,
+.listing-raw {
+  margin-top: 16px;
+}
+
+.listing-label {
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.listing-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.listing-raw pre {
+  max-height: 280px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7f7f9;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .batch-summary {

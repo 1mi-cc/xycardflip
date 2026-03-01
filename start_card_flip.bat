@@ -1,8 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-echo [launcher] start_card_flip.bat entered
-
 set "SCRIPT_DIR=%~dp0"
 set "ROOT="
 set "WITH_PROXY=false"
@@ -12,7 +10,6 @@ set "BACKEND_PORT=8000"
 set "FRONTEND_PORT=3000"
 set "PROXY_PORT=8899"
 set "HAVE_CURL=false"
-set "CURL_EXE=curl.exe"
 
 for %%A in (%*) do (
   if /i "%%~A"=="proxy" set "WITH_PROXY=true"
@@ -29,30 +26,21 @@ if not defined ROOT call :check_root "%USERPROFILE%\Desktop\xyzw_web_helper"
 if not defined ROOT call :probe_desktop
 if not defined ROOT goto :root_not_found
 
-echo [launcher] root=%ROOT%
-
-echo [launcher] before cd
 cd /d "%ROOT%" || goto :fail
-echo [launcher] after cd
 
 set "PKG=npm"
-echo [launcher] package manager forced to npm (skip pnpm check due to corepack issue)
-where curl >nul 2>nul
+where pnpm >nul 2>nul
 if not errorlevel 1 (
-  set "HAVE_CURL=true"
-  for %%C in (%SystemRoot%\System32\curl.exe curl.exe curl) do (
-    if exist "%%~fC" set "CURL_EXE=%%~fC"
-  )
+  pnpm --version >nul 2>nul
+  if not errorlevel 1 set "PKG=pnpm"
 )
-echo [launcher] after curl check HAVE_CURL=%HAVE_CURL% CURL_EXE=%CURL_EXE%
-
-echo [launcher] after package checks PKG=%PKG% curl=%HAVE_CURL%
+where curl >nul 2>nul
+if not errorlevel 1 set "HAVE_CURL=true"
 
 set "BACKEND_REQ_HASH="
 set "BACKEND_STAMP_FILE=backend\.venv\.requirements.sha256"
 set "BACKEND_STAMP_VALUE="
 set "INSTALL_BACKEND_DEPS=true"
-echo [launcher] hashing backend\\requirements.txt
 call :hash_file "backend\requirements.txt" BACKEND_REQ_HASH
 if defined BACKEND_REQ_HASH set "BACKEND_STAMP_VALUE=%BACKEND_REQ_HASH%"
 if "%FORCE_INSTALL%"=="false" (
@@ -62,7 +50,6 @@ if "%FORCE_INSTALL%"=="false" (
   )
 )
 
-echo [launcher] compute front stamp
 call :compute_front_stamp
 set "FRONT_STAMP_FILE=node_modules\.deps.sha256"
 set "INSTALL_FRONTEND_DEPS=true"
@@ -234,7 +221,7 @@ echo Waiting for %WAIT_NAME% ready: %WAIT_URL%
 set /a "WAIT_I=0"
 :wait_http_loop
 set /a "WAIT_I+=1"
-"%CURL_EXE%" -fsS --max-time 2 "%WAIT_URL%" >nul 2>nul
+curl -fsS --max-time 2 "%WAIT_URL%" >nul 2>nul
 if not errorlevel 1 (
   echo %WAIT_NAME% is ready.
   exit /b 0

@@ -15,8 +15,10 @@ from .routers.health import router as health_router
 from .routers.ingest import router as ingest_router
 from .routers.monitor import router as monitor_router
 from .routers.opportunities import router as opportunities_router
+from .routers.listings import router as listings_router
 from .routers.trades import router as trades_router
 from .routers.valuation import router as valuation_router
+from .routers.vnpy import router as vnpy_router
 
 
 @asynccontextmanager
@@ -29,9 +31,11 @@ def _include_core_routers(app: FastAPI, prefix: str = "") -> None:
     app.include_router(health_router, prefix=prefix)
     app.include_router(ingest_router, prefix=prefix)
     app.include_router(valuation_router, prefix=prefix)
+    app.include_router(listings_router, prefix=prefix)
     app.include_router(opportunities_router, prefix=prefix)
     app.include_router(trades_router, prefix=prefix)
     app.include_router(monitor_router, prefix=prefix)
+    app.include_router(vnpy_router, prefix=prefix)
 
 
 def _find_frontend_dist() -> Path | None:
