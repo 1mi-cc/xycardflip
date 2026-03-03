@@ -12,6 +12,18 @@ def status() -> dict:
     return monitor_service.status()
 
 
+@router.get("/health")
+def health() -> dict:
+    status = monitor_service.status()
+    return {
+        "is_running": status.get("is_running", False),
+        "circuit_open": status.get("circuit_open", False),
+        "circuit_reason": status.get("circuit_reason", ""),
+        "health": status.get("health", {}),
+        "last_error": status.get("last_error", ""),
+    }
+
+
 @router.post("/start")
 def start() -> dict:
     return monitor_service.start()

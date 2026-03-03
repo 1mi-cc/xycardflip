@@ -11,7 +11,11 @@ import requests
 
 from .. import repositories as repo
 from ..config import settings
+from .proxy_resolver import BusinessBanError
+from .proxy_resolver import mark_proxy_bad
+from .proxy_resolver import proxy_url_from_mapping
 from .proxy_resolver import request_post
+from .proxy_resolver import rotate_proxy
 from .proxy_resolver import resolve_proxy_for_url
 
 
@@ -284,6 +288,7 @@ class ExecutionService:
                         "previous_log_id": int(row["id"]),
                         "success": ok,
                         "new_log_id": int(res.get("log_id") or 0),
+                        "business_ban_code": str(res.get("business_ban_code") or ""),
                         "error": str(res.get("error") or ""),
                     }
                 )
@@ -296,6 +301,7 @@ class ExecutionService:
                         "previous_log_id": int(row["id"]),
                         "success": False,
                         "new_log_id": 0,
+                        "business_ban_code": "",
                         "error": str(exc),
                     }
                 )
@@ -402,9 +408,10 @@ class ExecutionService:
         response_payload: dict[str, Any] = {}
         error = ""
         external_id = ""
+        business_ban_code = ""
 
         try:
-            success, response_payload, external_id = self._dispatch_provider_execution(
+            success, response_payload, external_id, business_ban_code = self._dispatch_provider_execution(
                 action=action,
                 trade_id=trade_id,
                 provider=provider,
@@ -413,6 +420,15 @@ class ExecutionService:
                 webhook_url=webhook_url,
                 idempotency_key=idempotency_key,
             )
+        except BusinessBanError as exc:
+            error = str(exc)
+            business_ban_code = str(exc.code or "")
+            response_payload = {
+                "error": error,
+                "business_ban_code": business_ban_code,
+                "context": exc.context,
+            }
+            success = False
         except Exception as exc:
             error = str(exc)
             response_payload = {"error": error}
@@ -437,6 +453,11 @@ class ExecutionService:
             response_payload = {
                 **response_payload,
                 "local_update": local_update,
+            }
+        if business_ban_code:
+            response_payload = {
+                **response_payload,
+                "business_ban_code": business_ban_code,
             }
 
         log_id = repo.create_execution_log(
@@ -463,6 +484,7 @@ class ExecutionService:
             "idempotency_key": idempotency_key,
             "external_id": external_id,
             "error": error,
+            "business_ban_code": business_ban_code,
             "response": response_payload,
         }
 
@@ -476,7 +498,7 @@ class ExecutionService:
         dry_run: bool,
         webhook_url: str,
         idempotency_key: str,
-    ) -> tuple[bool, dict[str, Any], str]:
+    ) -> tuple[bool, dict[str, Any], str, str]:
         if dry_run or provider in {"disabled", "none"}:
             external_id = f"dryrun_{action}_{trade_id}_{uuid.uuid4().hex[:8]}"
             return (
@@ -488,6 +510,7 @@ class ExecutionService:
                     "message": "dry run, no external order sent",
                 },
                 external_id,
+                "",
             )
 
         if provider == "mock":
@@ -501,6 +524,7 @@ class ExecutionService:
                     "message": f"mock provider {action} filled",
                 },
                 external_id,
+                "",
             )
 
         if provider != "webhook":
@@ -514,6 +538,7 @@ class ExecutionService:
         attempts: list[dict[str, Any]] = []
         external_id = ""
         webhook_proxies = resolve_proxy_for_url(webhook_url)
+        business_ban_code = ""
 
         for attempt in range(1, max_attempts + 1):
             headers = self._build_webhook_headers(
@@ -554,7 +579,32 @@ class ExecutionService:
                             "attempts": attempts,
                         },
                         external_id,
+                        "",
                     )
+
+                business_ban_code = self._detect_business_ban_code(
+                    status_code=resp.status_code,
+                    body=body if isinstance(body, dict) else {},
+                )
+                if business_ban_code:
+                    self._on_business_ban(
+                        action=action,
+                        code=business_ban_code,
+                        webhook_proxies=webhook_proxies,
+                        reason=f"http_{resp.status_code}",
+                    )
+                    if attempt >= max_attempts:
+                        raise BusinessBanError(
+                            code=business_ban_code,
+                            message=(
+                                f"business ban detected while executing {action}: "
+                                f"code={business_ban_code}"
+                            ),
+                            context=f"status={resp.status_code}",
+                        )
+                    webhook_proxies = resolve_proxy_for_url(webhook_url)
+                    time.sleep(max(0.0, settings.execution_webhook_retry_backoff_sec) * attempt)
+                    continue
 
                 should_retry = (
                     self._should_retry_http_status(resp.status_code)
@@ -572,6 +622,7 @@ class ExecutionService:
                         "attempts": attempts,
                     },
                     external_id,
+                    business_ban_code,
                 )
             except requests.RequestException as exc:
                 attempts.append(
@@ -580,12 +631,18 @@ class ExecutionService:
                         "error": str(exc),
                     }
                 )
+                if webhook_proxies:
+                    mark_proxy_bad(
+                        proxy_url_from_mapping(webhook_proxies),
+                        reason=f"webhook_exception:{str(exc)[:120]}",
+                    )
                 if attempt < max_attempts:
                     time.sleep(max(0.0, settings.execution_webhook_retry_backoff_sec) * attempt)
+                    webhook_proxies = resolve_proxy_for_url(webhook_url)
                     continue
                 raise RuntimeError(str(exc)) from exc
 
-        return False, {"attempts": attempts}, external_id
+        return False, {"attempts": attempts}, external_id, business_ban_code
 
     def _build_webhook_headers(self, *, body_text: str, idempotency_key: str) -> dict[str, str]:
         headers = {
@@ -632,6 +689,59 @@ class ExecutionService:
         if status_code:
             return f"http_status={status_code}"
         return ""
+
+    @staticmethod
+    def _as_text(value: Any) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def _detect_business_ban_code(self, *, status_code: int, body: dict[str, Any]) -> str:
+        if status_code in set(settings.execution_business_ban_status_codes):
+            return f"http_{status_code}"
+
+        if not isinstance(body, dict):
+            return ""
+
+        candidate_values: list[str] = []
+        for key in ("code", "error_code", "biz_code", "bizCode", "sub_code", "status"):
+            text = self._as_text(body.get(key))
+            if text:
+                candidate_values.append(text)
+        message = self._as_text(body.get("message") or body.get("error") or body.get("msg"))
+        if message:
+            candidate_values.append(message)
+
+        ban_tokens = {token.upper() for token in settings.execution_business_ban_codes}
+        for candidate in candidate_values:
+            upper = candidate.upper()
+            if upper in ban_tokens:
+                return candidate
+            if any(token in upper for token in ban_tokens):
+                return candidate
+
+        return ""
+
+    def _on_business_ban(
+        self,
+        *,
+        action: str,
+        code: str,
+        webhook_proxies: dict[str, str] | None,
+        reason: str,
+    ) -> None:
+        if not settings.execution_auto_rotate_proxy_on_ban:
+            return
+        proxy_url = proxy_url_from_mapping(webhook_proxies)
+        if proxy_url:
+            mark_proxy_bad(
+                proxy_url,
+                reason=f"business_ban:{action}:{code}:{reason}",
+            )
+        rotate_proxy(
+            reason=f"business_ban:{action}:{code}:{reason}",
+            required=False,
+        )
 
     def _validate_live_action_guard(
         self,

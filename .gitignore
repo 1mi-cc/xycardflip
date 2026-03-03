@@ -83,7 +83,10 @@ jspm_packages/
 tmp/
 temp/
 
-.github
+.github/*
+!.github/workflows/
+!.github/workflows/*.yml
+third_party/**/.github/
 *.bat
 !start_card_flip.bat
 !start_proxy_pool.bat
@@ -94,3 +97,7 @@ node-v24.13.0-x64.msi
 # IPProxyPool runtime files
 third_party/IPProxyPool/.venv/
 third_party/IPProxyPool/db/*.db
+
+# Local and release sqlite data
+data/*.db
+release/**/data/*.db

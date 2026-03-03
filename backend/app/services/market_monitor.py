@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import random
 import threading
-import time
 from datetime import datetime, timezone
 from typing import Any
 import requests
@@ -14,17 +14,13 @@ from ..schemas import ListingIn
 from .cookie_provider import CookieProvider
 from .notifier import format_circuit_email, send_alert_email
 from .opportunity_scan import scan_open_listings
+from .proxy_resolver import mark_proxy_bad
+from .proxy_resolver import proxy_url_from_mapping
+from .proxy_resolver import rotate_proxy
 from .proxy_resolver import request_get
 from .proxy_resolver import resolve_proxy
 from .proxy_resolver import resolve_proxy_for_url
 from .xianyu_client import XianyuClient, XianyuHttpError
-
-HEADERS_LIST = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
-    "(KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
-]
 
 
 def _should_refresh_cookie(exc: XianyuHttpError) -> bool:
@@ -51,6 +47,13 @@ class MarketMonitorService:
         self._consecutive_errors = 0
         self._consecutive_403 = 0
         self._error_count = 0
+        self._health_window: deque[int] = deque(
+            maxlen=max(5, int(settings.monitor_health_window_size))
+        )
+        self._health_last_rate = 1.0
+        self._health_guard_triggered = False
+        self._health_guard_reason = ""
+        self._last_proxy = ""
         self._xianyu = XianyuClient()
         self._cookie_provider = CookieProvider()
 
@@ -75,6 +78,16 @@ class MarketMonitorService:
                 "max_price": settings.monitor_max_price,
                 "auto_scan_after_ingest": settings.monitor_auto_scan_after_ingest,
                 "auto_scan_limit": settings.monitor_auto_scan_limit,
+                "health": {
+                    "window_size": int(settings.monitor_health_window_size),
+                    "min_samples": int(settings.monitor_health_min_samples),
+                    "min_success_rate": float(settings.monitor_health_min_success_rate),
+                    "samples": len(self._health_window),
+                    "success_rate": round(self._health_last_rate, 4),
+                    "guard_triggered": self._health_guard_triggered,
+                    "guard_reason": self._health_guard_reason,
+                },
+                "last_proxy": self._last_proxy,
                 "last_scan": self._last_scan,
                 "cookie_error": self._cookie_provider.last_error if hasattr(self, "_cookie_provider") else "",
             }
@@ -138,6 +151,7 @@ class MarketMonitorService:
             self._last_error = scan_error
             self._consecutive_errors = 0
             self._consecutive_403 = 0
+        self._record_health(success=True, reason=f"fetched={len(items)}, inserted={inserted}")
         return {
             "fetched": len(items),
             "inserted": inserted,
@@ -181,12 +195,16 @@ class MarketMonitorService:
             self._is_running = False
 
     def _fetch_market_data(self) -> list[dict[str, Any]]:
+        active_proxy = ""
         try:
             if settings.monitor_provider.lower() == "xianyu":
                 items: list[dict[str, Any]] = []
                 pages = max(1, min(10, settings.monitor_pages))
                 keywords = self._resolved_monitor_keywords()
                 proxies = self._get_proxies(self._xianyu.search_url)
+                active_proxy = proxy_url_from_mapping(proxies) or ""
+                with self._lock:
+                    self._last_proxy = active_proxy
                 cookie = self._cookie_provider.get_cookie()
                 refreshed = False
                 seen_keys: set[tuple[str, str, float]] = set()
@@ -232,22 +250,27 @@ class MarketMonitorService:
                 return items
             return self._fetch_generic()
         except XianyuHttpError as exc:
-            self._register_error(exc, is_403=exc.status == 403)
+            self._register_error(exc, is_403=exc.status == 403, active_proxy=active_proxy)
+            self._record_health(success=False, reason=f"xianyu_http_{exc.status}")
             raise
         except requests.HTTPError as exc:
             status = getattr(exc.response, "status_code", None)
-            self._register_error(exc, is_403=status == 403)
+            self._register_error(exc, is_403=status == 403, active_proxy=active_proxy)
+            self._record_health(success=False, reason=f"http_error_{status}")
             raise
         except Exception as exc:
-            self._register_error(exc, is_403=False)
+            self._register_error(exc, is_403=False, active_proxy=active_proxy)
+            self._record_health(success=False, reason=str(exc))
             raise
 
     def _fetch_generic(self) -> list[dict[str, Any]]:
         headers = {
-            "User-Agent": random.choice(HEADERS_LIST),
+            "User-Agent": self._pick_user_agent(),
             "Accept": "application/json",
         }
         proxies = self._get_proxies(settings.monitor_target_url)
+        with self._lock:
+            self._last_proxy = proxy_url_from_mapping(proxies) or ""
         response = request_get(
             settings.monitor_target_url,
             headers=headers,
@@ -255,10 +278,8 @@ class MarketMonitorService:
             proxies=proxies,
         )
         if response.status_code == 403:
-            self._register_error(RuntimeError("generic 403"), is_403=True)
             raise RuntimeError("target status code: 403")
         if response.status_code != 200:
-            self._register_error(RuntimeError(f"status {response.status_code}"), is_403=False)
             raise RuntimeError(f"target status code: {response.status_code}")
 
         data = response.json()
@@ -312,7 +333,7 @@ class MarketMonitorService:
             return 0
         return insert_listings(rows)
 
-    def _register_error(self, exc: Exception, is_403: bool = False) -> None:
+    def _register_error(self, exc: Exception, is_403: bool = False, active_proxy: str = "") -> None:
         with self._lock:
             self._consecutive_errors += 1
             self._error_count += 1
@@ -329,6 +350,7 @@ class MarketMonitorService:
                 reason = f"circuit open after errors={self._consecutive_errors}, 403={self._consecutive_403}"
                 self._open_circuit(reason)
             self._last_error = str(exc)
+        self._maybe_rotate_proxy(exc=exc, is_403=is_403, active_proxy=active_proxy)
 
     def _open_circuit(self, reason: str) -> None:
         self._circuit_open = True
@@ -359,6 +381,10 @@ class MarketMonitorService:
         self._consecutive_errors = 0
         self._consecutive_403 = 0
         self._error_count = 0
+        self._health_guard_triggered = False
+        self._health_guard_reason = ""
+        self._health_last_rate = 1.0
+        self._health_window.clear()
 
     def _compute_delay_sec(self) -> float:
         now_local = datetime.now()
@@ -380,6 +406,53 @@ class MarketMonitorService:
             settings.monitor_night_delay_max,
             settings.monitor_night_delay_min + 3,
         )
+
+    def _pick_user_agent(self) -> str:
+        uas = [ua.strip() for ua in settings.monitor_user_agents if ua and ua.strip()]
+        if not uas:
+            return "Mozilla/5.0"
+        return random.choice(uas)
+
+    def _record_health(self, *, success: bool, reason: str = "") -> None:
+        should_trip = False
+        trip_reason = ""
+        with self._lock:
+            self._health_window.append(1 if success else 0)
+            total = len(self._health_window)
+            if total <= 0:
+                self._health_last_rate = 1.0
+                return
+            success_count = sum(self._health_window)
+            self._health_last_rate = success_count / float(total)
+            min_samples = max(1, int(settings.monitor_health_min_samples))
+            min_rate = max(0.0, min(1.0, float(settings.monitor_health_min_success_rate)))
+            if (
+                total >= min_samples
+                and self._health_last_rate < min_rate
+                and not self._circuit_open
+                and not self._health_guard_triggered
+            ):
+                self._health_guard_triggered = True
+                trip_reason = (
+                    "health_guard_triggered "
+                    f"(success_rate={self._health_last_rate:.2%}, samples={total}, reason={reason})"
+                )
+                self._health_guard_reason = trip_reason
+                should_trip = True
+        if should_trip:
+            self._open_circuit(trip_reason)
+
+    def _maybe_rotate_proxy(self, *, exc: Exception, is_403: bool, active_proxy: str) -> None:
+        message = str(exc).lower()
+        proxy_error = is_403 or any(
+            token in message for token in ("429", "rate", "too many", "proxy", "forbidden")
+        )
+        if not proxy_error:
+            return
+
+        if active_proxy:
+            mark_proxy_bad(active_proxy, reason=f"monitor_error:{str(exc)[:120]}")
+        rotate_proxy(reason=f"monitor_error:{str(exc)[:120]}", required=False)
 
 
 monitor_service = MarketMonitorService()

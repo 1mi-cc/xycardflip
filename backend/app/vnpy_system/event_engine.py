@@ -48,11 +48,25 @@ class Event:
     timestamp: str | None = None
 
 
+@dataclass
+class HandlerStats:
+    """Per-handler runtime status and fault isolation metrics."""
+
+    name: str
+    handled_events: int = 0
+    total_errors: int = 0
+    consecutive_errors: int = 0
+    last_error: str = ""
+    quarantined: bool = False
+    max_consecutive_errors: int = 3
+
+
 class EventEngine:
     """Thread-safe publish/subscribe event engine."""
 
     def __init__(self) -> None:
         self.handlers: Dict[EventType, List[Callable[[Event], None]]] = {}
+        self._handler_stats: Dict[int, HandlerStats] = {}
         self.queue: queue.Queue[Event] = queue.Queue()
         self.active = False
         self._thread: threading.Thread | None = None
@@ -77,12 +91,24 @@ class EventEngine:
             thread.join(timeout=2)
         logger.info("event engine stopped")
 
-    def register(self, event_type: EventType, handler: Callable[[Event], None]) -> None:
+    def register(
+        self,
+        event_type: EventType,
+        handler: Callable[[Event], None],
+        *,
+        handler_name: str | None = None,
+        max_consecutive_errors: int = 3,
+    ) -> None:
         """Register an event handler."""
+        stats = HandlerStats(
+            name=handler_name or getattr(handler, "__name__", "anonymous_handler"),
+            max_consecutive_errors=max(1, int(max_consecutive_errors)),
+        )
         with self._lock:
             if event_type not in self.handlers:
                 self.handlers[event_type] = []
             self.handlers[event_type].append(handler)
+            self._handler_stats[id(handler)] = stats
         logger.debug("registered handler for %s", event_type.value)
 
     def unregister(self, event_type: EventType, handler: Callable[[Event], None]) -> None:
@@ -93,6 +119,7 @@ class EventEngine:
                     self.handlers[event_type].remove(handler)
                 except ValueError:
                     pass
+            self._handler_stats.pop(id(handler), None)
 
     def emit(self, event: Event) -> None:
         """Emit an event (non-blocking)."""
@@ -115,10 +142,45 @@ class EventEngine:
             handlers = list(self.handlers.get(event.event_type, []))
 
         for handler in handlers:
+            stats = self._handler_stats.get(id(handler))
+            if stats and stats.quarantined:
+                continue
             try:
                 handler(event)
+                if stats:
+                    stats.handled_events += 1
+                    stats.consecutive_errors = 0
             except Exception as exc:
+                if stats:
+                    stats.total_errors += 1
+                    stats.consecutive_errors += 1
+                    stats.last_error = str(exc)
+                    if stats.consecutive_errors >= stats.max_consecutive_errors:
+                        stats.quarantined = True
+                        logger.error(
+                            "event handler quarantined: %s (event=%s, consecutive_errors=%s)",
+                            stats.name,
+                            event.event_type.value,
+                            stats.consecutive_errors,
+                            exc_info=True,
+                        )
+                        continue
                 logger.error("event handler error: %s", exc, exc_info=True)
+
+    def handler_status(self) -> dict[str, dict]:
+        """Return handler runtime metrics for observability."""
+        with self._lock:
+            result: dict[str, dict] = {}
+            for stats in self._handler_stats.values():
+                result[stats.name] = {
+                    "handled_events": stats.handled_events,
+                    "total_errors": stats.total_errors,
+                    "consecutive_errors": stats.consecutive_errors,
+                    "last_error": stats.last_error,
+                    "quarantined": stats.quarantined,
+                    "max_consecutive_errors": stats.max_consecutive_errors,
+                }
+            return result
 
 
 event_engine = EventEngine()

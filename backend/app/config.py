@@ -107,6 +107,40 @@ def _parse_monitor_keywords(raw_keywords: str | None, fallback_keyword: str | No
     return ("\u54b8\u9c7c\u4e4b\u738b\u529f\u6cd5",)
 
 
+def _parse_csv_tokens(raw_value: str | None, fallback: tuple[str, ...] = ()) -> tuple[str, ...]:
+    raw_text = (raw_value or "").strip()
+    if not raw_text:
+        return fallback
+    parts = re.split(r"[,;\n\r|\uFF0C\uFF1B]+", raw_text)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        token = part.strip()
+        if not token:
+            continue
+        lowered = token.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        normalized.append(token)
+    return tuple(normalized) if normalized else fallback
+
+
+def _parse_int_tokens(raw_value: str | None, fallback: tuple[int, ...] = ()) -> tuple[int, ...]:
+    values: list[int] = []
+    seen: set[int] = set()
+    for token in _parse_csv_tokens(raw_value):
+        try:
+            numeric = int(token)
+        except ValueError:
+            continue
+        if numeric in seen:
+            continue
+        seen.add(numeric)
+        values.append(numeric)
+    return tuple(values) if values else fallback
+
+
 def _normalize_strategy_profile(value: str | None) -> str:
     text = (value or "").strip().lower()
     if text in {"aggressive", "agg", "fast"}:
@@ -321,9 +355,45 @@ class Settings:
     )
     monitor_auto_scan_after_ingest: bool = _get_bool("MONITOR_AUTO_SCAN_AFTER_INGEST", False)
     monitor_auto_scan_limit: int = _get_int("MONITOR_AUTO_SCAN_LIMIT", 80)
+    monitor_health_window_size: int = _get_int("MONITOR_HEALTH_WINDOW_SIZE", 40)
+    monitor_health_min_samples: int = _get_int("MONITOR_HEALTH_MIN_SAMPLES", 10)
+    monitor_health_min_success_rate: float = _get_float("MONITOR_HEALTH_MIN_SUCCESS_RATE", 0.35)
+    monitor_user_agents: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv("MONITOR_USER_AGENTS", ""),
+        fallback=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        ),
+    )
     auto_start_monitor: bool = _get_bool("AUTO_START_MONITOR", False)
     xianyu_search_url: str = os.getenv(
         "XIAN_YU_SEARCH_URL", "https://s.m.xianyu.com/search.htm"
+    )
+    xianyu_mobile_user_agent: str = os.getenv(
+        "XIAN_YU_MOBILE_USER_AGENT",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+        "Mobile/15E148 Safari/604.1",
+    )
+    xianyu_desktop_user_agent: str = os.getenv(
+        "XIAN_YU_DESKTOP_USER_AGENT",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/121.0.0.0 Safari/537.36",
+    )
+    xianyu_accept_language: str = os.getenv("XIAN_YU_ACCEPT_LANGUAGE", "zh-CN,zh;q=0.9")
+    xianyu_mtop_app_key: str = os.getenv("XIAN_YU_MTOP_APP_KEY", "34839810")
+    xianyu_mtop_api: str = os.getenv(
+        "XIAN_YU_MTOP_API",
+        "mtop.taobao.idlemtopsearch.pc.search",
+    )
+    xianyu_mtop_url: str = os.getenv(
+        "XIAN_YU_MTOP_URL",
+        "https://h5api.m.goofish.com/h5/mtop.taobao.idlemtopsearch.pc.search/1.0/",
     )
     xianyu_cookie: str = os.getenv("XIAN_YU_COOKIE", "")
     xianyu_cookie_provider_url: str = os.getenv(
@@ -344,6 +414,10 @@ class Settings:
     network_ignore_env_proxy: bool = _get_bool("NETWORK_IGNORE_ENV_PROXY", True)
     network_force_proxy_only: bool = _get_bool("NETWORK_FORCE_PROXY_ONLY", True)
     network_force_proxy_url: str = os.getenv("NETWORK_FORCE_PROXY_URL", "")
+    proxy_bad_ttl_sec: int = _get_int("PROXY_BAD_TTL_SEC", 600)
+    proxy_bad_ttl_jitter_sec: float = _get_float("PROXY_BAD_TTL_JITTER_SEC", 30.0)
+    proxy_max_failures: int = _get_int("PROXY_MAX_FAILURES", 2)
+    proxy_rotation_cooldown_sec: float = _get_float("PROXY_ROTATION_COOLDOWN_SEC", 2.0)
 
     execution_provider: str = os.getenv("EXECUTION_PROVIDER", "mock")
     execution_timeout_sec: float = _get_float("EXECUTION_TIMEOUT_SEC", 8.0)
@@ -374,6 +448,20 @@ class Settings:
     execution_retry_dry_run: bool = _get_bool("EXECUTION_RETRY_DRY_RUN", True)
     execution_retry_force: bool = _get_bool("EXECUTION_RETRY_FORCE", False)
     execution_retry_confirm_token: str = os.getenv("EXECUTION_RETRY_CONFIRM_TOKEN", "")
+    execution_business_ban_status_codes: tuple[int, ...] = _parse_int_tokens(
+        os.getenv("EXECUTION_BUSINESS_BAN_STATUS_CODES", "401,403,407,418,423,429"),
+        fallback=(401, 403, 407, 418, 423, 429),
+    )
+    execution_business_ban_codes: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv(
+            "EXECUTION_BUSINESS_BAN_CODES",
+            "BIZ_BAN,RISK_BLOCK,SECURITY_BLOCK,ACCOUNT_LIMIT,FREQUENCY_LIMIT",
+        ),
+    )
+    execution_auto_rotate_proxy_on_ban: bool = _get_bool(
+        "EXECUTION_AUTO_ROTATE_PROXY_ON_BAN",
+        True,
+    )
     automation_default_include_monitor: bool = _get_bool(
         "AUTOMATION_DEFAULT_INCLUDE_MONITOR", True
     )

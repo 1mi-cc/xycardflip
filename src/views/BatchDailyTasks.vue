@@ -444,6 +444,7 @@ import { ref, computed, nextTick, reactive, watch, onMounted, onBeforeUnmount } 
 import { useTokenStore } from "@/stores/tokenStore";
 import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
 import { preloadQuestions } from "@/utils/studyQuestionsFromJSON.js";
+import { useBatchTasks } from "@/composables/useBatchTasks";
 import { useMessage } from "naive-ui";
 import { Settings } from "@vicons/ionicons5";
 
@@ -534,49 +535,6 @@ const helperModalTitle = computed(() => {
 // Scheduled Tasks Feature
 // ======================
 
-// Scheduled Tasks State Management
-const scheduledTasks = ref([]); // List of all scheduled tasks
-const showTaskModal = ref(false); // Control the visibility of the add/edit task modal
-const showTasksModal = ref(false); // Control the visibility of the tasks list modal
-const editingTask = ref(null); // Currently editing task
-const taskForm = reactive({
-  name: "", // Task name
-  runType: "daily", // 'daily' or 'cron'
-  runTime: null, // Daily run time (HH:mm format)
-  cronExpression: "", // Cron expression for complex scheduling
-  selectedTokens: [], // Selected token IDs
-  selectedTasks: [], // Selected task function names
-  enabled: true, // Whether the task is enabled
-});
-
-// Available tasks for scheduling - Maps task function names to display labels
-const availableTasks = [
-  { label: "日常任务", value: "startBatch" },
-  { label: "领取挂机", value: "claimHangUpRewards" },
-  { label: "一键加钟", value: "batchAddHangUpTime" },
-  { label: "重置罐子", value: "resetBottles" },
-  { label: "一键领取罐子", value: "batchlingguanzi" },
-  { label: "一键爬塔", value: "climbTower" },
-  { label: "一键答题", value: "batchStudy" },
-  { label: "智能发车", value: "batchSmartSendCar" },
-  { label: "一键收车", value: "batchClaimCars" },
-  { label: "批量开箱", value: "batchOpenBox" },
-  { label: "领取宝箱积分", value: "batchClaimBoxPointReward" },
-  { label: "批量钓鱼", value: "batchFish" },
-  { label: "批量招募", value: "batchRecruit" },
-  { label: "一键宝库前3层", value: "batchbaoku13" },
-  { label: "一键宝库4,5层", value: "batchbaoku45" },
-  { label: "一键梦境", value: "batchmengjing" },
-  { label: "一键俱乐部签到", value: "batchclubsign" },
-  { label: "一键竞技场战斗3次", value: "batcharenafight" },
-  { label: "一键钓鱼补齐", value: "batchTopUpFish" },
-  { label: "一键竞技场补齐", value: "batchTopUpArena" },
-  { label: "一键领取怪异塔免费道具", value: "batchClaimFreeEnergy" },
-  { label: "一键购买四圣碎片", value: "legion_storebuygoods" },
-  { label: "一键黑市采购", value: "store_purchase" },
-  { label: "免费领取珍宝阁", value: "collection_claimfreereward" },
-];
-
 const getTaskFunctionByName = (taskName) => {
   const taskFunctions = {
     startBatch,
@@ -607,6 +565,32 @@ const getTaskFunctionByName = (taskName) => {
   return taskFunctions[taskName] || null;
 };
 
+const {
+  scheduledTasks,
+  showTaskModal,
+  showTasksModal,
+  editingTask,
+  taskForm,
+  availableTasks,
+  openTaskModal,
+  editTask,
+  saveTask,
+  deleteTask,
+  toggleTaskEnabled,
+  resetRunType,
+  selectAllTokens,
+  deselectAllTokens,
+  selectAllTasks,
+  deselectAllTasks,
+  verifyTaskDependencies,
+} = useBatchTasks({
+  tokens,
+  tokenStore,
+  message,
+  addLog: (entry) => addLog(entry),
+  resolveTaskFunction: getTaskFunctionByName,
+});
+
 const CarresearchItem = [
   20, 21, 22, 23, 24, 26, 28, 30, 32, 34,
   36, 38, 40, 42, 44, 47, 50, 53, 56, 59,
@@ -615,355 +599,6 @@ const CarresearchItem = [
   163, 172, 181, 190, 199, 210, 221, 232, 243, 369,
   393, 422, 457, 498, 548, 607, 678, 763, 865, 1011
 ];
-
-// Task table columns configuration for the tasks list modal
-const taskColumns = [
-  { title: "任务名称", key: "name", width: 150 },
-  { title: "运行类型", key: "runType", width: 100 },
-  {
-    title: "运行时间",
-    key: "runTime",
-    width: 150,
-    render: (row) => {
-      // Display appropriate time format based on run type
-      return row.runType === "daily" ? row.runTime : row.cronExpression;
-    },
-  },
-  {
-    title: "选中账号",
-    key: "selectedTokens",
-    width: 150,
-    render: (row) => `${row.selectedTokens.length} 个`,
-  },
-  {
-    title: "选中任务",
-    key: "selectedTasks",
-    width: 150,
-    render: (row) => `${row.selectedTasks.length} 个`,
-  },
-  {
-    title: "状态",
-    key: "enabled",
-    width: 80,
-    render: (row) => (row.enabled ? "启用" : "禁用"),
-  },
-  { title: "操作", key: "actions", width: 150 },
-];
-
-// ======================
-// Scheduled Tasks Storage
-// ======================
-
-// Load scheduled tasks from localStorage
-const loadScheduledTasks = () => {
-  try {
-    const saved = localStorage.getItem("scheduledTasks");
-    console.log("Raw localStorage data:", saved);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      console.log("Parsed data:", parsed);
-      console.log("Is array:", Array.isArray(parsed));
-      // Ensure we have an array
-      scheduledTasks.value = Array.isArray(parsed) ? parsed : [];
-      console.log("Loaded scheduled tasks:", scheduledTasks.value);
-      console.log("Loaded tasks count:", scheduledTasks.value.length);
-    } else {
-      console.log("No saved tasks in localStorage");
-      scheduledTasks.value = [];
-    }
-  } catch (error) {
-    console.error("Failed to load scheduled tasks:", error);
-    scheduledTasks.value = [];
-  }
-};
-
-// Save scheduled tasks to localStorage
-const saveScheduledTasks = () => {
-  try {
-    const dataToSave = JSON.stringify(scheduledTasks.value);
-    console.log("Saving to localStorage:", dataToSave);
-    localStorage.setItem("scheduledTasks", dataToSave);
-    // Verify save was successful
-    const saved = localStorage.getItem("scheduledTasks");
-    console.log("Verified saved data:", saved);
-    console.log("Saved scheduled tasks:", scheduledTasks.value);
-    console.log("Saved tasks count:", scheduledTasks.value.length);
-  } catch (error) {
-    console.error("Failed to save scheduled tasks:", error);
-  }
-};
-
-// Open task modal for adding new task
-const openTaskModal = () => {
-  editingTask.value = null;
-  Object.assign(taskForm, {
-    name: "",
-    runType: "daily",
-    runTime: undefined,
-    cronExpression: "",
-    selectedTokens: [],
-    selectedTasks: [],
-    enabled: true,
-  });
-  showTaskModal.value = true;
-};
-
-// Edit existing task
-const editTask = (task) => {
-  editingTask.value = task;
-  const taskData = { ...task };
-  if (task.runType === 'daily' && task.runTime && typeof task.runTime === 'string') {
-    const [hours, minutes] = task.runTime.split(':').map(Number);
-    const now = new Date();
-    taskData.runTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
-  }
-  Object.assign(taskForm, taskData);
-  showTaskModal.value = true;
-};
-
-// Validate cron expression
-const validateCronExpression = (expression) => {
-  if (!expression) return { valid: false, message: "Cron表达式不能为空" };
-
-  const cronParts = expression.split(" ").filter(Boolean);
-  if (cronParts.length !== 5) {
-    return { valid: false, message: "Cron表达式必须包含5个字段：分 时 日 月 周" };
-  }
-
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = cronParts;
-
-  // 定义通用的cron字段验证函数
-  const validateCronField = (field, min, max, fieldName) => {
-    // 支持：* / */5 / 0/1 / 1-5 / 1,3,5 / 1-10/2
-    const cronFieldRegex = new RegExp(`^(?:\\*|\\*/\\d+|[0-9]+/\\d+|(?:[0-9]+-?)*[0-9]+(?:,[0-9]+-?)*[0-9]+(?:/\\d+)?)$`);
-
-    if (!cronFieldRegex.test(field)) {
-      return { valid: false, message: `${fieldName}字段格式错误` };
-    }
-
-    // 如果是简单数字，验证范围
-    if (/^\d+$/.test(field)) {
-      const num = parseInt(field);
-      if (num < min || num > max) {
-        return { valid: false, message: `${fieldName}字段必须在${min}-${max}之间` };
-      }
-    }
-
-    return { valid: true };
-  };
-
-  // Validate minute (0-59)
-  const minuteValidation = validateCronField(minute, 0, 59, "分钟");
-  if (!minuteValidation.valid) {
-    return minuteValidation;
-  }
-
-  // Validate hour (0-23)
-  const hourValidation = validateCronField(hour, 0, 23, "小时");
-  if (!hourValidation.valid) {
-    return hourValidation;
-  }
-
-  // Validate dayOfMonth (1-31)
-  const dayOfMonthValidation = validateCronField(dayOfMonth, 1, 31, "日期");
-  if (!dayOfMonthValidation.valid) {
-    return dayOfMonthValidation;
-  }
-
-  // Validate month (1-12)
-  const monthValidation = validateCronField(month, 1, 12, "月份");
-  if (!monthValidation.valid) {
-    return monthValidation;
-  }
-
-  // Validate dayOfWeek (0-7, where 0 and 7 both represent Sunday)
-  const dayOfWeekValidation = validateCronField(dayOfWeek, 0, 7, "星期");
-  if (!dayOfWeekValidation.valid) {
-    return dayOfWeekValidation;
-  }
-
-  return { valid: true, message: "Cron表达式格式正确" };
-};
-
-// Save task (create or update)
-const saveTask = () => {
-  if (!taskForm.name) {
-    message.warning("请输入任务名称");
-    return;
-  }
-
-  if (taskForm.runType === "daily" && !taskForm.runTime) {
-    message.warning("请选择运行时间");
-    return;
-  }
-
-  if (taskForm.runType === "cron") {
-    if (!taskForm.cronExpression) {
-      message.warning("请输入Cron表达式");
-      return;
-    }
-
-    // Validate cron expression
-    const validation = validateCronExpression(taskForm.cronExpression);
-    if (!validation.valid) {
-      message.warning(validation.message);
-      return;
-    }
-  }
-
-  if (taskForm.selectedTokens.length === 0) {
-    message.warning("请选择至少一个账号");
-    return;
-  }
-
-  if (taskForm.selectedTasks.length === 0) {
-    message.warning("请选择至少一个任务");
-    return;
-  }
-
-  // Format runTime as string for storage
-  let formattedRunTime = null;
-  if (taskForm.runType === "daily" && taskForm.runTime) {
-    const time = new Date(taskForm.runTime);
-    formattedRunTime = time.toLocaleTimeString("zh-CN", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  const taskData = {
-    id: editingTask.value?.id || "task_" + Date.now(),
-    name: taskForm.name,
-    runType: taskForm.runType,
-    runTime: formattedRunTime,
-    cronExpression: taskForm.runType === "cron" ? taskForm.cronExpression : "",
-    selectedTokens: [...taskForm.selectedTokens],
-    selectedTasks: [...taskForm.selectedTasks],
-    enabled: taskForm.enabled,
-  };
-
-  let isNew = !editingTask.value;
-
-  if (editingTask.value) {
-    // Update existing task
-    const index = scheduledTasks.value.findIndex(
-      (t) => t.id === editingTask.value.id,
-    );
-    if (index !== -1) {
-      scheduledTasks.value[index] = taskData;
-    }
-  } else {
-    // Add new task
-    scheduledTasks.value.push(taskData);
-  }
-
-  saveScheduledTasks();
-  console.log(
-    "After saving task, scheduledTasks.length:",
-    scheduledTasks.value.length,
-  );
-  console.log("Scheduled tasks:", scheduledTasks.value);
-
-  // Add log entry for task save
-  addTaskSaveLog(taskData, isNew);
-
-  showTaskModal.value = false;
-  message.success("定时任务已保存");
-};
-
-// Delete task
-const deleteTask = (taskId) => {
-  const task = scheduledTasks.value.find((t) => t.id === taskId);
-  if (task) {
-    scheduledTasks.value = scheduledTasks.value.filter((t) => t.id !== taskId);
-    saveScheduledTasks();
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `=== 定时任务 ${task.name} 已删除 ===`,
-      type: "info",
-    });
-    message.success("定时任务已删除");
-  }
-};
-
-// Toggle task enabled state
-const toggleTaskEnabled = (taskId, enabled) => {
-  const task = scheduledTasks.value.find((t) => t.id === taskId);
-  if (task) {
-    task.enabled = enabled;
-    saveScheduledTasks();
-    message.success(`定时任务已${enabled ? "启用" : "禁用"}`);
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `=== 定时任务 ${task.name} 已${enabled ? "启用" : "禁用"} ===`,
-      type: "info",
-    });
-  }
-};
-
-// Add log entry for task save
-const addTaskSaveLog = (task, isNew) => {
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `=== ${isNew ? "新增" : "修改"}定时任务: ${task.name} ===`,
-    type: "info",
-  });
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `运行类型: ${task.runType === "daily" ? "每天固定时间" : "Cron表达式"}`,
-    type: "info",
-  });
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `运行时间: ${task.runType === "daily" ? task.runTime : task.cronExpression}`,
-    type: "info",
-  });
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `选中账号: ${task.selectedTokens.length} 个`,
-    type: "info",
-  });
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `选中任务: ${task.selectedTasks.length} 个`,
-    type: "info",
-  });
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `状态: ${task.enabled ? "启用" : "禁用"}`,
-    type: "info",
-  });
-};
-
-// Reset run type related fields
-const resetRunType = () => {
-  if (taskForm.runType === "daily") {
-    taskForm.cronExpression = "";
-  } else {
-    taskForm.runTime = undefined;
-  }
-};
-
-// Select all tokens
-const selectAllTokens = () => {
-  taskForm.selectedTokens = tokens.value.map((token) => token.id);
-};
-
-// Deselect all tokens
-const deselectAllTokens = () => {
-  taskForm.selectedTokens = [];
-};
-
-// Select all tasks
-const selectAllTasks = () => {
-  taskForm.selectedTasks = availableTasks.map((task) => task.value);
-};
-
-// Deselect all tasks
-const deselectAllTasks = () => {
-  taskForm.selectedTasks = [];
-};
 
 // 一键购买四圣碎片
 const legion_storebuygoods = async () => {
@@ -1530,9 +1165,6 @@ const startCountdown = () => {
 // Scheduled Tasks Scheduler
 // ======================
 
-// Initialize scheduled tasks from localStorage
-loadScheduledTasks();
-
 // Watch for changes to scheduledTasks for debugging
 watch(
   scheduledTasks,
@@ -1777,167 +1409,6 @@ const scheduleTaskExecution = () => {
       type: "info",
     });
   });
-};
-
-// Verify task dependencies with retry and fault tolerance
-const verifyTaskDependencies = async (task) => {
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `=== 开始验证定时任务 ${task.name} 的依赖 ===`,
-    type: "info",
-  });
-
-  // Verify localStorage is available
-  try {
-    localStorage.setItem("test", "test");
-    localStorage.removeItem("test");
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: "✅ localStorage可用",
-      type: "info",
-    });
-  } catch (error) {
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `❌ localStorage不可用: ${error.message}`,
-      type: "error",
-    });
-    return false;
-  }
-
-  // Verify token store is available
-  if (!tokenStore || !tokenStore.gameTokens) {
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: "❌ Token存储不可用",
-      type: "error",
-    });
-    return false;
-  }
-
-  // Verify task functions exist
-  for (const taskName of task.selectedTasks) {
-    const taskFunction = getTaskFunctionByName(taskName);
-    if (typeof taskFunction !== "function") {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        message: `❌ 任务函数不存在: ${taskName}`,
-        type: "error",
-      });
-      return false;
-    }
-  }
-
-  // WebSocket connection check with retry and manual connect mechanism
-  const checkWebSocketWithRetry = async (tokenId, maxRetries = 3, retryDelay = 1000) => {
-    for (let i = 0; i < maxRetries; i++) {
-      // 检查当前连接状态
-      const status = tokenStore.getWebSocketStatus(tokenId);
-      if (status === "connected") {
-        return true;
-      }
-
-      // 尝试手动触发WebSocket连接
-      if (i < maxRetries) {
-        const tokenName = tokenStore.gameTokens.find(t => t.id === tokenId)?.name || tokenId;
-
-        try {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `⏳ 账号 ${tokenName} WebSocket未连接，尝试手动连接... (${i + 1}/${maxRetries})`,
-            type: "warning",
-          });
-
-          // 获取token的完整信息
-          const token = tokenStore.gameTokens.find(t => t.id === tokenId);
-          if (token && token.token) {
-            // 尝试使用createWebSocketConnection方法手动连接
-            if (typeof tokenStore.createWebSocketConnection === 'function') {
-              tokenStore.createWebSocketConnection(tokenId, token.token);
-            }
-            // 如果createWebSocketConnection方法不存在，尝试使用selectToken方法
-            else if (typeof tokenStore.selectToken === 'function') {
-              tokenStore.selectToken(tokenId, true); // forceReconnect为true
-            }
-
-            // 等待一段时间让连接建立
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-          } else {
-            // 如果token信息不完整，跳过连接尝试
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              message: `⚠️  账号 ${tokenName} 缺少token信息，无法尝试手动连接`,
-              type: "warning",
-            });
-            break;
-          }
-        } catch (error) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            message: `❌ 账号 ${tokenName} 尝试手动连接失败: ${error.message}`,
-            type: "error",
-          });
-          // 继续下一次重试
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-        }
-      }
-    }
-
-    // 最后再次检查连接状态
-    return tokenStore.getWebSocketStatus(tokenId) === "connected";
-  };
-
-  // Check WebSocket connections with retry
-  const connectedTokens = [];
-  const disconnectedTokens = [];
-
-  for (const tokenId of task.selectedTokens) {
-    const tokenName = tokenStore.gameTokens.find(t => t.id === tokenId)?.name || tokenId;
-    const isConnected = await checkWebSocketWithRetry(tokenId);
-
-    if (isConnected) {
-      connectedTokens.push({ id: tokenId, name: tokenName });
-    } else {
-      disconnectedTokens.push({ id: tokenId, name: tokenName });
-    }
-  }
-
-  // Log connection status
-  if (connectedTokens.length > 0) {
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `✅ 已连接账号: ${connectedTokens.map(t => t.name).join(", ")}`,
-      type: "info",
-    });
-  }
-
-  if (disconnectedTokens.length > 0) {
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `⚠️  未连接账号: ${disconnectedTokens.map(t => t.name).join(", ")}`,
-      type: "warning",
-    });
-  }
-
-  // If no tokens are connected, return false
-  if (connectedTokens.length === 0) {
-    addLog({
-      time: new Date().toLocaleTimeString(),
-      message: `=== 定时任务 ${task.name} 没有可用的连接账号，取消执行 ===`,
-      type: "error",
-    });
-    return false;
-  }
-
-  // Store connected tokens for execution
-  task.connectedTokens = connectedTokens.map(t => t.id);
-
-  addLog({
-    time: new Date().toLocaleTimeString(),
-    message: `=== 定时任务 ${task.name} 的依赖验证通过，将执行 ${connectedTokens.length} 个账号 ===`,
-    type: "success",
-  });
-  return true;
 };
 
 // Execute a scheduled task with dependency verification

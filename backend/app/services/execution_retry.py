@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..config import settings
+from .proxy_resolver import rotate_proxy
 from .execution import execution_service
 
 
@@ -13,6 +14,22 @@ def _normalize_action(value: str | None) -> str:
     if text in {"buy", "list", "sell", "all"}:
         return text
     return "all"
+
+
+def _contains_business_ban(result: dict[str, Any]) -> bool:
+    items = result.get("items")
+    if not isinstance(items, list):
+        return False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("business_ban_code") or "").strip()
+        if code:
+            return True
+        error_text = str(item.get("error") or "").lower()
+        if "business ban" in error_text:
+            return True
+    return False
 
 
 class ExecutionRetryService:
@@ -130,6 +147,9 @@ class ExecutionRetryService:
             self._total_succeeded += succeeded
             self._total_failed += failed
 
+        if _contains_business_ban(result) and settings.execution_auto_rotate_proxy_on_ban:
+            rotate_proxy(reason="execution_retry_business_ban", required=False)
+
         return {
             **result,
             "enabled": settings.execution_retry_enabled,
@@ -153,6 +173,10 @@ class ExecutionRetryService:
                     self._last_run_at = datetime.now(timezone.utc).isoformat()
                     self._last_error = str(exc)
                     self._total_runs += 1
+                if settings.execution_auto_rotate_proxy_on_ban:
+                    text = str(exc).lower()
+                    if "business ban" in text or "http_403" in text or "http_429" in text:
+                        rotate_proxy(reason=f"execution_retry_exception:{str(exc)[:120]}", required=False)
             if self._stop_event.wait(timeout=max(5, settings.execution_retry_interval_sec)):
                 break
         with self._lock:

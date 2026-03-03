@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import random
 import re
 import time
 from typing import Any
@@ -25,6 +26,12 @@ class XianyuClient:
             else settings.monitor_keyword
         )
         self.cookie = settings.xianyu_cookie.strip()
+        self.mobile_user_agent = settings.xianyu_mobile_user_agent.strip()
+        self.desktop_user_agent = settings.xianyu_desktop_user_agent.strip()
+        self.accept_language = settings.xianyu_accept_language.strip() or "zh-CN,zh;q=0.9"
+        self.mtop_app_key = settings.xianyu_mtop_app_key.strip() or "34839810"
+        self.mtop_api = settings.xianyu_mtop_api.strip() or "mtop.taobao.idlemtopsearch.pc.search"
+        self.mtop_url = settings.xianyu_mtop_url.strip()
 
     def fetch(
         self,
@@ -43,12 +50,8 @@ class XianyuClient:
         cookie_value = (cookie_override or "").strip() or self.cookie
         headers = {
             # Mobile UA lowers risk of full page JS challenges
-            "User-Agent": (
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) "
-                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
-                "Mobile/15E148 Safari/604.1"
-            ),
-            "Accept-Language": "zh-CN,zh;q=0.9",
+            "User-Agent": self.mobile_user_agent,
+            "Accept-Language": self.accept_language,
             "Referer": f"{self.search_url}?{urlencode({'keywords': keyword_value})}",
         }
         if cookie_value:
@@ -91,7 +94,7 @@ class XianyuClient:
             return None
 
         token = token_raw.split("_", 1)[0]
-        app_key = "34839810"
+        app_key = self.mtop_app_key
         t = str(int(time.time() * 1000))
         payload = {
             "pageNumber": page,
@@ -112,28 +115,29 @@ class XianyuClient:
         sign_raw = f"{token}&{t}&{app_key}&{data}"
         sign = hashlib.md5(sign_raw.encode("utf-8")).hexdigest()
 
-        mtop_url = "https://h5api.m.goofish.com/h5/mtop.taobao.idlemtopsearch.pc.search/1.0/"
+        mtop_url = self.mtop_url
         params = {
             "jsv": "2.7.4",
             "appKey": app_key,
             "t": t,
             "sign": sign,
-            "api": "mtop.taobao.idlemtopsearch.pc.search",
+            "api": self.mtop_api,
             "v": "1.0",
             "type": "originaljson",
             "dataType": "json",
             "timeout": "10000",
             "data": data,
         }
+        desktop_ua = self.desktop_user_agent
+        if not desktop_ua:
+            fallback = list(settings.monitor_user_agents or ())
+            desktop_ua = random.choice(fallback) if fallback else self.mobile_user_agent
         headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/121.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": desktop_ua,
             "Accept": "application/json",
             "Origin": "https://www.goofish.com",
             "Referer": "https://www.goofish.com/",
+            "Accept-Language": self.accept_language,
         }
         if cookie_value:
             headers["Cookie"] = cookie_value

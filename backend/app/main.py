@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
@@ -14,6 +16,8 @@ from .database import init_db
 from .services.autotrade import auto_trade_service
 from .services.execution_retry import execution_retry_service
 from .services.market_monitor import monitor_service
+from .services.proxy_resolver import BusinessBanError
+from .services.proxy_resolver import rotate_proxy
 from .routers.health import router as health_router
 from .routers.ingest import router as ingest_router
 from .routers.monitor import router as monitor_router
@@ -110,6 +114,19 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    @app.exception_handler(BusinessBanError)
+    async def business_ban_exception_handler(_: Request, exc: BusinessBanError) -> JSONResponse:
+        if settings.execution_auto_rotate_proxy_on_ban:
+            rotate_proxy(reason=f"global_business_ban:{exc.code}", required=False)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": str(exc),
+                "business_ban_code": exc.code,
+                "context": exc.context,
+            },
+        )
 
     _include_core_routers(app, prefix="")
     _include_core_routers(app, prefix="/card-api")

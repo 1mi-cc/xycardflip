@@ -3,6 +3,9 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import random
+import threading
+import time
 from typing import Any
 from urllib.parse import parse_qs
 from urllib.parse import urlparse
@@ -16,6 +19,15 @@ class ProxyRequiredError(RuntimeError):
     """Raised when strict proxy mode is enabled but no proxy is available."""
 
 
+class BusinessBanError(RuntimeError):
+    """Raised when upstream service returns business-level ban/limit response."""
+
+    def __init__(self, *, code: str, message: str, context: str = "") -> None:
+        super().__init__(message)
+        self.code = code
+        self.context = context
+
+
 _PROXY_ENV_KEYS = (
     "HTTP_PROXY",
     "HTTPS_PROXY",
@@ -26,6 +38,105 @@ _PROXY_ENV_KEYS = (
     "all_proxy",
     "no_proxy",
 )
+
+
+class _ProxyRuntimeState:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._bad_until: dict[str, float] = {}
+        self._failure_count: dict[str, int] = {}
+        self._last_selected_proxy = ""
+        self._last_rotation_at = 0.0
+        self._last_rotation_reason = ""
+
+    def mark_selected(self, proxy_url: str) -> None:
+        if not proxy_url:
+            return
+        with self._lock:
+            self._last_selected_proxy = proxy_url
+
+    def mark_bad(self, proxy_url: str, reason: str = "") -> dict[str, Any]:
+        target = proxy_url.strip()
+        if not target:
+            return {"marked": False, "reason": "empty_proxy"}
+        now = time.time()
+        with self._lock:
+            count = self._failure_count.get(target, 0) + 1
+            self._failure_count[target] = count
+            threshold = max(1, int(settings.proxy_max_failures))
+            if count >= threshold:
+                base_ttl = max(1.0, float(settings.proxy_bad_ttl_sec))
+                jitter_span = max(0.0, float(settings.proxy_bad_ttl_jitter_sec))
+                jitter = random.uniform(-jitter_span, jitter_span) if jitter_span > 0 else 0.0
+                ttl_with_jitter = max(1.0, base_ttl + jitter)
+                self._bad_until[target] = now + ttl_with_jitter
+                self._last_rotation_at = now
+                self._last_rotation_reason = reason or "proxy_marked_bad"
+                # reset strike count once quarantined
+                self._failure_count[target] = 0
+                return {
+                    "marked": True,
+                    "proxy": target,
+                    "quarantined_until": self._bad_until[target],
+                    "reason": self._last_rotation_reason,
+                    "quarantine_ttl_sec": round(ttl_with_jitter, 2),
+                    "quarantine_jitter_sec": round(jitter, 2),
+                }
+            return {
+                "marked": False,
+                "proxy": target,
+                "reason": "below_failure_threshold",
+                "failures": count,
+                "threshold": threshold,
+            }
+
+    def is_available(self, proxy_url: str) -> bool:
+        target = proxy_url.strip()
+        if not target:
+            return False
+        now = time.time()
+        with self._lock:
+            until = self._bad_until.get(target, 0.0)
+            if not until:
+                return True
+            if until <= now:
+                self._bad_until.pop(target, None)
+                return True
+            return False
+
+    def current(self) -> str:
+        with self._lock:
+            return self._last_selected_proxy
+
+    def status(self) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            active_bad = {
+                proxy: round(max(0.0, until - now), 1)
+                for proxy, until in self._bad_until.items()
+                if until > now
+            }
+            return {
+                "last_selected_proxy": self._last_selected_proxy,
+                "last_rotation_at_unix": self._last_rotation_at,
+                "last_rotation_reason": self._last_rotation_reason,
+                "quarantined_proxies": active_bad,
+                "max_failures": settings.proxy_max_failures,
+                "bad_ttl_sec": settings.proxy_bad_ttl_sec,
+                "bad_ttl_jitter_sec": settings.proxy_bad_ttl_jitter_sec,
+            }
+
+    def should_throttle_rotation(self) -> bool:
+        with self._lock:
+            if not self._last_rotation_at:
+                return False
+            return (time.time() - self._last_rotation_at) < max(
+                0.0,
+                float(settings.proxy_rotation_cooldown_sec),
+            )
+
+
+_PROXY_STATE = _ProxyRuntimeState()
 
 
 def _clear_proxy_env() -> None:
@@ -47,12 +158,15 @@ def resolve_proxy(required: bool | None = None) -> dict[str, str] | None:
     must_have_proxy = settings.network_force_proxy_only if required is None else bool(required)
     proxy = _from_forced()
     if proxy:
+        _PROXY_STATE.mark_selected(proxy_url_from_mapping(proxy) or "")
         return proxy
     proxy = _from_pool()
     if proxy:
+        _PROXY_STATE.mark_selected(proxy_url_from_mapping(proxy) or "")
         return proxy
     proxy = _from_local()
     if proxy:
+        _PROXY_STATE.mark_selected(proxy_url_from_mapping(proxy) or "")
         return proxy
     if must_have_proxy:
         raise ProxyRequiredError(
@@ -83,6 +197,7 @@ def network_policy_status() -> dict[str, Any]:
         "proxy_pool_enabled": settings.monitor_use_proxy_pool,
         "proxy_pool_api": settings.proxy_pool_api,
         "local_proxy_configured": bool(str(settings.local_proxy_url or "").strip()),
+        "runtime": _PROXY_STATE.status(),
     }
 
 
@@ -115,13 +230,25 @@ def _from_pool() -> dict[str, str] | None:
         return None
     if resp.status_code != 200:
         return None
-    ip, port = _parse_pool_proxy(resp.text)
-    if not ip or not port:
+    candidates = _parse_pool_proxies(resp.text)
+    if not candidates:
         return None
-    proxy = _normalize_proxy(f"{ip}:{port}")
-    if not proxy:
+
+    for ip, port in candidates:
+        if not ip or not port:
+            continue
+        proxy = _normalize_proxy(f"{ip}:{port}")
+        if not proxy:
+            continue
+        if _PROXY_STATE.is_available(proxy):
+            return {"http": proxy, "https": proxy}
+
+    # All candidates are quarantined. Return the first candidate as fallback in strict mode.
+    ip, port = candidates[0]
+    fallback = _normalize_proxy(f"{ip}:{port}")
+    if not fallback:
         return None
-    return {"http": proxy, "https": proxy}
+    return {"http": fallback, "https": fallback}
 
 
 def _from_local() -> dict[str, str] | None:
@@ -141,38 +268,75 @@ def _normalize_proxy(value: str | None) -> str:
 
 
 def _parse_pool_proxy(raw_text: str) -> tuple[str, str]:
+    proxies = _parse_pool_proxies(raw_text)
+    if not proxies:
+        return "", ""
+    return proxies[0]
+
+
+def _parse_pool_proxies(raw_text: str) -> list[tuple[str, str]]:
     text = str(raw_text or "").strip()
     if not text:
-        return "", ""
-    # JSON shape: [[ip, port], ...]
-    try:
-        payload = json.loads(text)
-    except Exception:
-        payload = None
-    if isinstance(payload, list) and payload:
-        first = payload[0]
-        if isinstance(first, list) and len(first) >= 2:
-            return str(first[0]).strip(), str(first[1]).strip()
-        if isinstance(first, str):
-            return _split_host_port(first)
-    if isinstance(payload, dict):
-        for key in ("data", "result", "items", "list"):
-            value = payload.get(key)
-            if isinstance(value, list) and value:
-                first = value[0]
-                if isinstance(first, list) and len(first) >= 2:
-                    return str(first[0]).strip(), str(first[1]).strip()
-                if isinstance(first, dict):
-                    ip = str(first.get("ip") or first.get("host") or "").strip()
-                    port = str(first.get("port") or "").strip()
-                    if ip and port:
-                        return ip, port
-                if isinstance(first, str):
-                    return _split_host_port(first)
+        return []
+    parsed = _try_parse_json_pool_payload(text)
+    if parsed:
+        return parsed
 
-    # Plain text shape: "ip:port" in first line.
-    first_line = text.splitlines()[0].strip()
-    return _split_host_port(first_line)
+    parsed_lines: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        host, port = _split_host_port(line.strip())
+        if host and port:
+            parsed_lines.append((host, port))
+    return parsed_lines
+
+
+def _try_parse_json_pool_payload(raw: str) -> list[tuple[str, str]]:
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return []
+
+    def _extract_from_node(node: Any) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = []
+        if isinstance(node, list):
+            for item in node:
+                if isinstance(item, list) and len(item) >= 2:
+                    ip = str(item[0]).strip()
+                    port = str(item[1]).strip()
+                    if ip and port:
+                        out.append((ip, port))
+                elif isinstance(item, dict):
+                    ip = str(item.get("ip") or item.get("host") or "").strip()
+                    port = str(item.get("port") or "").strip()
+                    if ip and port:
+                        out.append((ip, port))
+                elif isinstance(item, str):
+                    ip, port = _split_host_port(item)
+                    if ip and port:
+                        out.append((ip, port))
+            return out
+        if isinstance(node, dict):
+            for key in ("data", "result", "items", "list"):
+                if key in node:
+                    out.extend(_extract_from_node(node.get(key)))
+            if not out:
+                ip = str(node.get("ip") or node.get("host") or "").strip()
+                port = str(node.get("port") or "").strip()
+                if ip and port:
+                    out.append((ip, port))
+            return out
+        return out
+
+    results = _extract_from_node(payload)
+    unique: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for host, port in results:
+        key = f"{host}:{port}"
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((host, port))
+    return unique
 
 
 def _split_host_port(value: str) -> tuple[str, str]:
@@ -204,6 +368,30 @@ def _is_local_host(host: str) -> bool:
     except ValueError:
         return False
     return ip.is_loopback
+
+
+def mark_proxy_bad(proxy_url: str | None = None, reason: str = "") -> dict[str, Any]:
+    selected = (proxy_url or "").strip() or _PROXY_STATE.current()
+    return _PROXY_STATE.mark_bad(selected, reason=reason)
+
+
+def rotate_proxy(*, reason: str = "", required: bool | None = None) -> dict[str, Any]:
+    if _PROXY_STATE.should_throttle_rotation():
+        return {
+            "rotated": False,
+            "reason": "rotation_cooldown",
+            "runtime": _PROXY_STATE.status(),
+        }
+    current = _PROXY_STATE.current()
+    if current:
+        _PROXY_STATE.mark_bad(current, reason=reason or "rotate_proxy")
+    new_mapping = resolve_proxy(required=required)
+    return {
+        "rotated": bool(new_mapping),
+        "reason": reason,
+        "new_proxy": proxy_url_from_mapping(new_mapping),
+        "runtime": _PROXY_STATE.status(),
+    }
 
 
 _clear_proxy_env()
