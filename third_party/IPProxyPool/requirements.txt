@@ -1,0 +1,9 @@
+chardet==5.2.0
+gevent==24.2.1
+greenlet==3.0.3
+lxml==5.2.2
+requests==2.31.0
+SQLAlchemy==1.4.52
+web.py==0.62
+redis==5.0.3
+psutil==5.9.8

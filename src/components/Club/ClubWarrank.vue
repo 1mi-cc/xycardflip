@@ -1591,7 +1591,7 @@ const handleExport1 = async () => {
 
   try {
     if (exportmethod.value.includes('1')) {
-      const exportText = formatWarrankRecordsForExport(
+      const exportText = await formatWarrankRecordsForExport(
         battleRecords1.value.legionRankList,
         queryDate.value
       )

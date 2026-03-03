@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="default-layout">
     <!-- 顶部导航 -->
     <nav class="dashboard-nav">
@@ -33,6 +33,16 @@
               <Cube />
             </n-icon>
             <span>游戏功能</span>
+          </router-link>
+          <router-link
+            to="/admin/card-flip-ops"
+            class="nav-item"
+            active-class="active"
+          >
+            <n-icon>
+              <Cube />
+            </n-icon>
+            <span>卡片倒卖</span>
           </router-link>
           <router-link to="/tokens" class="nav-item" active-class="active">
             <n-icon>
@@ -129,6 +139,16 @@
             <Cube />
           </n-icon>
           <span>游戏功能</span>
+        </router-link>
+        <router-link
+          to="/admin/card-flip-ops"
+          class="drawer-item"
+          @click="isMobileMenuOpen = false"
+        >
+          <n-icon>
+            <Cube />
+          </n-icon>
+          <span>卡片倒卖</span>
         </router-link>
         <router-link
           to="/tokens"
@@ -253,7 +273,7 @@ const handleUserAction = (key) => {
 </script>
 
 <style scoped lang="scss">
-// 导航栏
+// 导航样式
 .dashboard-nav {
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-light);
@@ -404,3 +424,5 @@ const handleUserAction = (key) => {
   color: var(--primary-color);
 }
 </style>
+
+

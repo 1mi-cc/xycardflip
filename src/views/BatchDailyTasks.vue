@@ -577,6 +577,36 @@ const availableTasks = [
   { label: "免费领取珍宝阁", value: "collection_claimfreereward" },
 ];
 
+const getTaskFunctionByName = (taskName) => {
+  const taskFunctions = {
+    startBatch,
+    claimHangUpRewards,
+    batchAddHangUpTime,
+    resetBottles,
+    batchlingguanzi,
+    climbTower,
+    batchStudy,
+    batchSmartSendCar,
+    batchClaimCars,
+    batchOpenBox,
+    batchClaimBoxPointReward,
+    batchFish,
+    batchRecruit,
+    batchbaoku13,
+    batchbaoku45,
+    batchmengjing,
+    batchclubsign,
+    batcharenafight,
+    batchTopUpFish,
+    batchTopUpArena,
+    batchClaimFreeEnergy,
+    legion_storebuygoods,
+    store_purchase,
+    collection_claimfreereward,
+  };
+  return taskFunctions[taskName] || null;
+};
+
 const CarresearchItem = [
   20, 21, 22, 23, 24, 26, 28, 30, 32, 34,
   36, 38, 40, 42, 44, 47, 50, 53, 56, 59,
@@ -1787,7 +1817,7 @@ const verifyTaskDependencies = async (task) => {
 
   // Verify task functions exist
   for (const taskName of task.selectedTasks) {
-    const taskFunction = eval(taskName);
+    const taskFunction = getTaskFunctionByName(taskName);
     if (typeof taskFunction !== "function") {
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -1944,7 +1974,7 @@ const executeScheduledTask = async (task) => {
       });
 
       // Call the task function dynamically
-      const taskFunction = eval(taskName);
+      const taskFunction = getTaskFunctionByName(taskName);
       if (typeof taskFunction === "function") {
         await taskFunction();
       } else {

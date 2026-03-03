@@ -4,7 +4,6 @@ import "./assets/styles/global.scss";
 
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import naive from "naive-ui";
 import router from "./router";
 import App from "./App.vue";
 // import { i18n } from './locales';
@@ -15,7 +14,6 @@ const app = createApp(App);
 // 使用插件
 app.use(createPinia());
 app.use(router);
-app.use(naive);
 // app.use(i18n)
 
 // 全局主题应用：从 localStorage 读取并设置 data-theme 属性

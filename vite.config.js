@@ -3,6 +3,21 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
+const PROXY_ENV_KEYS = [
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+  'no_proxy',
+];
+for (const key of PROXY_ENV_KEYS) {
+  delete process.env[key];
+}
+process.env.NODE_USE_ENV_PROXY = '0';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function safeImport(moduleName, humanName) {
@@ -51,16 +66,17 @@ export default defineConfig(async () => {
     dts: 'src/auto-imports.d.ts',
   });
 
-  const { ArcoResolver } = componentsResolversModule ?? {};
+  const { ArcoResolver, NaiveUiResolver } = componentsResolversModule ?? {};
   const componentsPlugin = componentsModule?.default?.({
     dirs: ["src/components"],
-    resolvers: ArcoResolver
-      ? [
-          ArcoResolver({
+    resolvers: [
+      ArcoResolver
+        ? ArcoResolver({
             importStyle: false,
-          }),
-        ]
-      : [],
+          })
+        : null,
+      NaiveUiResolver ? NaiveUiResolver() : null,
+    ].filter(Boolean),
   });
 
   const unoCssPlugin = unoCssModule?.default?.();
@@ -98,10 +114,24 @@ export default defineConfig(async () => {
       port: 3000,
       open: true,
       host: true,
+      proxy: {
+        '/card-api': {
+          target: 'http://127.0.0.1:8000',
+          changeOrigin: true,
+          rewrite: p => p.replace(/^\/card-api/, ''),
+        },
+      },
+    },
+    build: {
+      chunkSizeWarningLimit: 800,
+      // Keep Rollup default chunking to avoid cross-chunk TDZ init order issues.
+      rollupOptions: {},
     },
     css: {
       preprocessorOptions: {
         scss: {
+          api: 'modern-compiler',
+          silenceDeprecations: ['legacy-js-api'],
           additionalData: '@use "@/assets/styles/variables.scss" as vars;'
         }
       }

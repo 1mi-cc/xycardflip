@@ -1,10 +1,10 @@
-import { createRouter, createWebHistory } from "vue-router";
+﻿import { createRouter, createWebHistory } from "vue-router";
 import * as autoRoutes from "vue-router/auto-routes";
 import { useTokenStore } from "@/stores/tokenStore";
 
 const generatedRoutes = autoRoutes.routes ?? [];
 
-const my_routes = [
+const myRoutes = [
   {
     path: "/",
     name: "Home",
@@ -19,7 +19,7 @@ const my_routes = [
     name: "TokenImport",
     component: () => import("@/views/TokenImport/index.vue"),
     meta: {
-      title: "Token管理",
+      title: "Token 管理",
       requiresToken: false,
     },
     props: (route) => ({
@@ -51,6 +51,15 @@ const my_routes = [
         component: () => import("@/views/GameFeatures.vue"),
         meta: {
           title: "游戏功能",
+          requiresToken: true,
+        },
+      },
+      {
+        path: "card-flip-ops",
+        name: "CardFlipOps",
+        component: () => import("@/views/CardFlipOps.vue"),
+        meta: {
+          title: "卡片倒卖助手",
           requiresToken: true,
         },
       },
@@ -90,7 +99,6 @@ const my_routes = [
           requiresToken: true,
         },
       },
-      // 自动路由引用已移至最外层
     ],
   },
   {
@@ -98,11 +106,10 @@ const my_routes = [
     name: "WebSocketTest",
     component: () => import("@/components/Test/WebSocketTester.vue"),
     meta: {
-      title: "WebSocket测试",
+      title: "WebSocket 测试",
       requiresToken: true,
     },
   },
-  // 兼容旧路由，重定向到新的token管理页面
   {
     path: "/login",
     redirect: "/tokens",
@@ -115,7 +122,6 @@ const my_routes = [
     path: "/game-roles",
     redirect: "/tokens",
   },
-  // 增加自动路由引用
   ...generatedRoutes,
   {
     path: "/:pathMatch(.*)*",
@@ -129,41 +135,32 @@ const my_routes = [
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: my_routes,
+  routes: myRoutes,
   scrollBehavior(to, from, savedPosition) {
-    if (savedPosition) {
+    if (savedPosition)
       return savedPosition;
-    } else {
-      return { top: 0 };
-    }
+    return { top: 0 };
   },
 });
 
-// 热更新路由
-autoRoutes.handleHotUpdate?.(router);
-
-// 导航守卫
 router.beforeEach((to, from, next) => {
   const tokenStore = useTokenStore();
 
-  // 设置页面标题
   document.title = to.meta.title
     ? `${to.meta.title} - XYZW 游戏管理系统`
     : "XYZW 游戏管理系统";
 
-  // 检查是否需要Token
   if (to.meta.requiresToken && !tokenStore.hasTokens) {
     next("/tokens");
   } else if (to.path === "/" && tokenStore.hasTokens) {
-    // 首页重定向逻辑
-    if (tokenStore.selectedToken) {
+    if (tokenStore.selectedToken)
       next("/admin/dashboard");
-    } else {
+    else
       next("/tokens");
-    }
   } else {
     next();
   }
 });
 
 export default router;
+

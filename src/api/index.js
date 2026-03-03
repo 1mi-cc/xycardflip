@@ -5,6 +5,7 @@ import { useAuthStore } from "@/stores/auth";
 const request = axios.create({
   baseURL: "/api/v1",
   timeout: 10000,
+  proxy: false,
   headers: {
     "Content-Type": "application/json",
   },

@@ -321,7 +321,7 @@ const handleExport = async () => {
   }
 
   try {
-    const exportText = formatBattleRecordsForExport(
+    const exportText = await formatBattleRecordsForExport(
       battleRecords.value.roleDetailsList,
       queryDate.value,
     );

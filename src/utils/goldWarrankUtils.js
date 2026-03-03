@@ -3,7 +3,14 @@
  */
 
 
-import * as XLSX from 'xlsx';
+let xlsxPromise;
+
+async function loadXLSX() {
+  if (!xlsxPromise) {
+    xlsxPromise = import("xlsx");
+  }
+  return xlsxPromise;
+}
 
 /**
  * 获取今天日期
@@ -23,10 +30,11 @@ export function gettoday() {
  * @param {string} queryDate - 查询日期
  * @returns {string} 格式化的文本
  */
-export function formatWarrankRecordsForExport(legionRankList, queryDate) {
+export async function formatWarrankRecordsForExport(legionRankList, queryDate) {
   if (!legionRankList || legionRankList.length === 0) {
     return '暂无战绩数据'
   }
+  const XLSX = await loadXLSX();
   // 构造工作表数据
   const worksheetData = [
     ['排名', 'ID' , '区服', '俱乐部名', '战力', '红淬','前三红淬', '黄金积分', '联盟','公告'],

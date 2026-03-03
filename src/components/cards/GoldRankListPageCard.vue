@@ -361,7 +361,7 @@ const handleExport1 = async () => {
   }
 
   try {
-    const exportText = formatWarrankRecordsForExport(
+    const exportText = await formatWarrankRecordsForExport(
       teamArray.value,
       queryDate.value,
     );

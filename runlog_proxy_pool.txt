@@ -1,0 +1,11 @@
+
+=== Proxy Pool Launcher ===
+Script dir: c:\Users\25901\Desktop\Ŀ¼\xyzw_web_helper\
+Project root: c:\Users\25901\Desktop\Ŀ¼\xyzw_web_helper\
+Pool dir: c:\Users\25901\Desktop\Ŀ¼\xyzw_web_helper\third_party\IPProxyPool
+Check mode: false
+Force dependency install: false
+Proxy deps install required: false
+Port 8899 in use: true
+
+Port 8899 is already in use. Proxy pool may already be running.

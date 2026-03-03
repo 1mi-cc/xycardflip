@@ -7,7 +7,14 @@
  * 如果今天是周六，返回今天的日期；否则返回上周六的日期
  * @returns {string} 格式化的日期字符串 YYYY/MM/DD
  */
-import * as XLSX from "xlsx";
+let xlsxPromise;
+
+async function loadXLSX() {
+  if (!xlsxPromise) {
+    xlsxPromise = import("xlsx");
+  }
+  return xlsxPromise;
+}
 
 export function getLastSaturday() {
   const today = new Date();
@@ -129,11 +136,12 @@ export function parseAttackType(attackType) {
  * @param {string} queryDate - 查询日期
  * @returns {string} 格式化的文本
  */
-export function formatBattleRecordsForExport(roleDetailsList, queryDate) {
+export async function formatBattleRecordsForExport(roleDetailsList, queryDate) {
   if (!roleDetailsList || roleDetailsList.length === 0) {
     return "暂无战绩数据";
   }
 
+  const XLSX = await loadXLSX();
   const lines = [
     `俱乐部盐场战绩 - ${queryDate}`,
     `参战人数: ${roleDetailsList.length}`,
@@ -226,7 +234,6 @@ export function formatBattleRecordsForExport(roleDetailsList, queryDate) {
     return obj;
   });
 
-  console.log(processedDataWithKeys);
   const worksheetData1 = [
     [
       "玩家ID",
