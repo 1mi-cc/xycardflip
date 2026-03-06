@@ -19,7 +19,13 @@ declare module 'vue-router/auto-routes' {
    */
   export interface RouteNamedMap {
     '/BatchDailyTasks': RouteRecordInfo<'/BatchDailyTasks', '/BatchDailyTasks', Record<never, never>, Record<never, never>>,
-    '/CardFlipOps': RouteRecordInfo<'/CardFlipOps', '/CardFlipOps', Record<never, never>, Record<never, never>>,
+    '/card-flip-ops/AutomationControlPanel': RouteRecordInfo<'/card-flip-ops/AutomationControlPanel', '/card-flip-ops/AutomationControlPanel', Record<never, never>, Record<never, never>>,
+    '/card-flip-ops/AutotradePanel': RouteRecordInfo<'/card-flip-ops/AutotradePanel', '/card-flip-ops/AutotradePanel', Record<never, never>, Record<never, never>>,
+    '/card-flip-ops/CardFlipOpsPage': RouteRecordInfo<'/card-flip-ops/CardFlipOpsPage', '/card-flip-ops/CardFlipOpsPage', Record<never, never>, Record<never, never>>,
+    '/card-flip-ops/ExecutionRetryPanel': RouteRecordInfo<'/card-flip-ops/ExecutionRetryPanel', '/card-flip-ops/ExecutionRetryPanel', Record<never, never>, Record<never, never>>,
+    '/card-flip-ops/OpsOverviewHeader': RouteRecordInfo<'/card-flip-ops/OpsOverviewHeader', '/card-flip-ops/OpsOverviewHeader', Record<never, never>, Record<never, never>>,
+    '/card-flip-ops/TradeDataTabs': RouteRecordInfo<'/card-flip-ops/TradeDataTabs', '/card-flip-ops/TradeDataTabs', Record<never, never>, Record<never, never>>,
+    '/CardFlipModeDashboard': RouteRecordInfo<'/CardFlipModeDashboard', '/CardFlipModeDashboard', Record<never, never>, Record<never, never>>,
     '/Changelog': RouteRecordInfo<'/Changelog', '/Changelog', Record<never, never>, Record<never, never>>,
     '/DailyTasks': RouteRecordInfo<'/DailyTasks', '/DailyTasks', Record<never, never>, Record<never, never>>,
     '/Dashboard': RouteRecordInfo<'/Dashboard', '/Dashboard', Record<never, never>, Record<never, never>>,

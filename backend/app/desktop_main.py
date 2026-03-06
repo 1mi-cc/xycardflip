@@ -4,10 +4,21 @@ import os
 import runpy
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
 import uvicorn
+
+# Keep dynamic helper-script dependencies visible to PyInstaller analysis.
+try:  # pragma: no cover
+    import browser_cookie3  # type: ignore  # noqa: F401
+except Exception:  # pragma: no cover
+    browser_cookie3 = None  # type: ignore[assignment]
+try:  # pragma: no cover
+    import websocket  # type: ignore  # noqa: F401
+except Exception:  # pragma: no cover
+    websocket = None  # type: ignore[assignment]
 
 from app.config import settings
 from app.main import app
@@ -19,7 +30,9 @@ def _open_browser_later(port: int) -> None:
 
     def _open() -> None:
         try:
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            session_ts = int(time.time())
+            url = f"http://127.0.0.1:{port}/?session={session_ts}"
+            webbrowser.open(url, new=2)
         except Exception:
             pass
 

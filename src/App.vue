@@ -1,6 +1,6 @@
 <template>
   <n-config-provider :theme="naiveTheme">
-    <n-message-provider>
+    <n-message-provider :max="3">
       <n-loading-bar-provider>
         <n-notification-provider>
           <n-dialog-provider>

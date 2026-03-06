@@ -63,6 +63,9 @@ const activeConnections = useLocalStorage("activeConnections", {});
 export const useTokenStore = defineStore("tokens", () => {
   const wsConnections = ref<WebCtx>({}); // WebSocket连接状态
   const connectionLocks = ref<LockCtx>({}); // 连接操作锁，防止竞态条件
+  const tokenRefreshInProgress = ref<Record<string, boolean>>({});
+  const tokenRefreshLastAt = ref<Record<string, number>>({});
+  const TOKEN_REFRESH_COOLDOWN_MS = 5000;
 
   // 游戏数据存储
   const gameData = ref({
@@ -173,6 +176,118 @@ export const useTokenStore = defineStore("tokens", () => {
       });
     } catch (error) {
       wsLogger.error(`发送 randomSeed 失败 [${tokenId}]`, error);
+    }
+  };
+
+  const shouldTreatAsTokenExpired = (reason: unknown) => {
+    if (reason === null || reason === undefined) return false;
+    const text = String(reason).toLowerCase();
+    if (!text) return false;
+
+    if (text.includes("token过期") || text.includes("登录过期")) return true;
+    if (text.includes("令牌") && (text.includes("过期") || text.includes("失效")))
+      return true;
+    if (text.includes("token") && text.includes("expired")) return true;
+    if (text.includes("token") && text.includes("invalid")) return true;
+    if (text.includes("token") && text.includes("unauthorized")) return true;
+    if (text.includes("code=401") || text.includes("401 unauthorized"))
+      return true;
+    return false;
+  };
+
+  const tryRefreshTokenAndReconnect = async (
+    tokenId: string,
+    triggerReason = "",
+  ) => {
+    const now = Date.now();
+    const lastAt = tokenRefreshLastAt.value[tokenId] || 0;
+    if (tokenRefreshInProgress.value[tokenId]) {
+      wsLogger.debug(`Token刷新已在进行中，跳过 [${tokenId}]`);
+      return false;
+    }
+    if (now - lastAt < TOKEN_REFRESH_COOLDOWN_MS) {
+      wsLogger.debug(`Token刷新冷却中，跳过 [${tokenId}]`);
+      return false;
+    }
+
+    tokenRefreshInProgress.value[tokenId] = true;
+    tokenRefreshLastAt.value[tokenId] = now;
+
+    try {
+      const gameToken = gameTokens.value.find((t) => t.id === tokenId);
+      if (!gameToken) {
+        wsLogger.warn(`Token刷新失败：未找到token [${tokenId}]`);
+        return false;
+      }
+
+      let nextToken = gameToken.token;
+      let nextWsUrl = gameToken.wsUrl;
+
+      if (gameToken.importMethod === "url" && gameToken.sourceUrl) {
+        const isLocalUrl =
+          gameToken.sourceUrl.startsWith(window.location.origin) ||
+          gameToken.sourceUrl.startsWith("/") ||
+          gameToken.sourceUrl.startsWith("http://localhost") ||
+          gameToken.sourceUrl.startsWith("http://127.0.0.1");
+
+        let response: Response;
+        if (isLocalUrl) {
+          response = await fetch(gameToken.sourceUrl);
+        } else {
+          response = await fetch(gameToken.sourceUrl, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            mode: "cors",
+          });
+        }
+
+        if (!response.ok) {
+          throw new Error(`sourceUrl 请求失败: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!data?.token) {
+          throw new Error("sourceUrl 未返回 token 字段");
+        }
+
+        nextToken = data.token;
+        updateToken(tokenId, {
+          ...gameToken,
+          token: data.token,
+          server: data.server || gameToken.server,
+          lastRefreshed: Date.now(),
+        });
+      } else {
+        const userToken: ArrayBuffer | null = await getArrayBuffer(gameToken.name);
+        if (!userToken) {
+          throw new Error(`未找到 ${gameToken.name} 的本地 bin token`);
+        }
+        nextToken = await transformToken(userToken);
+        updateToken(tokenId, { ...gameToken, token: nextToken });
+      }
+
+      const latestTokenRecord = gameTokens.value.find((t) => t.id === tokenId);
+      nextToken = latestTokenRecord?.token || nextToken;
+      nextWsUrl = latestTokenRecord?.wsUrl || nextWsUrl;
+
+      if (!validateToken(nextToken)) {
+        throw new Error("刷新后 token 无效");
+      }
+
+      wsLogger.warn(
+        `检测到token过期，已触发自动重连 [${tokenId}]` +
+          (triggerReason ? ` (${triggerReason})` : ""),
+      );
+
+      closeWebSocketConnection(tokenId);
+      setTimeout(() => {
+        createWebSocketConnection(tokenId, nextToken, nextWsUrl);
+      }, 500);
+      return true;
+    } catch (error) {
+      wsLogger.error(`Token自动刷新失败 [${tokenId}]`, error);
+      return false;
+    } finally {
+      tokenRefreshInProgress.value[tokenId] = false;
     }
   };
 
@@ -299,9 +414,8 @@ export const useTokenStore = defineStore("tokens", () => {
         return;
       }
       if (message.error) {
-        const errText = String(message.error).toLowerCase();
         gameLogger.warn(`消息处理跳过 [${tokenId}]:`, message.error);
-        if (errText.includes("token") && errText.includes("expired")) {
+        if (shouldTreatAsTokenExpired(message.error)) {
           const conn = wsConnections.value[tokenId];
           if (conn) {
             conn.status = "error";
@@ -310,40 +424,7 @@ export const useTokenStore = defineStore("tokens", () => {
               error: "token expired",
             };
           }
-
-          const gameToken = gameTokens.value.find((t) => t.id === tokenId);
-          console.log(gameToken);
-          if (gameToken) {
-            if (gameToken.importMethod === 'url' && gameToken.sourceUrl) {
-              // URL形式token刷新
-              try {
-                const response = await fetch(gameToken.sourceUrl);
-                if (response.ok) {
-                  const data = await response.json();
-                  if (data.token) {
-                    // 直接使用返回的token，无需transformToken
-                    updateToken(tokenId, { ...gameToken, token: data.token });
-                    console.log("从URL获取token成功:", gameToken.name);
-                  }
-                }
-              } catch (error) {
-                console.error("从URL获取token失败:", error);
-              }
-            } else {
-              // Bin形式token刷新（原有逻辑）
-              console.log("getArrayBuffer", await getArrayBuffer("小鱼"));
-              const userToken: ArrayBuffer | null = await getArrayBuffer(
-                gameToken.name,
-              );
-              console.log("读取到的ArrayBuffer:", gameToken.name, userToken);
-              if (userToken) {
-                const token = await transformToken(userToken);
-                updateToken(tokenId, { ...gameToken, token });
-                console.log(gameToken);
-              }
-            }
-          }
-          wsLogger.error(`Token 已过期，需要重新导入 [${tokenId}]`);
+          await tryRefreshTokenAndReconnect(tokenId, String(message.error));
         }
         return;
       }
@@ -670,7 +751,7 @@ export const useTokenStore = defineStore("tokens", () => {
         }
       };
 
-      wsClient.onDisconnect = (event) => {
+      wsClient.onDisconnect = async (event) => {
         const reason = event.code === 1006 ? "异常断开" : event.reason || "";
         wsLogger.wsDisconnect(tokenId, reason);
         if (wsConnections.value[tokenId]) {
@@ -678,6 +759,16 @@ export const useTokenStore = defineStore("tokens", () => {
           wsConnections.value[tokenId].randomSeedSynced = false;
         }
         updateCrossTabConnectionState(tokenId, "disconnected");
+
+        const tokenExpiredByCode = [4001, 4003, 4401, 4403].includes(
+          Number(event?.code),
+        );
+        if (tokenExpiredByCode || shouldTreatAsTokenExpired(reason)) {
+          await tryRefreshTokenAndReconnect(
+            tokenId,
+            `disconnect code=${event?.code || "-"} reason=${reason || "-"}`,
+          );
+        }
       };
 
       wsClient.onError = (error) => {

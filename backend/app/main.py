@@ -13,11 +13,14 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import init_db
+from .errors import BusyStateError
 from .services.autotrade import auto_trade_service
 from .services.execution_retry import execution_retry_service
 from .services.market_monitor import monitor_service
 from .services.proxy_resolver import BusinessBanError
 from .services.proxy_resolver import rotate_proxy
+from .services.supabase_sync import supabase_sync_service
+from .routers.auth import router as auth_router
 from .routers.health import router as health_router
 from .routers.ingest import router as ingest_router
 from .routers.monitor import router as monitor_router
@@ -31,6 +34,7 @@ from .routers.automation import router as automation_router
 from .routers.valuation import router as valuation_router
 from .routers.vnpy import router as vnpy_router
 from .routers.ragflow import router as ragflow_router
+from .routers.supabase import router as supabase_router
 
 
 @asynccontextmanager
@@ -50,12 +54,15 @@ async def lifespan(app: FastAPI):
         startup_services["autotrade"] = _safe_call(auto_trade_service.start)
     if settings.auto_start_execution_retry:
         startup_services["execution_retry"] = _safe_call(execution_retry_service.start)
+    if settings.auto_start_supabase_sync:
+        startup_services["supabase_sync"] = _safe_call(supabase_sync_service.start)
     app.state.startup_services = startup_services
 
     try:
         yield
     finally:
         shutdown_services = {
+            "supabase_sync": _safe_call(supabase_sync_service.stop),
             "execution_retry": _safe_call(execution_retry_service.stop),
             "autotrade": _safe_call(auto_trade_service.stop),
             "monitor": _safe_call(monitor_service.stop),
@@ -64,6 +71,7 @@ async def lifespan(app: FastAPI):
 
 
 def _include_core_routers(app: FastAPI, prefix: str = "") -> None:
+    app.include_router(auth_router, prefix=prefix)
     app.include_router(health_router, prefix=prefix)
     app.include_router(ingest_router, prefix=prefix)
     app.include_router(valuation_router, prefix=prefix)
@@ -75,6 +83,7 @@ def _include_core_routers(app: FastAPI, prefix: str = "") -> None:
     app.include_router(autotrade_router, prefix=prefix)
     app.include_router(automation_router, prefix=prefix)
     app.include_router(monitor_router, prefix=prefix)
+    app.include_router(supabase_router, prefix=prefix)
     app.include_router(vnpy_router, prefix=prefix)
     app.include_router(ragflow_router, prefix=prefix)
 
@@ -104,6 +113,15 @@ def _find_frontend_dist() -> Path | None:
     return None
 
 
+def _frontend_index_response(index_path: Path) -> FileResponse:
+    response = FileResponse(index_path)
+    # Always revalidate HTML entry to avoid stale SPA shell/chunk map after upgrades.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
@@ -128,6 +146,10 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.exception_handler(BusyStateError)
+    async def busy_state_exception_handler(_: Request, exc: BusyStateError) -> JSONResponse:
+        return JSONResponse(status_code=409, content=exc.to_payload())
+
     _include_core_routers(app, prefix="")
     _include_core_routers(app, prefix="/card-api")
 
@@ -139,7 +161,7 @@ def create_app() -> FastAPI:
 
         @app.get("/")
         def serve_frontend_index() -> FileResponse:
-            return FileResponse(frontend_dist / "index.html")
+            return _frontend_index_response(frontend_dist / "index.html")
 
         @app.get("/{full_path:path}")
         def serve_frontend_spa(full_path: str) -> FileResponse:
@@ -147,10 +169,10 @@ def create_app() -> FastAPI:
             try:
                 requested.relative_to(frontend_dist.resolve())
             except ValueError:
-                return FileResponse(frontend_dist / "index.html")
+                return _frontend_index_response(frontend_dist / "index.html")
             if requested.is_file():
                 return FileResponse(requested)
-            return FileResponse(frontend_dist / "index.html")
+            return _frontend_index_response(frontend_dist / "index.html")
 
     return app
 

@@ -2,9 +2,21 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Iterator
 
 from .config import settings
+
+
+_data_integrity_status: dict[str, object] = {
+    "checked_at": "",
+    "ok": True,
+    "message": "not checked",
+    "trade_opportunity_unique_index": False,
+    "has_duplicate_trade_opportunities": False,
+    "duplicate_trade_opportunity_count": 0,
+    "duplicate_trade_opportunity_ids": [],
+}
 
 
 def _connect() -> sqlite3.Connection:
@@ -22,6 +34,77 @@ def get_conn() -> Iterator[sqlite3.Connection]:
         conn.commit()
     finally:
         conn.close()
+
+
+def _trade_unique_index_exists(conn: sqlite3.Connection) -> bool:
+    rows = conn.execute("PRAGMA index_list('trades')").fetchall()
+    for row in rows:
+        if str(row["name"]) == "ux_trades_opportunity_id":
+            return True
+    return False
+
+
+def _snapshot_data_integrity(conn: sqlite3.Connection) -> dict[str, object]:
+    duplicate_rows = conn.execute(
+        """
+        SELECT opportunity_id, COUNT(*) AS trade_count
+        FROM trades
+        GROUP BY opportunity_id
+        HAVING COUNT(*) > 1
+        ORDER BY trade_count DESC, opportunity_id DESC
+        LIMIT 20
+        """
+    ).fetchall()
+    duplicate_items = [
+        {
+            "opportunity_id": int(row["opportunity_id"]),
+            "trade_count": int(row["trade_count"]),
+        }
+        for row in duplicate_rows
+    ]
+    return {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "trade_opportunity_unique_index": _trade_unique_index_exists(conn),
+        "has_duplicate_trade_opportunities": bool(duplicate_items),
+        "duplicate_trade_opportunity_count": len(duplicate_items),
+        "duplicate_trade_opportunity_ids": duplicate_items,
+    }
+
+
+def _set_data_integrity_status(payload: dict[str, object]) -> None:
+    global _data_integrity_status
+    _data_integrity_status = {**payload}
+
+
+def get_data_integrity_status() -> dict[str, object]:
+    return {**_data_integrity_status}
+
+
+def _ensure_trade_uniqueness(conn: sqlite3.Connection) -> dict[str, object]:
+    snapshot = _snapshot_data_integrity(conn)
+    if snapshot["has_duplicate_trade_opportunities"]:
+        snapshot["ok"] = False
+        snapshot["message"] = "发现重复 trade，已跳过唯一索引创建"
+        _set_data_integrity_status(snapshot)
+        return snapshot
+
+    if not snapshot["trade_opportunity_unique_index"]:
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_trades_opportunity_id
+            ON trades(opportunity_id)
+            """
+        )
+        snapshot = _snapshot_data_integrity(conn)
+
+    snapshot["ok"] = bool(snapshot["trade_opportunity_unique_index"])
+    snapshot["message"] = (
+        "trade opportunity 唯一索引已就绪"
+        if snapshot["ok"]
+        else "trade opportunity 唯一索引创建失败"
+    )
+    _set_data_integrity_status(snapshot)
+    return snapshot
 
 
 def init_db() -> None:
@@ -148,3 +231,4 @@ def init_db() -> None:
     """
     with get_conn() as conn:
         conn.executescript(ddl)
+        _ensure_trade_uniqueness(conn)

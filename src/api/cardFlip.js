@@ -17,7 +17,10 @@ cardFlipRequest.interceptors.response.use(
       || error?.response?.data?.message
       || error?.message
       || "request failed";
-    return Promise.reject(new Error(message));
+    const wrapped = new Error(message);
+    wrapped.status = error?.response?.status || 0;
+    wrapped.payload = error?.response?.data || null;
+    return Promise.reject(wrapped);
   },
 );
 
@@ -27,6 +30,17 @@ const cardFlipApi = {
       params: {
         kill_browsers: killBrowsers,
       },
+    });
+  },
+  getMonitorStatus() {
+    return cardFlipRequest.get("/monitor/status");
+  },
+  startMonitor() {
+    return cardFlipRequest.post("/monitor/start");
+  },
+  resetMonitorCircuit(reason = "manual reset") {
+    return cardFlipRequest.post("/monitor/reset-circuit", null, {
+      params: { reason },
     });
   },
   scanOpportunities(limit = 100) {
@@ -98,6 +112,9 @@ const cardFlipApi = {
   getMetrics() {
     return cardFlipRequest.get("/trades/metrics-summary");
   },
+  getHealth() {
+    return cardFlipRequest.get("/health");
+  },
   getListing(listingRowId) {
     return cardFlipRequest.get(`/listings/${listingRowId}`);
   },
@@ -157,6 +174,11 @@ const cardFlipApi = {
       params.confirm_token = confirmToken;
     return cardFlipRequest.post("/automation/run-once", null, { params });
   },
+  bootstrapSimulationData(count = 6) {
+    return cardFlipRequest.post("/automation/simulation-bootstrap", null, {
+      params: { count },
+    });
+  },
   getAutotradeStatus() {
     return cardFlipRequest.get("/autotrade/status");
   },
@@ -170,6 +192,9 @@ const cardFlipApi = {
     return cardFlipRequest.post("/autotrade/run-once", null, {
       params: { limit, force },
     });
+  },
+  updateAutotradeConfig(payload = {}) {
+    return cardFlipRequest.post("/autotrade/config", payload);
   },
   getExecutionRetryStatus() {
     return cardFlipRequest.get("/execution-retry/status");
@@ -199,8 +224,14 @@ const cardFlipApi = {
       params.confirm_token = confirmToken;
     return cardFlipRequest.post("/execution-retry/run-once", null, { params });
   },
+  updateExecutionRetryConfig(payload = {}) {
+    return cardFlipRequest.post("/execution-retry/config", payload);
+  },
   getExecutionStatus() {
     return cardFlipRequest.get("/execution/status");
+  },
+  updateExecutionConfig(payload = {}) {
+    return cardFlipRequest.post("/execution/config", payload);
   },
   executeBuy(tradeId, dryRun = true, force = false, confirmToken = "") {
     const params = { dry_run: dryRun, force };

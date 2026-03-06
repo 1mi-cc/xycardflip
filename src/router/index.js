@@ -57,9 +57,33 @@ const myRoutes = [
       {
         path: "card-flip-ops",
         name: "CardFlipOps",
-        component: () => import("@/views/CardFlipOps.vue"),
+        component: () => import("@/views/card-flip-ops/CardFlipOpsPage.vue"),
         meta: {
-          title: "卡片倒卖助手",
+          title: "卡片倒卖 · 操作台",
+          requiresToken: true,
+        },
+      },
+      {
+        path: "card-flip",
+        redirect: "/admin/card-flip/sim",
+      },
+      {
+        path: "card-flip/sim",
+        name: "CardFlipSimulation",
+        component: () => import("@/views/CardFlipModeDashboard.vue"),
+        props: { mode: "simulation" },
+        meta: {
+          title: "卡片倒卖 · 模拟盘",
+          requiresToken: true,
+        },
+      },
+      {
+        path: "card-flip/live",
+        name: "CardFlipLive",
+        component: () => import("@/views/CardFlipModeDashboard.vue"),
+        props: { mode: "live" },
+        meta: {
+          title: "卡片倒卖 · 实战盘",
           requiresToken: true,
         },
       },

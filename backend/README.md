@@ -44,6 +44,8 @@ Swagger UI: `http://127.0.0.1:8000/docs`
 20. `GET|POST /execution-retry/status|start|stop` manage scheduled failed-execution retry service.
 21. `POST /execution-retry/run-once` run one retry cycle with optional overrides.
 22. `GET|POST /automation/status|start|stop|run-once` orchestrate monitor + scan + autotrade + execution-retry.
+23. `GET|POST /supabase/status|start|stop|run-once|reset-cursors` sync local DB tables into Supabase.
+24. `GET /auth/user|/auth/userinfo|/user/profile` return frontend permission payload for menu filtering.
 
 ## 3. Gemini setup
 
@@ -122,6 +124,7 @@ AUTOMATION_DEFAULT_INCLUDE_MONITOR=true
 AUTOMATION_DEFAULT_INCLUDE_SCAN=true
 AUTOMATION_DEFAULT_INCLUDE_AUTOTRADE=true
 AUTOMATION_DEFAULT_INCLUDE_EXECUTION_RETRY=true
+AUTOMATION_DEFAULT_INCLUDE_SUPABASE_SYNC=false
 AUTOMATION_DEFAULT_SCAN_LIMIT=120
 
 AUTO_EXECUTE_BUY_ON_APPROVE=false
@@ -136,6 +139,20 @@ When `EXECUTION_WEBHOOK_SECRET` is set, webhook requests include:
 - `X-CardFlip-Timestamp`
 - `X-CardFlip-Signature` (`HMAC-SHA256(secret, timestamp + "." + rawBody)`)
 - `X-Idempotency-Key`
+
+### UI permission env
+
+```env
+UI_AUTH_USERNAME=operator
+UI_AUTH_NICKNAME=本地操作员
+UI_AUTH_DEFAULT_ROLE=admin
+UI_USER_ROLES=admin:admin,ops:ops,viewer:viewer
+UI_MENU_ROLES=admin
+UI_MENU_PERMISSIONS=dashboard:view,game:feature:view,cardflip:view,task:view,task:batch,message:test,token:view,profile:view
+UI_ROLE_PERMISSIONS_ADMIN=dashboard:view,game:feature:view,cardflip:view,task:view,task:batch,message:test,token:view,profile:view
+UI_ROLE_PERMISSIONS_OPS=dashboard:view,cardflip:view,task:view,task:batch,message:test,token:view
+UI_ROLE_PERMISSIONS_VIEWER=dashboard:view,cardflip:view,token:view,profile:view
+```
 
 ## 6. Smoke test
 
@@ -258,3 +275,49 @@ Behavior:
 
 `python scripts/xianyu_spider.py`  
 Uses the same parser as the monitor to fetch `MONITOR_PAGES` pages once, filters by `MONITOR_MAX_PRICE`, and inserts as `source=xianyu_spider` into the DB. Use it to蹇€熻ˉ鍏呰缁冩暟鎹垨鎵嬪姩瑙﹀彂涓€娆℃壒閲忓叆搴撱€?
+
+## 11. Supabase coupling
+
+The backend now supports incremental sync from local SQLite to Supabase REST API.
+
+Set in `.env`:
+
+```env
+SUPABASE_ENABLED=true
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_SCHEMA=public
+SUPABASE_TABLE_PREFIX=cardflip_
+SUPABASE_TIMEOUT_SEC=8
+SUPABASE_SYNC_INTERVAL_SEC=30
+SUPABASE_SYNC_BATCH_SIZE=200
+AUTO_START_SUPABASE_SYNC=false
+```
+
+Create mirror tables in Supabase SQL editor first:
+
+```sql
+-- run file:
+-- backend/sql/supabase_schema.sql
+```
+
+Manual one-shot sync command:
+
+```bash
+cd backend
+python scripts/supabase_sync_once.py --force
+```
+
+Reset cursor and do full replay:
+
+```bash
+cd backend
+python scripts/supabase_sync_once.py --reset-cursors --force
+```
+
+API controls:
+- `GET /supabase/status`
+- `POST /supabase/start`
+- `POST /supabase/stop`
+- `POST /supabase/run-once?force=true`
+- `POST /supabase/reset-cursors?table=sales_raw` (optional `table`; empty means reset all)

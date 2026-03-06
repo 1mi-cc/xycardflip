@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +51,58 @@ class CookieProvider:
         except Exception:
             return ""
         return str(env_values.get("XIAN_YU_COOKIE") or "").strip()
+
+    def _extract_cookie_value(self, cookie_text: str, key: str) -> str:
+        if not cookie_text:
+            return ""
+        pattern = re.compile(rf"(?:^|;\s*){re.escape(key)}=([^;]+)")
+        match = pattern.search(cookie_text)
+        if not match:
+            return ""
+        return str(match.group(1) or "").strip()
+
+    def _extract_m_h5_expire_ms(self, cookie_text: str) -> int | None:
+        token_raw = self._extract_cookie_value(cookie_text, "_m_h5_tk")
+        if "_" not in token_raw:
+            return None
+        raw_expire = token_raw.split("_", 1)[1].strip()
+        digits = "".join(ch for ch in raw_expire if ch.isdigit())
+        if not digits:
+            return None
+        try:
+            expire_ms = int(digits)
+        except ValueError:
+            return None
+        if expire_ms <= 0:
+            return None
+        return expire_ms
+
+    def cookie_meta(self, cookie_text: str | None = None) -> dict[str, Any]:
+        cookie_value = (cookie_text or self._cached_cookie or "").strip()
+        meta: dict[str, Any] = {
+            "cookie_len": len(cookie_value),
+            "has_m_h5_tk": "_m_h5_tk=" in cookie_value,
+            "has_m_h5_tk_enc": "_m_h5_tk_enc=" in cookie_value,
+            "m_h5_tk_expire_at": "",
+            "m_h5_tk_ttl_sec": None,
+            "m_h5_tk_expired": False,
+        }
+        expire_ms = self._extract_m_h5_expire_ms(cookie_value)
+        if expire_ms is None:
+            return meta
+
+        now_ms = int(time.time() * 1000)
+        ttl_sec = int((expire_ms - now_ms) / 1000)
+        meta["m_h5_tk_ttl_sec"] = ttl_sec
+        meta["m_h5_tk_expired"] = ttl_sec <= 0
+        try:
+            meta["m_h5_tk_expire_at"] = datetime.fromtimestamp(
+                expire_ms / 1000,
+                tz=timezone.utc,
+            ).isoformat()
+        except Exception:
+            meta["m_h5_tk_expire_at"] = ""
+        return meta
 
     @property
     def last_error(self) -> str:
@@ -141,13 +195,33 @@ class CookieProvider:
         }
 
     def get_cookie(self, force_refresh: bool = False) -> str | None:
+        if force_refresh and settings.xianyu_cookie_auto_local_refresh:
+            local_refresh = self.refresh_cookie_local(kill_browsers=False)
+            if local_refresh.get("success") and self._cached_cookie:
+                return self._cached_cookie
+
+        env_cookie = self._read_cookie_from_env()
+        if env_cookie:
+            self._cached_cookie = env_cookie
+            self._last_fetched = time.time()
+
         if self._cached_cookie and not force_refresh:
+            ttl_sec = self.cookie_meta(self._cached_cookie).get("m_h5_tk_ttl_sec")
+            refresh_threshold = max(30, int(settings.xianyu_cookie_refresh_min_ttl_sec))
+            if (
+                settings.xianyu_cookie_auto_local_refresh
+                and isinstance(ttl_sec, int)
+                and ttl_sec <= refresh_threshold
+            ):
+                local_refresh = self.refresh_cookie_local(kill_browsers=False)
+                if local_refresh.get("success") and self._cached_cookie:
+                    return self._cached_cookie
             if (time.time() - self._last_fetched) < self._ttl:
                 return self._cached_cookie
 
-        # If env provided, reuse even if TTL expired (no refresh endpoint needed)
-        if settings.xianyu_cookie.strip() and not force_refresh:
-            self._cached_cookie = settings.xianyu_cookie.strip()
+        # If env provided, reuse even if TTL expired (no provider endpoint needed).
+        if env_cookie and not force_refresh:
+            self._cached_cookie = env_cookie
             self._last_fetched = time.time()
             return self._cached_cookie
 

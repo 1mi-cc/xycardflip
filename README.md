@@ -154,6 +154,15 @@ pnpm run lint     # 代码检查和修复
 pnpm run format   # 代码格式化
 ```
 
+### 可选监控（Uptime Kuma）
+
+```cmd
+start_uptime_kuma.cmd
+```
+
+默认地址：`http://127.0.0.1:3001`  
+监控目标模板：`monitoring/uptime-kuma/targets.example.json`
+
 ---
 
 ## 📖 使用指南

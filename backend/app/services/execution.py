@@ -3,14 +3,17 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 import requests
 
 from .. import repositories as repo
 from ..config import settings
+from ..errors import BusyStateError
 from .proxy_resolver import BusinessBanError
 from .proxy_resolver import mark_proxy_bad
 from .proxy_resolver import proxy_url_from_mapping
@@ -22,10 +25,76 @@ from .proxy_resolver import resolve_proxy_for_url
 class ExecutionService:
     """Execution adapter for buy/list/sell actions."""
 
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._retry_lock = threading.Lock()
+        self._provider = (settings.execution_provider.strip().lower() or "disabled")
+        self._live_enabled = bool(settings.execution_live_enabled)
+        self._live_confirm_token = settings.execution_live_confirm_token.strip()
+        self._live_confirm_required = bool(self._live_confirm_token)
+        self._live_max_buy_price = max(0.0, float(settings.execution_live_max_buy_price))
+        self._live_min_list_profit_ratio = max(
+            0.0,
+            float(settings.execution_live_min_list_profit_ratio),
+        )
+        self._live_min_sell_profit_ratio = max(
+            0.0,
+            float(settings.execution_live_min_sell_profit_ratio),
+        )
+        self._retry_last_busy_at = ""
+        self._retry_last_busy_reason = ""
+
+    def _runtime_snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "provider": self._provider,
+                "live_enabled": self._live_enabled,
+                "live_confirm_required": self._live_confirm_required,
+                "live_confirm_token": self._live_confirm_token,
+                "live_max_buy_price": self._live_max_buy_price,
+                "live_min_list_profit_ratio": self._live_min_list_profit_ratio,
+                "live_min_sell_profit_ratio": self._live_min_sell_profit_ratio,
+            }
+
+    def update_config(
+        self,
+        *,
+        provider: str | None = None,
+        live_enabled: bool | None = None,
+        live_confirm_required: bool | None = None,
+        live_max_buy_price: float | None = None,
+        live_min_list_profit_ratio: float | None = None,
+        live_min_sell_profit_ratio: float | None = None,
+    ) -> dict[str, Any]:
+        valid_providers = {"mock", "webhook", "disabled", "none"}
+        with self._lock:
+            if provider is not None:
+                normalized = str(provider).strip().lower()
+                if normalized not in valid_providers:
+                    raise ValueError("provider must be one of mock/webhook/disabled/none")
+                self._provider = normalized
+            if live_enabled is not None:
+                self._live_enabled = bool(live_enabled)
+            if live_confirm_required is not None:
+                self._live_confirm_required = bool(live_confirm_required)
+            if live_max_buy_price is not None:
+                self._live_max_buy_price = max(0.0, min(1_000_000.0, float(live_max_buy_price)))
+            if live_min_list_profit_ratio is not None:
+                self._live_min_list_profit_ratio = max(
+                    0.0,
+                    min(10.0, float(live_min_list_profit_ratio)),
+                )
+            if live_min_sell_profit_ratio is not None:
+                self._live_min_sell_profit_ratio = max(
+                    0.0,
+                    min(10.0, float(live_min_sell_profit_ratio)),
+                )
+        return self.status()
+
     def status(self) -> dict[str, Any]:
-        provider = settings.execution_provider.strip().lower() or "disabled"
+        runtime = self._runtime_snapshot()
         return {
-            "provider": provider,
+            "provider": runtime["provider"],
             "timeout_sec": settings.execution_timeout_sec,
             "webhook_secret_configured": bool(settings.execution_webhook_secret.strip()),
             "webhook_max_retries": settings.execution_webhook_max_retries,
@@ -33,12 +102,27 @@ class ExecutionService:
             "webhook_buy_configured": bool(settings.execution_webhook_buy_url.strip()),
             "webhook_list_configured": bool(settings.execution_webhook_list_url.strip()),
             "webhook_sell_configured": bool(settings.execution_webhook_sell_url.strip()),
-            "live_enabled": settings.execution_live_enabled,
-            "live_confirm_required": bool(settings.execution_live_confirm_token.strip()),
-            "live_max_buy_price": settings.execution_live_max_buy_price,
-            "live_min_list_profit_ratio": settings.execution_live_min_list_profit_ratio,
-            "live_min_sell_profit_ratio": settings.execution_live_min_sell_profit_ratio,
+            "live_enabled": runtime["live_enabled"],
+            "live_confirm_required": runtime["live_confirm_required"],
+            "live_max_buy_price": runtime["live_max_buy_price"],
+            "live_min_list_profit_ratio": runtime["live_min_list_profit_ratio"],
+            "live_min_sell_profit_ratio": runtime["live_min_sell_profit_ratio"],
+            "retry_failed_busy": self._retry_lock.locked(),
+            "retry_failed_last_busy_at": self._retry_last_busy_at,
+            "retry_failed_last_busy_reason": self._retry_last_busy_reason,
         }
+
+    def retry_guard_status(self) -> dict[str, Any]:
+        return {
+            "service": "execution_retry_replay",
+            "busy": self._retry_lock.locked(),
+            "last_busy_at": self._retry_last_busy_at,
+            "last_busy_reason": self._retry_last_busy_reason,
+        }
+
+    def _mark_retry_busy(self, reason: str) -> None:
+        self._retry_last_busy_at = datetime.now(timezone.utc).isoformat()
+        self._retry_last_busy_reason = reason
 
     def execute_list(
         self,
@@ -51,7 +135,8 @@ class ExecutionService:
         update_trade_state: bool = True,
     ) -> dict[str, Any]:
         trade = self._require_trade(trade_id)
-        provider = settings.execution_provider.strip().lower() or "disabled"
+        runtime = self._runtime_snapshot()
+        provider = str(runtime["provider"])
         payload = {
             "action": "list",
             "trade_id": int(trade["id"]),
@@ -72,6 +157,7 @@ class ExecutionService:
                 force=force,
                 confirm_token=confirm_token,
                 payload=payload,
+                runtime=runtime,
             )
 
         def _on_success_update(response_payload: dict[str, Any], external_id: str) -> dict[str, Any]:
@@ -115,7 +201,8 @@ class ExecutionService:
         update_trade_state: bool = True,
     ) -> dict[str, Any]:
         trade = self._require_trade(trade_id)
-        provider = settings.execution_provider.strip().lower() or "disabled"
+        runtime = self._runtime_snapshot()
+        provider = str(runtime["provider"])
         if sold_price is not None and sold_price <= 0:
             raise ValueError("sold_price must be > 0")
         payload = {
@@ -138,6 +225,7 @@ class ExecutionService:
                 force=force,
                 confirm_token=confirm_token,
                 payload=payload,
+                runtime=runtime,
             )
 
         def _on_success_update(response_payload: dict[str, Any], external_id: str) -> dict[str, Any]:
@@ -178,8 +266,8 @@ class ExecutionService:
         confirm_token: str | None = None,
     ) -> dict[str, Any]:
         trade = self._require_trade(trade_id)
-
-        provider = settings.execution_provider.strip().lower() or "disabled"
+        runtime = self._runtime_snapshot()
+        provider = str(runtime["provider"])
         payload = {
             "action": "buy",
             "trade_id": int(trade["id"]),
@@ -199,6 +287,7 @@ class ExecutionService:
                 force=force,
                 confirm_token=confirm_token,
                 payload=payload,
+                runtime=runtime,
             )
         return self._execute_action(
             trade_id=trade_id,
@@ -224,97 +313,107 @@ class ExecutionService:
         normalized_action = (action or "").strip().lower() or None
         if normalized_action and normalized_action not in {"buy", "list", "sell"}:
             raise ValueError("action must be one of buy/list/sell")
+        if not self._retry_lock.acquire(blocking=False):
+            self._mark_retry_busy("retry_failed_in_progress")
+            raise BusyStateError(
+                service="execution_retry_replay",
+                reason="retry_failed_in_progress",
+                message="retry_failed replay is already in progress",
+            )
 
-        rows = repo.list_latest_failed_execution_candidates(
-            action=normalized_action,
-            limit=max(1, min(200, int(limit))),
-        )
-        results: list[dict[str, Any]] = []
-        retried = 0
-        succeeded = 0
-        failed = 0
+        try:
+            rows = repo.list_latest_failed_execution_candidates(
+                action=normalized_action,
+                limit=max(1, min(200, int(limit))),
+            )
+            results: list[dict[str, Any]] = []
+            retried = 0
+            succeeded = 0
+            failed = 0
 
-        for row in rows:
-            current_action = str(row["action"]).strip().lower()
-            trade_id = int(row["trade_id"])
-            retried += 1
-            try:
-                request_payload = self._parse_request_payload(row["request_json"])
-                if current_action == "buy":
-                    res = self.execute_buy(
-                        trade_id=trade_id,
-                        dry_run=dry_run,
-                        force=force,
-                        confirm_token=confirm_token,
-                    )
-                elif current_action == "list":
-                    res = self.execute_list(
-                        trade_id=trade_id,
-                        dry_run=dry_run,
-                        force=force,
-                        confirm_token=confirm_token,
-                        listing_url=str(request_payload.get("requested_listing_url") or ""),
-                        note="retry failed execution list",
-                    )
-                elif current_action == "sell":
-                    requested = request_payload.get("requested_sold_price")
-                    sold_price: float | None = None
-                    if requested is not None:
-                        try:
-                            val = float(requested)
-                            sold_price = val if val > 0 else None
-                        except (TypeError, ValueError):
-                            sold_price = None
-                    res = self.execute_sell(
-                        trade_id=trade_id,
-                        dry_run=dry_run,
-                        force=force,
-                        confirm_token=confirm_token,
-                        sold_price=sold_price,
-                        note="retry failed execution sell",
-                    )
-                else:
-                    raise RuntimeError(f"unsupported action: {current_action}")
+            for row in rows:
+                current_action = str(row["action"]).strip().lower()
+                trade_id = int(row["trade_id"])
+                retried += 1
+                try:
+                    request_payload = self._parse_request_payload(row["request_json"])
+                    if current_action == "buy":
+                        res = self.execute_buy(
+                            trade_id=trade_id,
+                            dry_run=dry_run,
+                            force=force,
+                            confirm_token=confirm_token,
+                        )
+                    elif current_action == "list":
+                        res = self.execute_list(
+                            trade_id=trade_id,
+                            dry_run=dry_run,
+                            force=force,
+                            confirm_token=confirm_token,
+                            listing_url=str(request_payload.get("requested_listing_url") or ""),
+                            note="retry failed execution list",
+                        )
+                    elif current_action == "sell":
+                        requested = request_payload.get("requested_sold_price")
+                        sold_price: float | None = None
+                        if requested is not None:
+                            try:
+                                val = float(requested)
+                                sold_price = val if val > 0 else None
+                            except (TypeError, ValueError):
+                                sold_price = None
+                        res = self.execute_sell(
+                            trade_id=trade_id,
+                            dry_run=dry_run,
+                            force=force,
+                            confirm_token=confirm_token,
+                            sold_price=sold_price,
+                            note="retry failed execution sell",
+                        )
+                    else:
+                        raise RuntimeError(f"unsupported action: {current_action}")
 
-                ok = bool(res.get("success"))
-                if ok:
-                    succeeded += 1
-                else:
+                    ok = bool(res.get("success"))
+                    if ok:
+                        succeeded += 1
+                    else:
+                        failed += 1
+                    results.append(
+                        {
+                            "trade_id": trade_id,
+                            "action": current_action,
+                            "previous_log_id": int(row["id"]),
+                            "success": ok,
+                            "new_log_id": int(res.get("log_id") or 0),
+                            "business_ban_code": str(res.get("business_ban_code") or ""),
+                            "error": str(res.get("error") or ""),
+                        }
+                    )
+                except Exception as exc:
                     failed += 1
-                results.append(
-                    {
-                        "trade_id": trade_id,
-                        "action": current_action,
-                        "previous_log_id": int(row["id"]),
-                        "success": ok,
-                        "new_log_id": int(res.get("log_id") or 0),
-                        "business_ban_code": str(res.get("business_ban_code") or ""),
-                        "error": str(res.get("error") or ""),
-                    }
-                )
-            except Exception as exc:
-                failed += 1
-                results.append(
-                    {
-                        "trade_id": trade_id,
-                        "action": current_action,
-                        "previous_log_id": int(row["id"]),
-                        "success": False,
-                        "new_log_id": 0,
-                        "business_ban_code": "",
-                        "error": str(exc),
-                    }
-                )
+                    results.append(
+                        {
+                            "trade_id": trade_id,
+                            "action": current_action,
+                            "previous_log_id": int(row["id"]),
+                            "success": False,
+                            "new_log_id": 0,
+                            "business_ban_code": "",
+                            "error": str(exc),
+                        }
+                    )
 
-        return {
-            "action": normalized_action or "all",
-            "dry_run": dry_run,
-            "force": force,
-            "retried": retried,
-            "succeeded": succeeded,
-            "failed": failed,
-            "items": results,
-        }
+            return {
+                "action": normalized_action or "all",
+                "dry_run": dry_run,
+                "force": force,
+                "retried": retried,
+                "succeeded": succeeded,
+                "failed": failed,
+                "items": results,
+            }
+        finally:
+            self._retry_lock.release()
 
     def _execute_action(
         self,
@@ -752,6 +851,7 @@ class ExecutionService:
         force: bool,
         confirm_token: str | None,
         payload: dict[str, Any],
+        runtime: dict[str, Any],
     ) -> str | None:
         trade_status = str(trade["status"] if "status" in trade.keys() else "").strip().lower()
         allowed_statuses = {
@@ -766,15 +866,19 @@ class ExecutionService:
         if provider in {"disabled", "none"}:
             return "EXECUTION_PROVIDER is disabled"
 
-        if not settings.execution_live_enabled:
+        if not bool(runtime.get("live_enabled")):
             return "EXECUTION_LIVE_ENABLED=false"
 
-        configured_token = settings.execution_live_confirm_token.strip()
-        if configured_token and (confirm_token or "").strip() != configured_token:
-            return "invalid confirm token"
+        configured_token = str(runtime.get("live_confirm_token") or "").strip()
+        require_confirm = bool(runtime.get("live_confirm_required"))
+        if require_confirm:
+            if not configured_token:
+                return "EXECUTION_LIVE_CONFIRM_TOKEN is empty while confirm is required"
+            if (confirm_token or "").strip() != configured_token:
+                return "invalid confirm token"
 
         if action == "buy":
-            max_price = float(settings.execution_live_max_buy_price)
+            max_price = float(runtime.get("live_max_buy_price") or 0.0)
             buy_price = float(payload.get("buy_price") or 0.0)
             if max_price > 0 and buy_price > max_price:
                 return (
@@ -782,7 +886,7 @@ class ExecutionService:
                     f"EXECUTION_LIVE_MAX_BUY_PRICE {max_price:.2f}"
                 )
         elif action == "list":
-            min_ratio = float(settings.execution_live_min_list_profit_ratio)
+            min_ratio = float(runtime.get("live_min_list_profit_ratio") or 0.0)
             if min_ratio > 0:
                 buy_price = float(payload.get("buy_price") or 0.0)
                 target_price = float(payload.get("target_sell_price") or 0.0)
@@ -793,7 +897,7 @@ class ExecutionService:
                         f"{min_price:.2f} (EXECUTION_LIVE_MIN_LIST_PROFIT_RATIO={min_ratio:.4f})"
                     )
         elif action == "sell":
-            min_ratio = float(settings.execution_live_min_sell_profit_ratio)
+            min_ratio = float(runtime.get("live_min_sell_profit_ratio") or 0.0)
             if min_ratio > 0:
                 buy_price = float(payload.get("buy_price") or 0.0)
                 sell_price = float(

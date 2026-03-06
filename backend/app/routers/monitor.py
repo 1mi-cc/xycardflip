@@ -39,6 +39,11 @@ def run_once() -> dict:
     return monitor_service.run_once()
 
 
+@router.post("/reset-circuit")
+def reset_circuit(reason: str = Query(default="manual reset")) -> dict:
+    return monitor_service.reset_circuit(reason=reason)
+
+
 @router.post("/refresh-cookie")
 def refresh_cookie(kill_browsers: bool = Query(True)) -> dict:
     return monitor_service.refresh_cookie_local(kill_browsers=kill_browsers)

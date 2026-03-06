@@ -7,7 +7,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.params import Query
 
 from .. import repositories as repo
+from ..config import settings
 from ..schemas import ApproveTradeIn, MarkListedIn, MarkSoldIn
+from ..services.market_sentiment import market_sentiment_service
 from ..services.pricing_strategy import build_pricing_plan
 
 router = APIRouter(prefix="/trades", tags=["trades"])
@@ -15,22 +17,19 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 
 @router.post("/approve")
 def approve_trade(payload: ApproveTradeIn) -> dict:
-    opp = repo.get_opportunity(payload.opportunity_id)
-    if not opp:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
-    if opp["status"] != "pending_review":
-        raise HTTPException(status_code=400, detail="Opportunity is not pending review")
+    try:
+        result = repo.approve_opportunity_idempotent(
+            opportunity_id=payload.opportunity_id,
+            approved_buy_price=payload.approved_buy_price,
+            approved_by=payload.approved_by,
+            note=payload.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    target_sell = float(opp["suggested_list_price"])
-    trade_id = repo.create_trade(
-        opportunity_id=payload.opportunity_id,
-        approved_buy_price=payload.approved_buy_price,
-        target_sell_price=target_sell,
-        approved_by=payload.approved_by,
-        note=payload.note,
-    )
-    repo.update_opportunity_status(payload.opportunity_id, "approved_for_buy", payload.note)
-    return {"trade_id": trade_id, "status": "approved_for_buy", "target_sell_price": target_sell}
+    if not result.get("created") and not result.get("idempotent"):
+        raise HTTPException(status_code=400, detail=str(result.get("message") or "Approval failed"))
+    return result
 
 
 @router.get("")
@@ -69,6 +68,21 @@ def _extract_title_keywords(title: str) -> list[str]:
     return unique
 
 
+def _clamp(value: float, floor: float, ceiling: float) -> float:
+    return max(floor, min(ceiling, value))
+
+
+def _derive_action(current_target_price: float, recommended: float) -> str:
+    if current_target_price <= 0:
+        return "set"
+    diff_ratio = (recommended - current_target_price) / current_target_price
+    if diff_ratio >= 0.03:
+        return "raise"
+    if diff_ratio <= -0.03:
+        return "lower"
+    return "keep"
+
+
 def _build_trade_pricing_payload(
     trade_id: int, mode: Literal["balanced", "fast_exit", "profit_max"]
 ) -> dict:
@@ -99,6 +113,31 @@ def _build_trade_pricing_payload(
         active_trade_count=active_count,
         mode=mode,
     )
+
+    sentiment = market_sentiment_service.assess_pricing_adjustment(
+        title=str(ctx["title"]),
+        mode=mode,
+        expected_sale_price=float(ctx["expected_sale_price"]),
+        suggested_list_price=float(ctx["suggested_list_price"]),
+        similar_sold_prices=similar_prices,
+    )
+    if settings.pricing_rag_sentiment_enabled and sentiment.get("applied"):
+        current_price = float(plan["recommended_price"])
+        adjusted_price = _clamp(
+            current_price * (1.0 + float(sentiment.get("adjustment_ratio") or 0.0)),
+            float(plan["price_floor"]),
+            float(plan["price_ceiling"]),
+        )
+        plan["recommended_price"] = round(adjusted_price, 2)
+        plan["action"] = _derive_action(float(plan["current_target_price"]), adjusted_price)
+        reasons = list(plan.get("reasons") or [])
+        reasons.append(
+            "rag_sentiment="
+            f"{sentiment.get('label')}:{float(sentiment.get('adjustment_ratio') or 0.0):+.2%}"
+        )
+        plan["reasons"] = reasons
+    plan["rag_sentiment"] = sentiment
+
     return {
         "trade_id": int(ctx["trade_id"]),
         "status": str(ctx["status"]),

@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from .. import repositories as repo
 from ..services.execution import execution_service
 
 router = APIRouter(prefix="/execution", tags=["execution"])
+
+
+class ExecutionConfigPayload(BaseModel):
+    provider: str | None = Field(default=None, pattern="^(mock|webhook|disabled|none)$")
+    live_enabled: bool | None = None
+    live_confirm_required: bool | None = None
+    live_max_buy_price: float | None = Field(default=None, ge=0.0)
+    live_min_list_profit_ratio: float | None = Field(default=None, ge=0.0)
+    live_min_sell_profit_ratio: float | None = Field(default=None, ge=0.0)
 
 
 def _raise_for_value_error(exc: ValueError) -> None:
@@ -18,6 +28,14 @@ def _raise_for_value_error(exc: ValueError) -> None:
 @router.get("/status")
 def status() -> dict:
     return execution_service.status()
+
+
+@router.post("/config")
+def update_config(payload: ExecutionConfigPayload) -> dict:
+    try:
+        return execution_service.update_config(**payload.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/buy/{trade_id}")

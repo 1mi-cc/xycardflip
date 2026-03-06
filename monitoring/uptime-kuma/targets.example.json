@@ -1,0 +1,26 @@
+[
+  {
+    "name": "CardFlip Backend Health",
+    "url": "http://host.docker.internal:8000/health",
+    "method": "GET",
+    "type": "http"
+  },
+  {
+    "name": "CardFlip Frontend Admin",
+    "url": "http://host.docker.internal:3000/admin/card-flip-ops",
+    "method": "GET",
+    "type": "http"
+  },
+  {
+    "name": "Proxy Pool",
+    "url": "http://host.docker.internal:8899/",
+    "method": "GET",
+    "type": "http"
+  },
+  {
+    "name": "RAGFlow",
+    "url": "http://host.docker.internal:9380/",
+    "method": "GET",
+    "type": "http"
+  }
+]

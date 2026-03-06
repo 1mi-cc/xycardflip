@@ -467,12 +467,19 @@ const refreshToken = async (token) => {
 
           // 尝试重新连接
           setTimeout(() => {
+            const latestToken = tokenStore.gameTokens.find(
+              (item) => item.id === token.id,
+            );
             tokenStore.createWebSocketConnection(
               token.id,
-              token.token,
-              token.wsUrl,
+              latestToken?.token || token.token,
+              latestToken?.wsUrl || token.wsUrl,
             );
-            message.info("正在尝试重新连接...");
+            message.info({
+              key: `token-reconnect-${token.id}`,
+              content: "正在尝试重新连接...",
+              duration: 1.2,
+            });
           }, 500);
         },
       });
@@ -483,10 +490,13 @@ const refreshToken = async (token) => {
     if (tokenStore.getWebSocketStatus(token.id) === "connected") {
       tokenStore.closeWebSocketConnection(token.id);
       setTimeout(() => {
+        const latestToken = tokenStore.gameTokens.find(
+          (item) => item.id === token.id,
+        );
         tokenStore.createWebSocketConnection(
           token.id,
-          token.token,
-          token.wsUrl,
+          latestToken?.token || token.token,
+          latestToken?.wsUrl || token.wsUrl,
         );
       }, 500);
     }
@@ -538,7 +548,11 @@ const selectToken = (token, forceReconnect = false) => {
     connectionStatus === "connecting" &&
     !forceReconnect
   ) {
-    message.info(`${token.name} 正在连接中...`);
+    message.info({
+      key: `token-connecting-${token.id}`,
+      content: `${token.name} 正在连接中...`,
+      duration: 1.2,
+    });
     return;
   }
 

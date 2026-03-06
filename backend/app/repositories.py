@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .database import get_conn
@@ -36,6 +37,65 @@ def _load_existing_pairs(
             continue
         id_value = str(id_value_raw)
         existing.add((source, id_value))
+    return existing
+
+
+def _normalize_text_key(raw: str | None) -> str:
+    text = str(raw or "").strip().lower()
+    return " ".join(text.split())
+
+
+def _normalize_price_key(raw: float | int | str | None) -> float:
+    try:
+        return round(float(raw or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _listing_fingerprint(
+    *,
+    source: str,
+    seller_id: str | None,
+    title: str | None,
+    list_price: float | int | str | None,
+) -> tuple[str, str, str, float]:
+    return (
+        str(source or "").strip(),
+        _normalize_optional_id(seller_id) or "",
+        _normalize_text_key(title),
+        _normalize_price_key(list_price),
+    )
+
+
+def _load_existing_listing_fingerprints(
+    conn: sqlite3.Connection,
+    fingerprints: set[tuple[str, str, str, float]],
+) -> set[tuple[str, str, str, float]]:
+    if not fingerprints:
+        return set()
+
+    # Keep dedupe window bounded so historical listings do not suppress recent legitimate relists.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    rows = conn.execute(
+        """
+        SELECT source, seller_id, title, list_price
+        FROM listings_raw
+        WHERE status = 'open' AND listed_at >= ?
+        ORDER BY id DESC
+        LIMIT 5000
+        """,
+        (cutoff,),
+    ).fetchall()
+    existing: set[tuple[str, str, str, float]] = set()
+    for row in rows:
+        fp = _listing_fingerprint(
+            source=str(row["source"] or ""),
+            seller_id=row["seller_id"],
+            title=row["title"],
+            list_price=row["list_price"],
+        )
+        if fp in fingerprints:
+            existing.add(fp)
     return existing
 
 
@@ -92,9 +152,20 @@ def insert_listings(rows: list[ListingIn]) -> int:
         for listing_id in [_normalize_optional_id(row.listing_id)]
         if listing_id
     }
+    row_fingerprints = {
+        _listing_fingerprint(
+            source=row.source,
+            seller_id=_normalize_optional_id(row.seller_id),
+            title=row.title,
+            list_price=row.list_price,
+        )
+        for row in rows
+        if not _normalize_optional_id(row.listing_id)
+    }
 
     values: list[tuple[Any, ...]] = []
     seen_in_batch: set[tuple[str, str]] = set()
+    seen_fingerprints_in_batch: set[tuple[str, str, str, float]] = set()
     with get_conn() as conn:
         existing_pairs = _load_existing_pairs(
             conn,
@@ -102,6 +173,7 @@ def insert_listings(rows: list[ListingIn]) -> int:
             "listing_id",
             row_listing_pairs,
         )
+        existing_fingerprints = _load_existing_listing_fingerprints(conn, row_fingerprints)
         for row in rows:
             listing_id = _normalize_optional_id(row.listing_id)
             seller_id = _normalize_optional_id(row.seller_id)
@@ -110,6 +182,16 @@ def insert_listings(rows: list[ListingIn]) -> int:
                 if key in existing_pairs or key in seen_in_batch:
                     continue
                 seen_in_batch.add(key)
+            else:
+                fp = _listing_fingerprint(
+                    source=row.source,
+                    seller_id=seller_id,
+                    title=row.title,
+                    list_price=row.list_price,
+                )
+                if fp in existing_fingerprints or fp in seen_fingerprints_in_batch:
+                    continue
+                seen_fingerprints_in_batch.add(fp)
 
             values.append(
                 (
@@ -156,6 +238,30 @@ def upsert_listing(row: ListingIn) -> tuple[int | None, bool]:
         existing = get_listing_by_source_listing_id(row.source, listing_id)
         if existing:
             return int(existing["id"]), False
+    else:
+        fp = _listing_fingerprint(
+            source=row.source,
+            seller_id=seller_id,
+            title=row.title,
+            list_price=row.list_price,
+        )
+        with get_conn() as conn:
+            existing = _load_existing_listing_fingerprints(conn, {fp})
+            if fp in existing:
+                candidates = conn.execute(
+                    """
+                    SELECT id, title
+                    FROM listings_raw
+                    WHERE source = ? AND COALESCE(seller_id, '') = ? AND ROUND(list_price, 2) = ?
+                      AND status = 'open'
+                    ORDER BY id DESC
+                    LIMIT 200
+                    """,
+                    (fp[0], fp[1], fp[3]),
+                ).fetchall()
+                for item in candidates:
+                    if _normalize_text_key(item["title"]) == fp[2]:
+                        return int(item["id"]), False
 
     sql = """
     INSERT INTO listings_raw(source, listing_id, seller_id, title, description, list_price, listed_at, status, raw_json)
@@ -192,6 +298,115 @@ def get_open_listings(limit: int = 50) -> list[sqlite3.Row]:
             (limit,),
         )
         return cur.fetchall()
+
+
+def get_opportunity_status_map_by_listing_rows(
+    listing_row_ids: list[int],
+) -> dict[int, str]:
+    if not listing_row_ids:
+        return {}
+    normalized = sorted({int(row_id) for row_id in listing_row_ids if int(row_id) > 0})
+    if not normalized:
+        return {}
+    placeholders = ",".join("?" for _ in normalized)
+    sql = f"""
+    SELECT listing_row_id, status
+    FROM opportunities
+    WHERE listing_row_id IN ({placeholders})
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(normalized)).fetchall()
+    return {
+        int(row["listing_row_id"]): str(row["status"] or "")
+        for row in rows
+    }
+
+
+def has_frozen_opportunity_for_listing_fingerprint(
+    *,
+    source: str,
+    seller_id: str | None,
+    title: str,
+    list_price: float,
+    exclude_listing_row_id: int | None = None,
+) -> bool:
+    normalized_title = _normalize_text_key(title)
+    normalized_seller = _normalize_optional_id(seller_id) or ""
+    normalized_price = _normalize_price_key(list_price)
+    sql = """
+    SELECT l.id, l.title, o.status
+    FROM listings_raw l
+    JOIN opportunities o ON o.listing_row_id = l.id
+    WHERE l.source = ?
+      AND COALESCE(l.seller_id, '') = ?
+      AND ROUND(l.list_price, 2) = ?
+      AND l.status = 'open'
+      AND o.status IN ('rejected', 'approved_for_buy')
+    """
+    params: list[Any] = [str(source or "").strip(), normalized_seller, normalized_price]
+    if exclude_listing_row_id is not None:
+        sql += " AND l.id != ?"
+        params.append(int(exclude_listing_row_id))
+    sql += " ORDER BY l.id DESC LIMIT 200"
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    for row in rows:
+        if _normalize_text_key(row["title"]) == normalized_title:
+            return True
+    return False
+
+
+def has_reject_history_for_listing_signature(
+    *,
+    source: str,
+    seller_id: str | None,
+    title: str,
+    exclude_listing_row_id: int | None = None,
+) -> bool:
+    normalized_title = _normalize_text_key(title)
+    normalized_seller = _normalize_optional_id(seller_id) or ""
+
+    sql = """
+    SELECT l.id, l.title
+    FROM opportunities o
+    JOIN listings_raw l ON l.id = o.listing_row_id
+    WHERE l.source = ?
+      AND COALESCE(l.seller_id, '') = ?
+      AND o.status = 'rejected'
+      AND l.status = 'open'
+    """
+    params: list[Any] = [str(source or "").strip(), normalized_seller]
+    if exclude_listing_row_id is not None:
+        sql += " AND l.id != ?"
+        params.append(int(exclude_listing_row_id))
+    sql += " ORDER BY l.id DESC LIMIT 200"
+
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+        for row in rows:
+            if _normalize_text_key(row["title"]) == normalized_title:
+                return True
+
+        # Secondary guard: if a row was rejected and later status drifted, keep blocking by reject logs.
+        log_sql = """
+        SELECT l.id, l.title
+        FROM opportunity_reject_logs r
+        JOIN listings_raw l ON l.id = r.listing_row_id
+        WHERE l.source = ?
+          AND COALESCE(l.seller_id, '') = ?
+        """
+        log_params: list[Any] = [str(source or "").strip(), normalized_seller]
+        if exclude_listing_row_id is not None:
+            log_sql += " AND l.id != ?"
+            log_params.append(int(exclude_listing_row_id))
+        log_sql += " ORDER BY r.id DESC LIMIT 200"
+
+        log_rows = conn.execute(log_sql, tuple(log_params)).fetchall()
+        for row in log_rows:
+            if _normalize_text_key(row["title"]) == normalized_title:
+                return True
+
+    return False
 
 
 def get_seller_open_listing_count(source: str, seller_id: str | None, exclude_row_id: int | None = None) -> int:
@@ -553,6 +768,137 @@ def get_opportunity_by_listing_row_id(listing_row_id: int) -> sqlite3.Row | None
             (listing_row_id,),
         )
         return cur.fetchone()
+
+
+def _get_trade_by_opportunity_id_with_conn(
+    conn: sqlite3.Connection, opportunity_id: int
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT t.*, o.listing_row_id, l.title, l.list_price
+        FROM trades t
+        JOIN opportunities o ON o.id = t.opportunity_id
+        JOIN listings_raw l ON l.id = o.listing_row_id
+        WHERE t.opportunity_id = ?
+        ORDER BY t.id DESC
+        LIMIT 1
+        """,
+        (opportunity_id,),
+    ).fetchone()
+
+
+def get_trade_by_opportunity_id(opportunity_id: int) -> sqlite3.Row | None:
+    with get_conn() as conn:
+        return _get_trade_by_opportunity_id_with_conn(conn, opportunity_id)
+
+
+def approve_opportunity_idempotent(
+    *,
+    opportunity_id: int,
+    approved_buy_price: float,
+    approved_by: str,
+    note: str,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        opp = conn.execute(
+            """
+            SELECT o.*, l.list_price, v.suggested_list_price
+            FROM opportunities o
+            JOIN listings_raw l ON l.id = o.listing_row_id
+            JOIN valuation_records v ON v.id = o.valuation_id
+            WHERE o.id = ?
+            """,
+            (opportunity_id,),
+        ).fetchone()
+        if not opp:
+            raise ValueError("Opportunity not found")
+
+        target_sell_price = float(opp["suggested_list_price"])
+        opportunity_status = str(opp["status"] or "")
+        existing_trade = _get_trade_by_opportunity_id_with_conn(conn, opportunity_id)
+        if existing_trade:
+            existing_trade_id = int(existing_trade["id"])
+            return {
+                "trade_id": existing_trade_id,
+                "existing_trade_id": existing_trade_id,
+                "created": False,
+                "idempotent": True,
+                "status": str(existing_trade["status"] or "approved_for_buy"),
+                "opportunity_status": opportunity_status,
+                "target_sell_price": target_sell_price,
+                "approved_buy_price": float(existing_trade["approved_buy_price"]),
+            }
+
+        if opportunity_status != "pending_review":
+            return {
+                "trade_id": None,
+                "existing_trade_id": None,
+                "created": False,
+                "idempotent": False,
+                "status": opportunity_status,
+                "opportunity_status": opportunity_status,
+                "reason": "opportunity_not_pending_review",
+                "message": "Opportunity is not pending review",
+                "target_sell_price": target_sell_price,
+                "approved_buy_price": float(approved_buy_price),
+            }
+
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO trades(
+                    opportunity_id,
+                    approved_buy_price,
+                    target_sell_price,
+                    approved_by,
+                    note
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    opportunity_id,
+                    approved_buy_price,
+                    target_sell_price,
+                    approved_by,
+                    note,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            existing_trade = _get_trade_by_opportunity_id_with_conn(conn, opportunity_id)
+            if existing_trade:
+                existing_trade_id = int(existing_trade["id"])
+                return {
+                    "trade_id": existing_trade_id,
+                    "existing_trade_id": existing_trade_id,
+                    "created": False,
+                    "idempotent": True,
+                    "status": str(existing_trade["status"] or "approved_for_buy"),
+                    "opportunity_status": opportunity_status,
+                    "target_sell_price": target_sell_price,
+                    "approved_buy_price": float(existing_trade["approved_buy_price"]),
+                }
+            raise
+
+        trade_id = int(cur.lastrowid)
+        conn.execute(
+            """
+            UPDATE opportunities
+            SET status = ?, review_note = ?, reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            ("approved_for_buy", note, opportunity_id),
+        )
+        return {
+            "trade_id": trade_id,
+            "existing_trade_id": None,
+            "created": True,
+            "idempotent": False,
+            "status": "approved_for_buy",
+            "opportunity_status": "approved_for_buy",
+            "target_sell_price": target_sell_price,
+            "approved_buy_price": float(approved_buy_price),
+        }
 
 
 def create_trade(

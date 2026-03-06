@@ -161,6 +161,34 @@ def _normalize_execution_action(value: str | None, default: str = "all") -> str:
     return default
 
 
+DEFAULT_UI_MENU_PERMISSIONS: tuple[str, ...] = (
+    "dashboard:view",
+    "game:feature:view",
+    "cardflip:view",
+    "task:view",
+    "task:batch",
+    "message:test",
+    "token:view",
+    "profile:view",
+)
+
+DEFAULT_UI_ROLE_PERMISSIONS_ADMIN: tuple[str, ...] = DEFAULT_UI_MENU_PERMISSIONS
+DEFAULT_UI_ROLE_PERMISSIONS_OPS: tuple[str, ...] = (
+    "dashboard:view",
+    "cardflip:view",
+    "task:view",
+    "task:batch",
+    "message:test",
+    "token:view",
+)
+DEFAULT_UI_ROLE_PERMISSIONS_VIEWER: tuple[str, ...] = (
+    "dashboard:view",
+    "cardflip:view",
+    "token:view",
+    "profile:view",
+)
+
+
 def _get_profile_float(
     key: str,
     profile: str,
@@ -261,6 +289,41 @@ class Settings:
     app_name: str = os.getenv("APP_NAME", "Card Flip Assistant API")
     api_host: str = os.getenv("API_HOST", "0.0.0.0")
     api_port: int = _get_int("API_PORT", 8000)
+    uptime_kuma_enabled: bool = _get_bool("UPTIME_KUMA_ENABLED", False)
+    uptime_kuma_url: str = os.getenv("UPTIME_KUMA_URL", "http://127.0.0.1:3001")
+    supabase_enabled: bool = _get_bool("SUPABASE_ENABLED", False)
+    supabase_url: str = os.getenv("SUPABASE_URL", "")
+    supabase_service_role_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    supabase_schema: str = os.getenv("SUPABASE_SCHEMA", "public")
+    supabase_table_prefix: str = os.getenv("SUPABASE_TABLE_PREFIX", "cardflip_")
+    supabase_timeout_sec: float = _get_float("SUPABASE_TIMEOUT_SEC", 8.0)
+    supabase_sync_interval_sec: int = _get_int("SUPABASE_SYNC_INTERVAL_SEC", 30)
+    supabase_sync_batch_size: int = _get_int("SUPABASE_SYNC_BATCH_SIZE", 200)
+    auto_start_supabase_sync: bool = _get_bool("AUTO_START_SUPABASE_SYNC", False)
+    ui_auth_username: str = os.getenv("UI_AUTH_USERNAME", "operator")
+    ui_auth_nickname: str = os.getenv("UI_AUTH_NICKNAME", "本地操作员")
+    ui_auth_default_role: str = os.getenv("UI_AUTH_DEFAULT_ROLE", "admin").strip().lower() or "admin"
+    ui_user_roles: str = os.getenv("UI_USER_ROLES", "")
+    ui_menu_roles: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv("UI_MENU_ROLES", "admin"),
+        fallback=("admin",),
+    )
+    ui_menu_permissions: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv("UI_MENU_PERMISSIONS", ",".join(DEFAULT_UI_MENU_PERMISSIONS)),
+        fallback=DEFAULT_UI_MENU_PERMISSIONS,
+    )
+    ui_role_permissions_admin: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv("UI_ROLE_PERMISSIONS_ADMIN", ",".join(DEFAULT_UI_ROLE_PERMISSIONS_ADMIN)),
+        fallback=DEFAULT_UI_ROLE_PERMISSIONS_ADMIN,
+    )
+    ui_role_permissions_ops: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv("UI_ROLE_PERMISSIONS_OPS", ",".join(DEFAULT_UI_ROLE_PERMISSIONS_OPS)),
+        fallback=DEFAULT_UI_ROLE_PERMISSIONS_OPS,
+    )
+    ui_role_permissions_viewer: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv("UI_ROLE_PERMISSIONS_VIEWER", ",".join(DEFAULT_UI_ROLE_PERMISSIONS_VIEWER)),
+        fallback=DEFAULT_UI_ROLE_PERMISSIONS_VIEWER,
+    )
     sqlite_path: str = os.getenv("SQLITE_PATH", DEFAULT_SQLITE_PATH)
 
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
@@ -270,6 +333,8 @@ class Settings:
     ragflow_base_url: str = os.getenv("RAGFLOW_BASE_URL", "http://127.0.0.1:9380")
     ragflow_api_key: str = os.getenv("RAGFLOW_API_KEY", "")
     ragflow_chat_id: str = os.getenv("RAGFLOW_CHAT_ID", "")
+    ragflow_market_dataset_id: str = os.getenv("RAGFLOW_MARKET_DATASET_ID", "")
+    ragflow_market_dataset_name: str = os.getenv("RAGFLOW_MARKET_DATASET_NAME", "cardflip_market_knowledge")
     ragflow_timeout_sec: float = _get_float("RAGFLOW_TIMEOUT_SEC", 45.0)
 
     platform_fee_rate: float = _get_float("PLATFORM_FEE_RATE", 0.06)
@@ -315,6 +380,9 @@ class Settings:
     pricing_max_volatility_discount: float = _get_float(
         "PRICING_MAX_VOLATILITY_DISCOUNT", 0.10
     )
+    pricing_rag_sentiment_enabled: bool = _get_bool("PRICING_RAG_SENTIMENT_ENABLED", False)
+    pricing_rag_min_confidence: float = _get_float("PRICING_RAG_MIN_CONFIDENCE", 0.45)
+    pricing_rag_max_adjustment: float = _get_float("PRICING_RAG_MAX_ADJUSTMENT", 0.08)
 
     monitor_target_url: str = os.getenv(
         "MONITOR_TARGET_URL",
@@ -406,6 +474,14 @@ class Settings:
         "XIAN_YU_COOKIE_REFRESH_ON_START", False
     )
     xianyu_cookie_ttl_sec: int = _get_int("XIAN_YU_COOKIE_TTL_SEC", 540)
+    xianyu_cookie_auto_local_refresh: bool = _get_bool(
+        "XIAN_YU_COOKIE_AUTO_LOCAL_REFRESH",
+        True,
+    )
+    xianyu_cookie_refresh_min_ttl_sec: int = _get_int(
+        "XIAN_YU_COOKIE_REFRESH_MIN_TTL_SEC",
+        1800,
+    )
     monitor_pages: int = _get_int("MONITOR_PAGES", 1)
     monitor_use_proxy_pool: bool = _get_bool("MONITOR_USE_PROXY_POOL", False)
     proxy_pool_api: str = os.getenv("PROXY_POOL_API", "http://127.0.0.1:8899/")
@@ -471,6 +547,10 @@ class Settings:
     )
     automation_default_include_execution_retry: bool = _get_bool(
         "AUTOMATION_DEFAULT_INCLUDE_EXECUTION_RETRY", True
+    )
+    automation_default_include_supabase_sync: bool = _get_bool(
+        "AUTOMATION_DEFAULT_INCLUDE_SUPABASE_SYNC",
+        False,
     )
     automation_default_scan_limit: int = _get_int("AUTOMATION_DEFAULT_SCAN_LIMIT", 120)
 

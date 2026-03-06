@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -105,6 +106,184 @@ class RagflowClient:
             "reference": message.get("reference") if include_reference else None,
             "raw": payload,
         }
+
+    def list_datasets(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        name: str = "",
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {
+            "page": page,
+            "page_size": page_size,
+            "orderby": "create_time",
+            "desc": True,
+        }
+        if name.strip():
+            params["name"] = name.strip()
+        payload = self._request_json("GET", "/api/v1/datasets", params=params)
+        if payload.get("code") not in (None, 0):
+            raise RuntimeError(f"RAGFlow list datasets failed: {payload.get('message') or 'unknown'}")
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+        if isinstance(data, dict):
+            for key in ("items", "datasets", "kbs"):
+                node = data.get(key)
+                if isinstance(node, list):
+                    return [row for row in node if isinstance(row, dict)]
+        return []
+
+    def create_dataset(
+        self,
+        *,
+        name: str,
+        chunk_method: str = "naive",
+        description: str = "",
+        permission: str = "me",
+    ) -> dict[str, Any]:
+        payload = self._request_json(
+            "POST",
+            "/api/v1/datasets",
+            json={
+                "name": name.strip(),
+                "chunk_method": chunk_method.strip() or "naive",
+                "description": description.strip(),
+                "permission": permission.strip() or "me",
+            },
+        )
+        if payload.get("code") not in (None, 0):
+            raise RuntimeError(f"RAGFlow create dataset failed: {payload.get('message') or 'unknown'}")
+        data = payload.get("data")
+        if isinstance(data, list) and data:
+            first = data[0]
+            if isinstance(first, dict):
+                return first
+        if isinstance(data, dict):
+            return data
+        raise RuntimeError("RAGFlow create dataset returned empty payload")
+
+    def ensure_market_dataset(
+        self,
+        *,
+        dataset_name: str | None = None,
+        chunk_method: str = "naive",
+    ) -> dict[str, Any]:
+        preferred_id = str(settings.ragflow_market_dataset_id or "").strip()
+        if preferred_id:
+            return {"id": preferred_id, "name": str(dataset_name or settings.ragflow_market_dataset_name or "")}
+
+        target_name = (dataset_name or settings.ragflow_market_dataset_name or "cardflip_market_knowledge").strip()
+        if not target_name:
+            raise RuntimeError("dataset_name cannot be empty")
+
+        rows = self.list_datasets(page=1, page_size=200, name=target_name)
+        for row in rows:
+            if str(row.get("name") or "").strip().lower() == target_name.lower():
+                dataset_id = str(row.get("id") or row.get("dataset_id") or "").strip()
+                if dataset_id:
+                    return {"id": dataset_id, "name": str(row.get("name") or target_name)}
+
+        created = self.create_dataset(name=target_name, chunk_method=chunk_method)
+        dataset_id = str(created.get("id") or created.get("dataset_id") or "").strip()
+        if not dataset_id:
+            raise RuntimeError("RAGFlow created dataset but id is missing")
+        return {"id": dataset_id, "name": str(created.get("name") or target_name)}
+
+    def upload_documents(
+        self,
+        *,
+        dataset_id: str,
+        file_paths: list[str],
+    ) -> list[dict[str, Any]]:
+        self._ensure_ready()
+        normalized_dataset_id = str(dataset_id or "").strip()
+        if not normalized_dataset_id:
+            raise RuntimeError("dataset_id cannot be empty")
+        valid_paths: list[Path] = []
+        for raw_path in file_paths:
+            p = Path(str(raw_path or "")).expanduser()
+            if not p.exists() or not p.is_file():
+                raise RuntimeError(f"file not found: {p}")
+            valid_paths.append(p)
+        if not valid_paths:
+            raise RuntimeError("file_paths cannot be empty")
+
+        url = f"{self.base_url}/api/v1/datasets/{normalized_dataset_id}/documents"
+        proxies = resolve_proxy_for_url(url)
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        timeout = float(settings.ragflow_timeout_sec or 45.0)
+
+        files = [("file", (p.name, p.open("rb"), "application/octet-stream")) for p in valid_paths]
+        try:
+            resp = requests.post(
+                url,
+                headers=headers,
+                files=files,
+                timeout=timeout,
+                proxies=proxies,
+                trust_env=False,
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(f"RAGFlow upload documents error: {exc}") from exc
+        finally:
+            for _, payload in files:
+                try:
+                    payload[1].close()
+                except Exception:
+                    pass
+
+        if resp.status_code >= 400:
+            excerpt = (resp.text or "")[:240]
+            raise RuntimeError(f"RAGFlow upload HTTP {resp.status_code}: {excerpt}")
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise RuntimeError("RAGFlow upload returned non-JSON response") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("RAGFlow upload returned unsupported payload")
+        if payload.get("code") not in (None, 0):
+            raise RuntimeError(f"RAGFlow upload failed: {payload.get('message') or 'unknown'}")
+
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+        if isinstance(data, dict):
+            for key in ("items", "docs", "documents"):
+                node = data.get(key)
+                if isinstance(node, list):
+                    return [row for row in node if isinstance(row, dict)]
+        return []
+
+    def update_document(
+        self,
+        *,
+        dataset_id: str,
+        document_id: str,
+        chunk_method: str,
+    ) -> dict[str, Any]:
+        payload = self._request_json(
+            "PUT",
+            f"/api/v1/datasets/{dataset_id}/documents/{document_id}",
+            json={"chunk_method": chunk_method},
+        )
+        if payload.get("code") not in (None, 0):
+            raise RuntimeError(f"RAGFlow update document failed: {payload.get('message') or 'unknown'}")
+        data = payload.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def parse_documents(self, *, dataset_id: str, document_ids: list[str]) -> None:
+        cleaned_ids = [str(doc_id).strip() for doc_id in document_ids if str(doc_id).strip()]
+        if not cleaned_ids:
+            return
+        payload = self._request_json(
+            "POST",
+            f"/api/v1/datasets/{dataset_id}/chunks",
+            json={"document_ids": cleaned_ids},
+        )
+        if payload.get("code") not in (None, 0):
+            raise RuntimeError(f"RAGFlow parse documents failed: {payload.get('message') or 'unknown'}")
 
     def _request_json(
         self,

@@ -90,6 +90,7 @@ class MarketMonitorService:
                 "last_proxy": self._last_proxy,
                 "last_scan": self._last_scan,
                 "cookie_error": self._cookie_provider.last_error if hasattr(self, "_cookie_provider") else "",
+                "cookie_meta": self._cookie_provider.cookie_meta() if hasattr(self, "_cookie_provider") else {},
             }
 
     def start(self) -> dict[str, Any]:
@@ -169,6 +170,12 @@ class MarketMonitorService:
             with self._lock:
                 self._last_error = str(result.get("error") or "cookie refresh failed")
         return result
+
+    def reset_circuit(self, reason: str = "manual reset") -> dict[str, Any]:
+        with self._lock:
+            self._reset_circuit()
+            self._last_error = ""
+        return {"ok": True, "reason": reason, "circuit_open": False}
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():

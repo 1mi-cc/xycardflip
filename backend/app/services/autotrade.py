@@ -6,6 +6,7 @@ from typing import Any
 
 from .. import repositories as repo
 from ..config import settings
+from ..errors import BusyStateError
 from .execution import execution_service
 
 
@@ -32,33 +33,100 @@ class AutoTradeService:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        self._run_lock = threading.Lock()
         self._running = False
         self._last_run_at = ""
         self._last_error = ""
+        self._last_busy_at = ""
+        self._last_busy_reason = ""
         self._total_runs = 0
         self._total_approved = 0
+        self._interval_sec = max(5, int(settings.auto_approve_interval_sec))
+        self._batch_size = max(1, int(settings.auto_approve_batch_size))
+        self._min_score = float(settings.auto_approve_min_score)
+        self._min_roi = float(settings.auto_approve_min_roi)
+        self._max_risk_score = float(settings.auto_approve_max_risk_score)
+        self._require_risk_score = bool(settings.auto_approve_require_risk_score)
+        self._auto_execute_buy_on_approve = bool(settings.auto_execute_buy_on_approve)
+        self._auto_execute_buy_dry_run = bool(settings.auto_execute_buy_dry_run)
+        self._auto_execute_list_on_buy_success = bool(settings.auto_execute_list_on_buy_success)
+        self._auto_execute_list_dry_run = bool(settings.auto_execute_list_dry_run)
+
+    def update_config(
+        self,
+        *,
+        interval_sec: int | None = None,
+        batch_size: int | None = None,
+        min_score: float | None = None,
+        min_roi: float | None = None,
+        max_risk_score: float | None = None,
+        require_risk_score: bool | None = None,
+        auto_execute_buy_on_approve: bool | None = None,
+        auto_execute_buy_dry_run: bool | None = None,
+        auto_execute_list_on_buy_success: bool | None = None,
+        auto_execute_list_dry_run: bool | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            if interval_sec is not None:
+                self._interval_sec = max(5, min(3600, int(interval_sec)))
+            if batch_size is not None:
+                self._batch_size = max(1, min(500, int(batch_size)))
+            if min_score is not None:
+                self._min_score = max(0.0, min(100.0, float(min_score)))
+            if min_roi is not None:
+                self._min_roi = max(0.0, min(10.0, float(min_roi)))
+            if max_risk_score is not None:
+                self._max_risk_score = max(0.0, min(100.0, float(max_risk_score)))
+            if require_risk_score is not None:
+                self._require_risk_score = bool(require_risk_score)
+            if auto_execute_buy_on_approve is not None:
+                self._auto_execute_buy_on_approve = bool(auto_execute_buy_on_approve)
+            if auto_execute_buy_dry_run is not None:
+                self._auto_execute_buy_dry_run = bool(auto_execute_buy_dry_run)
+            if auto_execute_list_on_buy_success is not None:
+                self._auto_execute_list_on_buy_success = bool(auto_execute_list_on_buy_success)
+            if auto_execute_list_dry_run is not None:
+                self._auto_execute_list_dry_run = bool(auto_execute_list_dry_run)
+        return self.status()
 
     def status(self) -> dict[str, Any]:
         with self._lock:
             return {
                 "enabled": settings.auto_approve_enabled,
                 "running": self._running,
-                "interval_sec": settings.auto_approve_interval_sec,
-                "batch_size": settings.auto_approve_batch_size,
-                "min_score": settings.auto_approve_min_score,
-                "min_roi": settings.auto_approve_min_roi,
-                "max_risk_score": settings.auto_approve_max_risk_score,
-                "require_risk_score": settings.auto_approve_require_risk_score,
+                "busy": self._run_lock.locked(),
+                "interval_sec": self._interval_sec,
+                "batch_size": self._batch_size,
+                "min_score": self._min_score,
+                "min_roi": self._min_roi,
+                "max_risk_score": self._max_risk_score,
+                "require_risk_score": self._require_risk_score,
                 "approved_by": settings.auto_approve_approved_by,
-                "auto_execute_buy_on_approve": settings.auto_execute_buy_on_approve,
-                "auto_execute_buy_dry_run": settings.auto_execute_buy_dry_run,
-                "auto_execute_list_on_buy_success": settings.auto_execute_list_on_buy_success,
-                "auto_execute_list_dry_run": settings.auto_execute_list_dry_run,
+                "auto_execute_buy_on_approve": self._auto_execute_buy_on_approve,
+                "auto_execute_buy_dry_run": self._auto_execute_buy_dry_run,
+                "auto_execute_list_on_buy_success": self._auto_execute_list_on_buy_success,
+                "auto_execute_list_dry_run": self._auto_execute_list_dry_run,
                 "last_run_at": self._last_run_at,
                 "last_error": self._last_error,
+                "last_busy_at": self._last_busy_at,
+                "last_busy_reason": self._last_busy_reason,
                 "total_runs": self._total_runs,
                 "total_approved": self._total_approved,
             }
+
+    def guard_status(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "service": "autotrade",
+                "busy": self._run_lock.locked(),
+                "last_busy_at": self._last_busy_at,
+                "last_busy_reason": self._last_busy_reason,
+            }
+
+    def _mark_busy(self, reason: str) -> None:
+        with self._lock:
+            self._last_busy_at = datetime.now(timezone.utc).isoformat()
+            self._last_busy_reason = reason
 
     def start(self) -> dict[str, Any]:
         with self._lock:
@@ -91,124 +159,159 @@ class AutoTradeService:
                 "approved": 0,
                 "reason": "AUTO_APPROVE_ENABLED=false",
             }
-
-        batch_limit = settings.auto_approve_batch_size
-        if limit is not None:
-            batch_limit = max(1, min(500, int(limit)))
-
-        rows = repo.list_opportunities(status="pending_review", limit=max(50, batch_limit * 5))
-        approved = 0
-        skipped_score = 0
-        skipped_risk = 0
-        skipped_roi = 0
-        skipped_missing_risk = 0
-        errors = 0
-        picked_ids: list[int] = []
-        buy_exec_attempted = 0
-        buy_exec_succeeded = 0
-        buy_exec_failed = 0
-        list_exec_attempted = 0
-        list_exec_succeeded = 0
-        list_exec_failed = 0
-
-        for row in rows:
-            if approved >= batch_limit:
-                break
-            opportunity_id = int(row["id"])
-            score = float(row["score"])
-            roi = float(row["roi"])
-            list_price = float(row["list_price"])
-            risk_score = _parse_risk_score(str(row["review_note"] or ""))
-
-            if score < settings.auto_approve_min_score:
-                skipped_score += 1
-                continue
-            if roi < settings.auto_approve_min_roi:
-                skipped_roi += 1
-                continue
-            if risk_score is None and settings.auto_approve_require_risk_score:
-                skipped_missing_risk += 1
-                continue
-            if risk_score is not None and risk_score > settings.auto_approve_max_risk_score:
-                skipped_risk += 1
-                continue
-
-            approved_buy_price = round(max(0.01, list_price), 2)
-            note = (
-                f"{settings.auto_approve_note}; score={score:.2f}; roi={roi:.4f}; "
-                f"risk_score={risk_score if risk_score is not None else 'na'}"
+        if not self._run_lock.acquire(blocking=False):
+            self._mark_busy("run_once_in_progress")
+            raise BusyStateError(
+                service="autotrade",
+                reason="run_once_in_progress",
+                message="autotrade run is already in progress",
             )
 
-            try:
-                trade_id = repo.create_trade(
-                    opportunity_id=opportunity_id,
-                    approved_buy_price=approved_buy_price,
-                    target_sell_price=float(row["suggested_list_price"]),
-                    approved_by=settings.auto_approve_approved_by,
-                    note=note,
+        try:
+            with self._lock:
+                configured_batch_size = self._batch_size
+                min_score = self._min_score
+                min_roi = self._min_roi
+                max_risk_score = self._max_risk_score
+                require_risk_score = self._require_risk_score
+                auto_execute_buy_on_approve = self._auto_execute_buy_on_approve
+                auto_execute_buy_dry_run = self._auto_execute_buy_dry_run
+                auto_execute_list_on_buy_success = self._auto_execute_list_on_buy_success
+                auto_execute_list_dry_run = self._auto_execute_list_dry_run
+
+            batch_limit = configured_batch_size
+            if limit is not None:
+                batch_limit = max(1, min(500, int(limit)))
+
+            rows = repo.list_opportunities(status="pending_review", limit=max(50, batch_limit * 5))
+            approved = 0
+            skipped_score = 0
+            skipped_risk = 0
+            skipped_roi = 0
+            skipped_missing_risk = 0
+            skipped_not_pending = 0
+            idempotent_hits = 0
+            errors = 0
+            picked_ids: list[int] = []
+            buy_exec_attempted = 0
+            buy_exec_succeeded = 0
+            buy_exec_failed = 0
+            list_exec_attempted = 0
+            list_exec_succeeded = 0
+            list_exec_failed = 0
+
+            for row in rows:
+                if approved >= batch_limit:
+                    break
+                opportunity_id = int(row["id"])
+                score = float(row["score"])
+                roi = float(row["roi"])
+                list_price = float(row["list_price"])
+                risk_score = _parse_risk_score(str(row["review_note"] or ""))
+
+                if score < min_score:
+                    skipped_score += 1
+                    continue
+                if roi < min_roi:
+                    skipped_roi += 1
+                    continue
+                if risk_score is None and require_risk_score:
+                    skipped_missing_risk += 1
+                    continue
+                if risk_score is not None and risk_score > max_risk_score:
+                    skipped_risk += 1
+                    continue
+
+                approved_buy_price = round(max(0.01, list_price), 2)
+                note = (
+                    f"{settings.auto_approve_note}; score={score:.2f}; roi={roi:.4f}; "
+                    f"risk_score={risk_score if risk_score is not None else 'na'}"
                 )
-                repo.update_opportunity_status(opportunity_id, "approved_for_buy", note)
-                approved += 1
-                picked_ids.append(opportunity_id)
-                if settings.auto_execute_buy_on_approve:
-                    buy_exec_attempted += 1
-                    exec_res = execution_service.execute_buy(
-                        trade_id=trade_id,
-                        dry_run=settings.auto_execute_buy_dry_run,
+
+                try:
+                    approval = repo.approve_opportunity_idempotent(
+                        opportunity_id=opportunity_id,
+                        approved_buy_price=approved_buy_price,
+                        approved_by=settings.auto_approve_approved_by,
+                        note=note,
                     )
-                    if exec_res.get("success"):
-                        buy_exec_succeeded += 1
-                        if settings.auto_execute_list_on_buy_success:
-                            list_exec_attempted += 1
-                            list_res = execution_service.execute_list(
-                                trade_id=trade_id,
-                                dry_run=settings.auto_execute_list_dry_run,
-                                note="auto listed after buy execution",
-                            )
-                            if list_res.get("success"):
-                                list_exec_succeeded += 1
-                            else:
-                                list_exec_failed += 1
-                    else:
-                        buy_exec_failed += 1
-            except Exception:
-                errors += 1
+                    if approval.get("idempotent"):
+                        idempotent_hits += 1
+                        continue
+                    if not approval.get("created"):
+                        skipped_not_pending += 1
+                        continue
 
-        with self._lock:
-            self._last_run_at = datetime.now(timezone.utc).isoformat()
-            self._last_error = "" if errors == 0 else f"errors={errors}"
-            self._total_runs += 1
-            self._total_approved += approved
+                    trade_id = int(approval["trade_id"])
+                    approved += 1
+                    picked_ids.append(opportunity_id)
+                    if auto_execute_buy_on_approve:
+                        buy_exec_attempted += 1
+                        exec_res = execution_service.execute_buy(
+                            trade_id=trade_id,
+                            dry_run=auto_execute_buy_dry_run,
+                        )
+                        if exec_res.get("success"):
+                            buy_exec_succeeded += 1
+                            if auto_execute_list_on_buy_success:
+                                list_exec_attempted += 1
+                                list_res = execution_service.execute_list(
+                                    trade_id=trade_id,
+                                    dry_run=auto_execute_list_dry_run,
+                                    note="auto listed after buy execution",
+                                )
+                                if list_res.get("success"):
+                                    list_exec_succeeded += 1
+                                else:
+                                    list_exec_failed += 1
+                        else:
+                            buy_exec_failed += 1
+                except Exception:
+                    errors += 1
 
-        return {
-            "enabled": settings.auto_approve_enabled,
-            "approved": approved,
-            "errors": errors,
-            "considered": len(rows),
-            "batch_limit": batch_limit,
-            "skipped_score": skipped_score,
-            "skipped_roi": skipped_roi,
-            "skipped_risk": skipped_risk,
-            "skipped_missing_risk": skipped_missing_risk,
-            "opportunity_ids": picked_ids,
-            "buy_exec_attempted": buy_exec_attempted,
-            "buy_exec_succeeded": buy_exec_succeeded,
-            "buy_exec_failed": buy_exec_failed,
-            "buy_exec_dry_run": settings.auto_execute_buy_dry_run,
-            "list_exec_attempted": list_exec_attempted,
-            "list_exec_succeeded": list_exec_succeeded,
-            "list_exec_failed": list_exec_failed,
-            "list_exec_dry_run": settings.auto_execute_list_dry_run,
-        }
+            with self._lock:
+                self._last_run_at = datetime.now(timezone.utc).isoformat()
+                self._last_error = "" if errors == 0 else f"errors={errors}"
+                self._total_runs += 1
+                self._total_approved += approved
+
+            return {
+                "enabled": settings.auto_approve_enabled,
+                "approved": approved,
+                "errors": errors,
+                "considered": len(rows),
+                "batch_limit": batch_limit,
+                "skipped_score": skipped_score,
+                "skipped_roi": skipped_roi,
+                "skipped_risk": skipped_risk,
+                "skipped_missing_risk": skipped_missing_risk,
+                "skipped_not_pending": skipped_not_pending,
+                "idempotent_hits": idempotent_hits,
+                "opportunity_ids": picked_ids,
+                "buy_exec_attempted": buy_exec_attempted,
+                "buy_exec_succeeded": buy_exec_succeeded,
+                "buy_exec_failed": buy_exec_failed,
+                "buy_exec_dry_run": auto_execute_buy_dry_run,
+                "list_exec_attempted": list_exec_attempted,
+                "list_exec_succeeded": list_exec_succeeded,
+                "list_exec_failed": list_exec_failed,
+                "list_exec_dry_run": auto_execute_list_dry_run,
+            }
+        finally:
+            self._run_lock.release()
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():
             try:
                 self.run_once()
+            except BusyStateError:
+                pass
             except Exception as exc:  # pragma: no cover
                 with self._lock:
                     self._last_error = str(exc)
-            if self._stop_event.wait(timeout=max(5, settings.auto_approve_interval_sec)):
+            with self._lock:
+                interval_sec = self._interval_sec
+            if self._stop_event.wait(timeout=max(5, int(interval_sec))):
                 break
         with self._lock:
             self._running = False
