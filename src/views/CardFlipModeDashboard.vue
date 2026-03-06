@@ -2,32 +2,54 @@
   <div class="mode-page">
     <section class="mode-hero" :class="{ live: isLiveMode }">
       <div class="hero-main">
-        <h1>{{ modeTitle }}</h1>
-        <p>{{ modeDescription }}</p>
+        <div class="hero-copy">
+          <span class="hero-kicker">{{ isLiveMode ? "Live Board" : "Simulation Board" }}</span>
+          <h1>{{ modeTitle }}</h1>
+          <p>{{ modeDescription }}</p>
+        </div>
+
         <div class="hero-tags">
-          <n-tag size="small" :type="isLiveMode ? 'error' : 'info'">
+          <n-tag size="small" round :type="isLiveMode ? 'error' : 'info'">
             {{ isLiveMode ? "实战执行链路" : "模拟执行链路" }}
           </n-tag>
           <n-tag
             size="small"
+            round
             :type="autotradeStatus.running ? 'success' : 'default'"
           >
             {{ autotradeStatus.running ? "审批引擎运行中" : "审批引擎已停止" }}
           </n-tag>
-          <n-tag size="small" type="warning">
+          <n-tag size="small" round type="warning">
             数据窗口：最近 {{ windowDays }} 天
           </n-tag>
         </div>
       </div>
 
       <div class="hero-actions">
-        <n-button type="primary" @click="goToOps"> 进入操作台 </n-button>
-        <n-button :loading="loading" @click="loadData"> 刷新看板 </n-button>
+        <n-button type="primary" @click="goToOps">进入操作台</n-button>
+        <n-button secondary @click="goToDocs">查看文档</n-button>
+        <n-button tertiary :loading="loading" @click="loadData">刷新看板</n-button>
       </div>
     </section>
 
+    <n-alert
+      v-if="loadError"
+      type="error"
+      :show-icon="false"
+      class="error-alert"
+    >
+      {{ loadError }}
+    </n-alert>
+
     <n-spin :show="loading">
       <section class="filter-panel">
+        <div class="panel-head">
+          <div>
+            <span class="panel-kicker">Filters</span>
+            <h2>时间窗口与趋势指标</h2>
+          </div>
+        </div>
+
         <div class="filter-row">
           <span class="filter-label">时间窗口</span>
           <n-radio-group v-model:value="windowDays" size="small">
@@ -59,32 +81,28 @@
 
       <section class="kpi-grid">
         <article class="kpi-card">
-          <div class="kpi-label">执行总次数</div>
-          <div class="kpi-value">{{ executionSummary.total }}</div>
+          <span class="kpi-label">执行总次数</span>
+          <strong class="kpi-value">{{ executionSummary.total }}</strong>
         </article>
         <article class="kpi-card">
-          <div class="kpi-label">成功率</div>
-          <div class="kpi-value">{{ executionSummary.successRate }}%</div>
+          <span class="kpi-label">成功率</span>
+          <strong class="kpi-value">{{ executionSummary.successRate }}%</strong>
         </article>
         <article class="kpi-card">
-          <div class="kpi-label">
-            {{ isLiveMode ? "实战买入" : "模拟买入" }}
-          </div>
-          <div class="kpi-value">{{ executionSummary.buyCount }}</div>
+          <span class="kpi-label">{{ isLiveMode ? "买入次数" : "模拟买入次数" }}</span>
+          <strong class="kpi-value">{{ executionSummary.buyCount }}</strong>
         </article>
         <article class="kpi-card">
-          <div class="kpi-label">
-            {{ isLiveMode ? "实战卖出" : "模拟卖出" }}
-          </div>
-          <div class="kpi-value">{{ executionSummary.sellCount }}</div>
+          <span class="kpi-label">{{ isLiveMode ? "卖出次数" : "模拟卖出次数" }}</span>
+          <strong class="kpi-value">{{ executionSummary.sellCount }}</strong>
         </article>
         <article class="kpi-card">
-          <div class="kpi-label">待审核机会</div>
-          <div class="kpi-value">{{ metrics.pending_review_count || 0 }}</div>
+          <span class="kpi-label">待审核机会</span>
+          <strong class="kpi-value">{{ metrics.pending_review_count || 0 }}</strong>
         </article>
         <article class="kpi-card">
-          <div class="kpi-label">累计审批</div>
-          <div class="kpi-value">{{ autotradeStatus.total_approved || 0 }}</div>
+          <span class="kpi-label">累计审批</span>
+          <strong class="kpi-value">{{ autotradeStatus.total_approved || 0 }}</strong>
         </article>
       </section>
 
@@ -95,10 +113,18 @@
           class="trend-card"
         >
           <header class="trend-head">
-            <h3>{{ chart.title }}</h3>
-            <span>{{ chart.latest }}{{ chart.unit }}</span>
+            <div>
+              <h3>{{ chart.title }}</h3>
+              <p>{{ chart.description }}</p>
+            </div>
+            <span class="trend-latest">{{ chart.latest }}{{ chart.unit }}</span>
           </header>
-          <div class="trend-body" @mouseleave="clearActivePoint(chart.key)">
+
+          <div
+            v-if="chart.hasData"
+            class="trend-body"
+            @mouseleave="clearActivePoint(chart.key)"
+          >
             <svg
               viewBox="0 0 100 36"
               preserveAspectRatio="none"
@@ -115,15 +141,16 @@
                   <stop
                     offset="0%"
                     :stop-color="chart.gradientStart"
-                    stop-opacity="0.42"
+                    stop-opacity="0.35"
                   />
                   <stop
                     offset="100%"
                     :stop-color="chart.gradientEnd"
-                    stop-opacity="0.06"
+                    stop-opacity="0.04"
                   />
                 </linearGradient>
               </defs>
+
               <line
                 v-for="lineY in [8, 18, 28]"
                 :key="`line-${chart.key}-${lineY}`"
@@ -133,6 +160,7 @@
                 :y2="lineY"
                 class="trend-grid-line"
               />
+
               <polygon
                 :points="chart.areaPoints"
                 :fill="`url(#area-${chart.key})`"
@@ -156,7 +184,7 @@
                 v-if="activePointForChart(chart.key)"
                 :cx="activePointForChart(chart.key).x"
                 :cy="activePointForChart(chart.key).y"
-                r="1.5"
+                r="1.6"
                 :fill="chart.color"
                 class="trend-point"
               />
@@ -175,27 +203,24 @@
             <div
               v-if="activePointForChart(chart.key)"
               class="trend-tooltip"
-              :style="{
-                left: tooltipLeftStyle(activePointForChart(chart.key).x),
-              }"
+              :style="{ left: tooltipLeftStyle(activePointForChart(chart.key).x) }"
             >
-              <div class="tooltip-date">
-                {{ activePointForChart(chart.key).label }}
-              </div>
+              <div class="tooltip-date">{{ activePointForChart(chart.key).label }}</div>
               <div class="tooltip-value">
                 {{ activePointForChart(chart.key).value }}{{ chart.unit }}
               </div>
             </div>
           </div>
+
+          <div v-else class="trend-empty">
+            <n-empty size="small" :description="emptyChartDescription" />
+          </div>
+
           <footer class="trend-foot">
             <span>{{ trendLabels[0] || "-" }}</span>
             <span>{{ trendLabels[trendLabels.length - 1] || "-" }}</span>
           </footer>
         </article>
-      </section>
-
-      <section v-if="loadError" class="error-box">
-        {{ loadError }}
       </section>
     </n-spin>
   </div>
@@ -203,6 +228,7 @@
 
 <script setup>
 import cardFlipApi from "@/api/cardFlip";
+import useCardFlipOpsData from "@/views/card-flip-ops/useCardFlipOpsData";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
@@ -214,6 +240,9 @@ const props = defineProps({
 });
 
 const router = useRouter();
+const { getErrorMessage } = useCardFlipOpsData();
+const DASHBOARD_LOG_LIMIT = 500;
+
 const loading = ref(false);
 const loadError = ref("");
 const executionLogs = ref([]);
@@ -242,8 +271,11 @@ const modeTitle = computed(() =>
 );
 const modeDescription = computed(() =>
   isLiveMode.value
-    ? "聚焦实战执行链路，观察真实执行成功率、买卖曲线与审批节奏。"
-    : "聚焦模拟执行链路，先在 dry-run 环境验证策略与参数变化。",
+    ? "观察真实执行链路的结果，重点看买入、卖出、审批和成功率是否稳定。"
+    : "先在 dry-run 环境里验证策略、节奏和参数，再决定是否切换到实战盘。",
+);
+const emptyChartDescription = computed(() =>
+  isLiveMode.value ? "最近窗口暂无实战执行数据" : "最近窗口暂无模拟执行数据",
 );
 
 const dryRunFilter = computed(() => !isLiveMode.value);
@@ -253,7 +285,7 @@ const windowOptions = [
   { value: 30, label: "最近 30 天" },
 ];
 const metricOptions = [
-  { key: "exec-total", label: "执行次数" },
+  { key: "exec-total", label: "执行总次数" },
   { key: "exec-success-rate", label: "成功率" },
   { key: "exec-buy", label: "买入次数" },
   { key: "exec-sell", label: "卖出次数" },
@@ -266,7 +298,7 @@ const formatDayKey = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-const formatDayLabel = (key) => key.slice(5);
+const formatDayLabel = key => key.slice(5);
 
 const trendDayKeys = computed(() => {
   const days = [];
@@ -303,7 +335,7 @@ const modeWindowLogs = computed(() => {
 const trendSource = computed(() => {
   const days = trendDayKeys.value;
   const bucket = new Map(
-    days.map((day) => [
+    days.map(day => [
       day,
       {
         total: 0,
@@ -347,9 +379,9 @@ const trendLabels = computed(() => trendSource.value.labels);
 const executionSummary = computed(() => {
   const items = modeWindowLogs.value;
   const total = items.length;
-  const success = items.filter((item) => item.success).length;
-  const buyCount = items.filter((item) => item.action === "buy").length;
-  const sellCount = items.filter((item) => item.action === "sell").length;
+  const success = items.filter(item => item.success).length;
+  const buyCount = items.filter(item => item.action === "buy").length;
+  const sellCount = items.filter(item => item.action === "sell").length;
   return {
     total,
     successRate: total > 0 ? Number(((success / total) * 100).toFixed(1)) : 0,
@@ -364,14 +396,32 @@ const buildChartGeometry = (values, labels) => {
       points: [],
       linePoints: "",
       areaPoints: "",
+      hasData: false,
     };
   }
-  const safeValues = values.map((value) =>
-    Number.isFinite(value) ? value : 0,
-  );
+
+  const safeValues = values.map(value => (Number.isFinite(value) ? Number(value) : 0));
+  const hasData = safeValues.some(value => value > 0);
+  if (!hasData) {
+    return {
+      points: safeValues.map((value, index) => ({
+        index,
+        x:
+          values.length > 1
+            ? Number((index * (100 / (values.length - 1))).toFixed(2))
+            : 50,
+        y: 30,
+        value,
+        label: labels[index] || "-",
+      })),
+      linePoints: "",
+      areaPoints: "",
+      hasData: false,
+    };
+  }
+
   const maxValue = Math.max(1, ...safeValues);
   const xStep = safeValues.length > 1 ? 100 / (safeValues.length - 1) : 0;
-
   const points = safeValues.map((value, index) => {
     const x = Number((index * xStep).toFixed(2));
     const y = Number((34 - (value / maxValue) * 28).toFixed(2));
@@ -384,83 +434,85 @@ const buildChartGeometry = (values, labels) => {
     };
   });
 
-  const linePoints = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const linePoints = points.map(point => `${point.x},${point.y}`).join(" ");
   const areaPoints = `${linePoints} ${points[points.length - 1].x},34 ${points[0].x},34`;
   return {
     points,
     linePoints,
     areaPoints,
+    hasData: true,
   };
 };
 
 const chartCards = computed(() => {
   const source = trendSource.value;
-  const latest = (values) => (values.length ? values[values.length - 1] : 0);
+  const latest = values => (values.length ? values[values.length - 1] : 0);
   const cards = [
     {
       key: "exec-total",
-      title: "执行次数曲线",
+      title: "执行总次数",
+      description: "观察最近窗口内动作密度是否持续。",
       values: source.total,
       latest: latest(source.total),
       unit: "次",
-      color: "#3b82f6",
-      gradientStart: "#60a5fa",
-      gradientEnd: "#1d4ed8",
+      color: "#409eff",
+      gradientStart: "#8cc5ff",
+      gradientEnd: "#337ecc",
     },
     {
       key: "exec-success-rate",
-      title: "执行成功率曲线",
+      title: "成功率",
+      description: "观察执行链路在当前窗口内是否稳定。",
       values: source.successRate,
       latest: latest(source.successRate),
       unit: "%",
-      color: "#16a34a",
-      gradientStart: "#4ade80",
-      gradientEnd: "#15803d",
+      color: "#67c23a",
+      gradientStart: "#95d475",
+      gradientEnd: "#529b2e",
     },
     {
       key: "exec-buy",
-      title: isLiveMode.value ? "实战买入次数曲线" : "模拟买入次数曲线",
+      title: isLiveMode.value ? "买入次数" : "模拟买入次数",
+      description: "观察买入动作是否持续触发。",
       values: source.buy,
       latest: latest(source.buy),
       unit: "次",
-      color: "#f59e0b",
-      gradientStart: "#fbbf24",
-      gradientEnd: "#b45309",
+      color: "#e6a23c",
+      gradientStart: "#f3c980",
+      gradientEnd: "#b88230",
     },
     {
       key: "exec-sell",
-      title: isLiveMode.value ? "实战卖出次数曲线" : "模拟卖出次数曲线",
+      title: isLiveMode.value ? "卖出次数" : "模拟卖出次数",
+      description: "观察卖出动作是否形成闭环。",
       values: source.sell,
       latest: latest(source.sell),
       unit: "次",
-      color: "#ef4444",
-      gradientStart: "#f87171",
-      gradientEnd: "#b91c1c",
+      color: "#f56c6c",
+      gradientStart: "#f89f9f",
+      gradientEnd: "#dd6161",
     },
   ];
-  return cards.map((card) => {
-    const geometry = buildChartGeometry(card.values, source.labels);
-    return {
-      ...card,
-      ...geometry,
-    };
-  });
+
+  return cards.map(card => ({
+    ...card,
+    ...buildChartGeometry(card.values, source.labels),
+  }));
 });
 
 const visibleChartCards = computed(() => {
   const selected = selectedMetricKeys.value.length
     ? new Set(selectedMetricKeys.value)
-    : new Set(metricOptions.map((option) => option.key));
-  return chartCards.value.filter((chart) => selected.has(chart.key));
+    : new Set(metricOptions.map(option => option.key));
+  return chartCards.value.filter(chart => selected.has(chart.key));
 });
 
 const activePointMap = computed(() => {
   const result = {};
-  if (!hoverState.value.chartKey || hoverState.value.pointIndex < 0)
+  if (!hoverState.value.chartKey || hoverState.value.pointIndex < 0) {
     return result;
-  const chart = visibleChartCards.value.find(
-    (item) => item.key === hoverState.value.chartKey,
-  );
+  }
+  const chart = visibleChartCards.value.find(item => item.key === hoverState.value.chartKey);
   if (!chart) return result;
   const point = chart.points[hoverState.value.pointIndex];
   if (point) result[chart.key] = point;
@@ -480,8 +532,7 @@ const clearActivePoint = (chartKey = "") => {
   }
 };
 
-const activePointForChart = (chartKey) =>
-  activePointMap.value[chartKey] || null;
+const activePointForChart = chartKey => activePointMap.value[chartKey] || null;
 
 const tooltipLeftStyle = (x) => {
   const safeX = Number.isFinite(x) ? x : 50;
@@ -502,6 +553,13 @@ watch(
   { deep: true },
 );
 
+watch(
+  () => props.mode,
+  () => {
+    void loadData();
+  },
+);
+
 const loadData = async () => {
   loading.value = true;
   loadError.value = "";
@@ -511,7 +569,7 @@ const loadData = async () => {
       cardFlipApi.getMetrics(),
       cardFlipApi.getAutotradeStatus(),
       cardFlipApi.listExecutionLogs({
-        limit: 2000,
+        limit: DASHBOARD_LOG_LIMIT,
         dry_run: dryRunFilter.value,
       }),
     ]);
@@ -519,7 +577,7 @@ const loadData = async () => {
     autotradeStatus.value = autotradeRes || autotradeStatus.value;
     executionLogs.value = Array.isArray(logsRes?.items) ? logsRes.items : [];
   } catch (error) {
-    loadError.value = `看板数据加载失败: ${error.message}`;
+    loadError.value = `看板数据加载失败：${getErrorMessage(error, "请稍后重试")}`;
   } finally {
     loading.value = false;
   }
@@ -527,6 +585,10 @@ const loadData = async () => {
 
 const goToOps = () => {
   router.push("/admin/card-flip-ops");
+};
+
+const goToDocs = () => {
+  router.push("/admin/card-flip/docs");
 };
 
 onMounted(() => {
@@ -538,85 +600,102 @@ onMounted(() => {
 .mode-page {
   display: grid;
   gap: 18px;
-  padding: 20px;
-  min-height: calc(100vh - 64px);
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(245, 158, 11, 0.08),
-      transparent 26%
-    ),
-    radial-gradient(
-      circle at top left,
-      rgba(15, 118, 110, 0.08),
-      transparent 28%
-    ),
-    var(--bg-secondary);
+  min-height: 100%;
+}
+
+.mode-hero,
+.filter-panel,
+.kpi-card,
+.trend-card {
+  border: 1px solid var(--border-light);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-light);
 }
 
 .mode-hero {
-  border-radius: 22px;
-  padding: 28px;
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 20px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 248, 235, 0.97) 0%,
-    rgba(241, 247, 243, 0.97) 100%
-  );
-  border: 1px solid rgba(15, 118, 110, 0.12);
-  box-shadow: var(--shadow-medium);
-  color: var(--text-primary);
+  padding: 28px 30px;
+  border-radius: 18px;
 }
 
 .mode-hero.live {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 243, 234, 0.98) 0%,
-    rgba(252, 237, 231, 0.98) 100%
-  );
-  border-color: rgba(180, 83, 9, 0.18);
+  border-color: rgba(245, 108, 108, 0.22);
 }
 
 .hero-main {
-  max-width: 720px;
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
 }
 
-.hero-main h1 {
+.hero-kicker,
+.panel-kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary-color-light);
+  color: var(--primary-color);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hero-copy h1,
+.panel-head h2 {
   margin: 0;
-  font-size: 30px;
+  color: var(--text-primary);
 }
 
-.hero-main p {
-  margin: 10px 0 12px;
+.hero-copy h1 {
+  font-size: clamp(28px, 2.8vw, 38px);
+  line-height: 1.08;
+}
+
+.hero-copy p {
+  margin: 0;
   color: var(--text-secondary);
-  line-height: 1.7;
+  line-height: 1.8;
 }
 
-.hero-tags {
+.hero-tags,
+.hero-actions {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 10px;
 }
 
 .hero-actions {
-  display: flex;
-  align-items: flex-start;
   justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
+}
+
+.error-alert {
+  border-radius: 14px;
 }
 
 .filter-panel {
   display: grid;
-  gap: 12px;
-  padding: 18px 20px;
-  border: 1px solid var(--border-light);
-  border-radius: 18px;
-  background: rgba(255, 253, 248, 0.94);
-  box-shadow: var(--shadow-light);
+  gap: 14px;
+  padding: 22px 24px;
+  border-radius: 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.panel-head h2 {
+  margin-top: 10px;
+  font-size: 22px;
+  line-height: 1.12;
 }
 
 .filter-row {
@@ -636,70 +715,84 @@ onMounted(() => {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.kpi-card,
-.trend-card {
-  background: rgba(255, 253, 248, 0.95);
-  border-radius: 18px;
-  border: 1px solid var(--border-light);
-  box-shadow: var(--shadow-light);
+  gap: 14px;
 }
 
 .kpi-card {
+  display: grid;
+  gap: 10px;
   padding: 18px;
+  border-radius: 16px;
 }
 
 .kpi-label {
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: 13px;
+  font-weight: 600;
 }
 
 .kpi-value {
-  margin-top: 8px;
   color: var(--text-primary);
   font-size: 28px;
-  font-weight: 700;
   line-height: 1.1;
 }
 
 .trend-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .trend-card {
-  padding: 16px 18px;
+  padding: 18px 20px;
+  border-radius: 16px;
 }
 
 .trend-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: 14px;
 }
 
 .trend-head h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 18px;
   color: var(--text-primary);
 }
 
-.trend-head span {
-  color: var(--text-secondary);
+.trend-head p {
+  margin: 6px 0 0;
   font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.trend-latest {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .trend-body {
   position: relative;
-  height: 182px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
-  border: 1px solid #edf2f7;
-  overflow: hidden;
+  margin-top: 16px;
+  height: 220px;
+  padding: 16px 16px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border-light);
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.trend-empty {
+  display: grid;
+  place-items: center;
+  margin-top: 16px;
+  height: 220px;
+  border-radius: 16px;
+  border: 1px dashed var(--border-medium);
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
 }
 
 .trend-svg {
@@ -708,128 +801,114 @@ onMounted(() => {
 }
 
 .trend-grid-line {
-  stroke: #dbe3ef;
-  stroke-width: 0.5;
-  opacity: 0.85;
-}
-
-.trend-area {
-  pointer-events: none;
+  stroke: rgba(144, 147, 153, 0.22);
+  stroke-width: 0.35;
 }
 
 .trend-line {
   fill: none;
-  stroke-width: 1.8;
+  stroke-width: 1.15;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.15));
 }
 
 .trend-cursor {
-  stroke: #94a3b8;
-  stroke-width: 0.7;
-  stroke-dasharray: 1.8 1.4;
+  stroke: rgba(48, 49, 51, 0.18);
+  stroke-dasharray: 1.6 1.2;
+  stroke-width: 0.35;
 }
 
 .trend-point {
-  stroke: #ffffff;
-  stroke-width: 0.8;
+  filter: drop-shadow(0 0 6px rgba(15, 23, 42, 0.12));
 }
 
 .trend-hit {
-  fill: rgba(59, 130, 246, 0);
-  cursor: crosshair;
+  fill: transparent;
+  cursor: pointer;
 }
 
 .trend-tooltip {
   position: absolute;
-  top: 10px;
+  bottom: 10px;
   transform: translateX(-50%);
-  min-width: 90px;
-  padding: 6px 8px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.9);
-  color: #f8fafc;
+  min-width: 94px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(48, 49, 51, 0.92);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
   pointer-events: none;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
 }
 
 .tooltip-date {
-  font-size: 11px;
-  color: #cbd5e1;
-  line-height: 1.2;
+  font-size: 12px;
+  opacity: 0.78;
 }
 
 .tooltip-value {
-  margin-top: 2px;
-  font-size: 13px;
+  margin-top: 4px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.25;
 }
 
 .trend-foot {
   display: flex;
   justify-content: space-between;
-  color: var(--text-secondary);
+  margin-top: 10px;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
-.error-box {
-  border: 1px solid #fecaca;
-  background: #fff1f2;
-  color: #b91c1c;
-  border-radius: 14px;
-  padding: 12px;
-}
-
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
   .kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 860px) {
-  .mode-page {
-    padding: 14px;
-  }
-
+@media (max-width: 960px) {
   .mode-hero {
-    padding: 22px;
     flex-direction: column;
-  }
-
-  .hero-main {
-    max-width: none;
+    padding: 22px;
   }
 
   .hero-actions {
-    width: 100%;
     justify-content: flex-start;
-    align-items: center;
-  }
-
-  .filter-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
   }
 
   .trend-grid {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 720px) {
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-@media (max-width: 540px) {
-  .kpi-grid {
-    grid-template-columns: 1fr;
+  .trend-head {
+    flex-direction: column;
   }
 
-  .kpi-value {
+  .trend-body,
+  .trend-empty {
+    height: 190px;
+  }
+}
+
+@media (max-width: 520px) {
+  .mode-hero,
+  .filter-panel,
+  .kpi-card,
+  .trend-card {
+    border-radius: 14px;
+  }
+
+  .hero-copy h1 {
     font-size: 24px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

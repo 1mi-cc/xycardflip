@@ -9,14 +9,49 @@ const cardFlipRequest = axios.create({
   },
 });
 
+const clampListLimit = (value, fallback = 100) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed))
+    return fallback;
+  return Math.min(500, Math.max(1, Math.trunc(parsed)));
+};
+
+const stringifyCardFlipError = (value) => {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text && text !== "[object Object]" ? text : "";
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map(item => stringifyCardFlipError(item))
+      .filter(Boolean)
+      .join("；");
+  }
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  for (const key of ["detail", "message", "reason", "error", "msg"]) {
+    const text = stringifyCardFlipError(value[key]);
+    if (text)
+      return text;
+  }
+
+  const fieldPairs = Object.entries(value)
+    .map(([key, fieldValue]) => {
+      const text = stringifyCardFlipError(fieldValue);
+      return text ? `${key}: ${text}` : "";
+    })
+    .filter(Boolean);
+  return fieldPairs.join("；");
+};
+
 cardFlipRequest.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const message =
-      error?.response?.data?.detail
-      || error?.response?.data?.message
-      || error?.message
-      || "request failed";
+    const message = stringifyCardFlipError(error?.response?.data)
+      || stringifyCardFlipError(error?.message)
+      || "请求失败，请稍后重试";
     const wrapped = new Error(message);
     wrapped.status = error?.response?.status || 0;
     wrapped.payload = error?.response?.data || null;
@@ -290,7 +325,12 @@ const cardFlipApi = {
     return cardFlipRequest.post("/execution/retry-failed", null, { params });
   },
   listExecutionLogs(params = {}) {
-    return cardFlipRequest.get("/execution/logs", { params });
+    return cardFlipRequest.get("/execution/logs", {
+      params: {
+        ...params,
+        limit: clampListLimit(params.limit, 100),
+      },
+    });
   },
 };
 

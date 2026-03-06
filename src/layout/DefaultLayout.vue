@@ -105,7 +105,7 @@
           <n-dropdown :options="userMenuOptions" @select="handleUserAction">
             <div class="user-info">
               <n-avatar src="" size="small" fallback-src="/icons/xiaoyugan.png" />
-              <span class="username">{{ selectedToken?.name || "未选择Token" }}</span>
+              <span class="username">{{ authDisplayName }}</span>
               <n-icon><ChevronDown /></n-icon>
             </div>
           </n-dropdown>
@@ -277,6 +277,7 @@ const rawNavGroups = [
           { label: "模拟盘", path: "/admin/card-flip/sim", icon: TrendingUp, permission: "cardflip:view" },
           { label: "实战盘", path: "/admin/card-flip/live", icon: TrendingUp, permission: "cardflip:view" },
           { label: "操作台", path: "/admin/card-flip-ops", icon: Settings, permission: "cardflip:view" },
+          { label: "使用文档", path: "/admin/card-flip/docs", icon: ChatbubbleEllipsesSharp, permission: "cardflip:view" },
         ],
       },
     ],
@@ -289,6 +290,14 @@ const rawNavGroups = [
       { label: "任务管理", path: "/admin/daily-tasks", icon: Settings, permission: "task:view" },
       { label: "批量日常", path: "/admin/batch-daily-tasks", icon: Layers, permission: "task:batch" },
       { label: "消息测试", path: "/admin/message-test", icon: ChatbubbleEllipsesSharp, permission: "message:test" },
+    ],
+  },
+  {
+    key: "support",
+    label: "支持",
+    icon: ChatbubbleEllipsesSharp,
+    children: [
+      { label: "工单处理台", path: "/admin/support-tickets", icon: ChatbubbleEllipsesSharp, permission: "support:ticket:manage" },
     ],
   },
   {
@@ -644,11 +653,18 @@ const currentRoleKey = computed(() => {
 });
 
 const currentRoleLabel = computed(() => {
+  if (currentRoleKey.value === "user")
+    return "user 用户";
   if (currentRoleKey.value === "viewer")
     return "viewer 只读";
   if (currentRoleKey.value === "ops")
     return "ops 运营";
   return "admin 管理";
+});
+
+const authDisplayName = computed(() => {
+  const info = authStore.userInfo || {};
+  return info.nickname || info.username || selectedToken?.value?.name || "未登录";
 });
 
 const permissionSourceLabel = computed(() => {
@@ -926,12 +942,13 @@ const handleUserAction = (key) => {
       router.push("/admin/profile");
       break;
     case "settings":
-      router.push("/settings");
+      router.push("/admin/support-tickets");
       break;
     case "logout":
+      authStore.logout();
       tokenStore.clearAllTokens();
-      message.success("已清除所有Token");
-      router.push("/tokens");
+      message.success("已退出登录");
+      router.push("/login");
       break;
   }
 };
@@ -1031,17 +1048,15 @@ watch(navGroups, (groups) => {
 .admin-shell {
   display: flex;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 28%),
-    linear-gradient(180deg, #edf2ee 0%, #f5f6f3 100%);
+  background: var(--bg-secondary);
 }
 
 .sidebar {
   width: 240px;
-  background: linear-gradient(180deg, #1f2937 0%, #273549 100%);
-  color: #cbd5e1;
+  background: linear-gradient(180deg, var(--sidebar-bg) 0%, var(--sidebar-bg-soft) 100%);
+  color: var(--sidebar-text);
   transition: width 0.2s ease;
-  box-shadow: 18px 0 40px rgba(15, 23, 42, 0.12);
+  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.12);
   z-index: 12;
 }
 
@@ -1061,13 +1076,13 @@ watch(navGroups, (groups) => {
 .brand-logo {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 8px;
   flex: 0 0 auto;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
 }
 
 .brand-text {
-  color: #f8fafc;
+  color: #ffffff;
   font-weight: 700;
   white-space: nowrap;
   letter-spacing: 0.4px;
@@ -1075,32 +1090,34 @@ watch(navGroups, (groups) => {
 
 .menu-scroll {
   height: calc(100vh - 64px);
-  padding: 10px 0 14px;
+  padding: 12px 0 18px;
 }
 
 .menu-group {
-  margin: 0 10px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
+  margin: 0 12px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.02);
   overflow: hidden;
 }
 
 .group-header {
   width: 100%;
-  height: 46px;
+  height: 44px;
   border: none;
   background: transparent;
-  color: #cbd5e1;
+  color: var(--sidebar-text);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 14px;
   cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
 
   &:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: #fff;
+    color: #ffffff;
   }
 }
 
@@ -1112,6 +1129,7 @@ watch(navGroups, (groups) => {
 
 .group-arrow {
   font-size: 14px;
+  opacity: 0.72;
   transition: transform 0.15s ease;
 }
 
@@ -1120,30 +1138,31 @@ watch(navGroups, (groups) => {
 }
 
 .group-body {
-  padding: 4px 0 8px;
+  padding: 2px 0 8px;
 }
 
 .side-link {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 40px;
-  margin: 2px 8px;
+  min-height: 38px;
+  margin: 3px 8px;
   padding: 0 12px;
-  border-radius: 10px;
-  color: #cbd5e1;
+  border-radius: 8px;
+  color: var(--sidebar-text);
   text-decoration: none;
   transition: all 0.15s ease;
+  font-size: 13px;
 
   &:hover {
     background: rgba(255, 255, 255, 0.06);
-    color: #fff;
+    color: #ffffff;
   }
 
   &.active {
-    color: #ecfdf5;
-    background: linear-gradient(90deg, rgba(5, 150, 105, 0.22), rgba(5, 150, 105, 0.08));
-    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.22);
+    color: #ffffff;
+    background: linear-gradient(90deg, rgba(64, 158, 255, 0.28), rgba(64, 158, 255, 0.12));
+    box-shadow: inset 3px 0 0 0 var(--sidebar-active);
   }
 }
 
@@ -1152,7 +1171,7 @@ watch(navGroups, (groups) => {
 }
 
 .side-link-parent {
-  color: #e2e8f0;
+  color: #ffffff;
   cursor: default;
   margin-left: 20px;
   font-weight: 600;
@@ -1170,7 +1189,7 @@ watch(navGroups, (groups) => {
 .side-link-collapsed {
   justify-content: center;
   padding: 0;
-  margin: 2px 10px;
+  margin: 3px 10px;
 }
 
 .side-icon {
@@ -1189,7 +1208,7 @@ watch(navGroups, (groups) => {
 .topbar,
 .breadcrumb-bar,
 .tags-bar {
-  background: rgba(255, 253, 248, 0.92);
+  background: var(--header-bg);
   backdrop-filter: blur(10px);
 }
 
@@ -1199,7 +1218,7 @@ watch(navGroups, (groups) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
+  padding: 0 20px;
 }
 
 .topbar-left,
@@ -1217,15 +1236,15 @@ watch(navGroups, (groups) => {
 
 .perm-pill {
   color: var(--text-secondary);
-  background: #eef2ec;
+  background: var(--bg-tertiary);
 }
 
 .icon-btn {
   width: 36px;
   height: 36px;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  background: #ffffff;
+  border-radius: 8px;
   cursor: pointer;
   color: var(--text-secondary);
   display: inline-flex;
@@ -1234,14 +1253,14 @@ watch(navGroups, (groups) => {
   font-size: 18px;
 
   &:hover {
-    background: #eef4ef;
-    border-color: var(--border-light);
+    background: var(--bg-tertiary);
+    border-color: var(--border-medium);
     color: var(--text-primary);
   }
 }
 
 .page-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -1252,11 +1271,13 @@ watch(navGroups, (groups) => {
   gap: 8px;
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
   color: var(--text-primary);
 
   &:hover {
-    background: #eef4ef;
+    background: var(--bg-tertiary);
+    border-color: var(--border-light);
   }
 }
 
@@ -1269,7 +1290,7 @@ watch(navGroups, (groups) => {
 }
 
 .breadcrumb-bar {
-  padding: 10px 18px;
+  padding: 10px 20px;
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -1283,12 +1304,12 @@ watch(navGroups, (groups) => {
 }
 
 .tags-bar {
-  height: 44px;
+  height: 46px;
   border-bottom: 1px solid var(--border-light);
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 12px;
+  padding: 0 16px;
 }
 
 .tags-scroll {
@@ -1303,12 +1324,12 @@ watch(navGroups, (groups) => {
 .tag-item {
   height: 30px;
   border: 1px solid var(--border-light);
-  border-radius: 999px;
+  border-radius: 4px;
   padding: 0 10px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #fff;
+  background: #ffffff;
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
@@ -1319,10 +1340,9 @@ watch(navGroups, (groups) => {
   }
 
   &.active {
-    background: linear-gradient(90deg, #0f766e, #059669);
-    border-color: transparent;
-    color: #fff;
-    box-shadow: 0 10px 20px rgba(5, 150, 105, 0.18);
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #ffffff;
   }
 }
 
@@ -1343,8 +1363,8 @@ watch(navGroups, (groups) => {
 .tag-action-btn {
   height: 30px;
   border: 1px solid var(--border-light);
-  background: #fff;
-  border-radius: 999px;
+  background: #ffffff;
+  border-radius: 4px;
   padding: 0 12px;
   color: var(--text-secondary);
   font-size: 12px;
@@ -1352,12 +1372,12 @@ watch(navGroups, (groups) => {
 
   &:hover {
     color: var(--primary-color);
-    border-color: rgba(15, 118, 110, 0.24);
+    border-color: rgba(64, 158, 255, 0.34);
   }
 }
 
 .page-container {
-  padding: 18px;
+  padding: 18px 20px 24px;
   min-height: 0;
   flex: 1;
   overflow: auto;
@@ -1375,6 +1395,8 @@ watch(navGroups, (groups) => {
   font-size: 12px;
   color: var(--text-tertiary);
   margin: 0 8px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .drawer-item {
@@ -1388,12 +1410,12 @@ watch(navGroups, (groups) => {
   color: var(--text-primary);
 
   &:hover {
-    background: #f1f5f2;
+    background: var(--bg-tertiary);
   }
 
   &.active {
-    background: rgba(5, 150, 105, 0.1);
-    color: var(--success-color);
+    background: var(--primary-color-light);
+    color: var(--primary-color);
   }
 }
 
@@ -1437,7 +1459,7 @@ watch(navGroups, (groups) => {
   }
 
   .tags-bar {
-    padding: 0 8px;
+    padding: 0 10px;
   }
 
   .tag-action-btn {

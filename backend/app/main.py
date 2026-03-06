@@ -35,6 +35,7 @@ from .routers.valuation import router as valuation_router
 from .routers.vnpy import router as vnpy_router
 from .routers.ragflow import router as ragflow_router
 from .routers.supabase import router as supabase_router
+from .routers.support import router as support_router
 
 
 @asynccontextmanager
@@ -86,6 +87,7 @@ def _include_core_routers(app: FastAPI, prefix: str = "") -> None:
     app.include_router(supabase_router, prefix=prefix)
     app.include_router(vnpy_router, prefix=prefix)
     app.include_router(ragflow_router, prefix=prefix)
+    app.include_router(support_router, prefix=prefix)
 
 
 def _find_frontend_dist() -> Path | None:

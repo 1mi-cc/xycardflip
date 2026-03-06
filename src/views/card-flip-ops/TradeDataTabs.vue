@@ -1,12 +1,28 @@
 <template>
-  <n-tabs :value="activeTab" type="line" animated @update:value="value => $emit('update:activeTab', value)">
+  <n-tabs
+    :value="activeTab"
+    type="line"
+    animated
+    @update:value="value => $emit('update:activeTab', value)"
+  >
     <n-tab-pane name="opportunities" tab="待审核机会">
       <n-card :bordered="false" class="table-card">
+        <div class="tab-panel-head">
+          <div>
+            <div class="section-title">待审核机会</div>
+            <div class="section-subtitle">
+              这里保留人工审批与忽略入口，先看标的，再决定是否入场。
+            </div>
+          </div>
+          <n-tag size="small" type="info">{{ opportunities.length }} 条</n-tag>
+        </div>
+
         <n-spin :show="loading || listsLoading">
           <div v-if="opportunities.length === 0" class="empty-wrap">
             <n-empty description="暂无待审核机会" />
           </div>
-          <n-table v-else striped>
+
+          <n-table v-else striped class="ops-table">
             <thead>
               <tr>
                 <th>标题</th>
@@ -23,14 +39,31 @@
                 <td class="title-cell">{{ item.title }}</td>
                 <td>￥{{ toMoney(item.list_price) }}</td>
                 <td>￥{{ toMoney(item.expected_sale_price) }}</td>
-                <td :class="{ good: item.expected_profit > 0 }">￥{{ toMoney(item.expected_profit) }}</td>
+                <td :class="{ good: item.expected_profit > 0 }">
+                  ￥{{ toMoney(item.expected_profit) }}
+                </td>
                 <td :class="{ good: item.roi > 0 }">{{ toPercent(item.roi) }}</td>
                 <td>{{ item.score }}</td>
                 <td>
                   <n-space>
-                    <n-button size="small" @click="$emit('openListing', item)">查看商品</n-button>
-                    <n-button size="small" type="primary" @click="$emit('openApprove', item)">审批买入</n-button>
-                    <n-button size="small" tertiary type="error" @click="$emit('reject', item)">忽略</n-button>
+                    <n-button size="small" @click="$emit('openListing', item)">
+                      查看商品
+                    </n-button>
+                    <n-button
+                      size="small"
+                      type="primary"
+                      @click="$emit('openApprove', item)"
+                    >
+                      审批买入
+                    </n-button>
+                    <n-button
+                      size="small"
+                      tertiary
+                      type="error"
+                      @click="$emit('reject', item)"
+                    >
+                      忽略
+                    </n-button>
                   </n-space>
                 </td>
               </tr>
@@ -42,15 +75,25 @@
 
     <n-tab-pane name="blockedRisk" tab="风控拦截">
       <n-card :bordered="false" class="table-card">
+        <div class="tab-panel-head">
+          <div>
+            <div class="section-title">风控拦截</div>
+            <div class="section-subtitle">
+              支持阈值复核或一键忽略，用来清理风险可控的候选机会。
+            </div>
+          </div>
+          <n-tag size="small" type="warning">{{ blockedOpportunities.length }} 条</n-tag>
+        </div>
+
         <n-spin :show="loading || listsLoading">
-          <n-space style="margin-bottom: 12px">
+          <div class="table-toolbar">
             <n-input-number
               :value="blockedRiskThreshold"
               :min="0"
               :max="100"
               :step="1"
               style="width: 180px"
-              placeholder="风险分阈值"
+              placeholder="复核风险阈值"
               @update:value="value => $emit('update:blockedRiskThreshold', value)"
             />
             <n-button
@@ -59,7 +102,7 @@
               :disabled="blockedOpportunities.length === 0"
               @click="$emit('sendBlockedBatchToReview')"
             >
-              风险分 <= 阈值批量复核
+              阈值内批量复核
             </n-button>
             <n-button
               type="error"
@@ -68,13 +111,15 @@
               :disabled="blockedOpportunities.length === 0"
               @click="$emit('rejectBlockedBatch')"
             >
-              一键忽略拦截
+              一键忽略
             </n-button>
-          </n-space>
+          </div>
+
           <div v-if="blockedOpportunities.length === 0" class="empty-wrap">
             <n-empty description="暂无风控拦截机会" />
           </div>
-          <n-table v-else striped>
+
+          <n-table v-else striped class="ops-table">
             <thead>
               <tr>
                 <th>标题</th>
@@ -100,7 +145,12 @@
                   </n-tag>
                 </td>
                 <td>
-                  <n-space v-if="item.risk.reasons.length > 0" size="small">
+                  <n-space
+                    v-if="item.risk.reasons.length > 0"
+                    class="risk-reason-list"
+                    size="small"
+                    wrap
+                  >
                     <n-tag
                       v-for="reason in item.risk.reasons"
                       :key="`${item.opportunity_id}-${reason}`"
@@ -114,9 +164,24 @@
                 </td>
                 <td>
                   <n-space>
-                    <n-button size="small" @click="$emit('openListing', item)">查看商品</n-button>
-                    <n-button size="small" type="primary" @click="$emit('sendToReview', item)">申请复核</n-button>
-                    <n-button size="small" tertiary type="error" @click="$emit('reject', item)">忽略</n-button>
+                    <n-button size="small" @click="$emit('openListing', item)">
+                      查看商品
+                    </n-button>
+                    <n-button
+                      size="small"
+                      type="primary"
+                      @click="$emit('sendToReview', item)"
+                    >
+                      申请复核
+                    </n-button>
+                    <n-button
+                      size="small"
+                      tertiary
+                      type="error"
+                      @click="$emit('reject', item)"
+                    >
+                      忽略
+                    </n-button>
                   </n-space>
                 </td>
               </tr>
@@ -128,11 +193,22 @@
 
     <n-tab-pane name="activeTrades" tab="进行中交易">
       <n-card :bordered="false" class="table-card">
+        <div class="tab-panel-head">
+          <div>
+            <div class="section-title">进行中交易</div>
+            <div class="section-subtitle">
+              集中处理买入、上架、卖出和智能定价，不再把动作散落在主面板。
+            </div>
+          </div>
+          <n-tag size="small" type="success">{{ activeTrades.length }} 条</n-tag>
+        </div>
+
         <n-spin :show="loading || listsLoading">
           <div v-if="activeTrades.length === 0" class="empty-wrap">
             <n-empty description="暂无进行中交易" />
           </div>
-          <n-table v-else striped>
+
+          <n-table v-else striped class="ops-table">
             <thead>
               <tr>
                 <th>标题</th>
@@ -149,19 +225,29 @@
                 <td class="title-cell">{{ trade.title }}</td>
                 <td>￥{{ toMoney(trade.approved_buy_price) }}</td>
                 <td>￥{{ toMoney(trade.target_sell_price) }}</td>
-                <td>{{ trade.status }}</td>
+                <td>
+                  <n-tag size="small" :type="trade.status === 'listed_for_sale' ? 'success' : 'info'">
+                    {{ getTradeStatusText(trade.status) }}
+                  </n-tag>
+                </td>
                 <td class="title-cell">{{ trade.listing_url || "-" }}</td>
                 <td>
                   <div v-if="getPricingPreview(trade.trade_id)" class="pricing-preview">
                     <div class="pricing-main">
                       ￥{{ toMoney(getPricingPreview(trade.trade_id).recommended_price) }}
-                      <n-tag size="small" :type="getActionType(getPricingPreview(trade.trade_id).action)">
+                      <n-tag
+                        size="small"
+                        :type="getActionType(getPricingPreview(trade.trade_id).action)"
+                      >
                         {{ getActionText(getPricingPreview(trade.trade_id).action) }}
                       </n-tag>
                     </div>
                     <div class="pricing-sub">
-                      紧急度:
-                      <n-tag size="small" :type="getUrgencyType(getPricingPreview(trade.trade_id).urgency)">
+                      紧急度：
+                      <n-tag
+                        size="small"
+                        :type="getUrgencyType(getPricingPreview(trade.trade_id).urgency)"
+                      >
                         {{ getUrgencyText(getPricingPreview(trade.trade_id).urgency) }}
                       </n-tag>
                     </div>
@@ -170,7 +256,7 @@
                 </td>
                 <td>
                   <n-space vertical size="small">
-                    <n-space>
+                    <n-space wrap>
                       <n-button
                         v-if="trade.status === 'approved_for_buy'"
                         size="small"
@@ -187,7 +273,8 @@
                         标记已卖出
                       </n-button>
                     </n-space>
-                    <n-space>
+
+                    <n-space wrap>
                       <n-button
                         v-if="trade.status === 'approved_for_buy'"
                         size="small"
@@ -267,11 +354,20 @@
 
     <n-tab-pane name="soldTrades" tab="已卖出记录">
       <n-card :bordered="false" class="table-card">
+        <div class="tab-panel-head">
+          <div>
+            <div class="section-title">已卖出记录</div>
+            <div class="section-subtitle">快速回看成交表现和已落袋利润。</div>
+          </div>
+          <n-tag size="small">{{ soldTrades.length }} 条</n-tag>
+        </div>
+
         <n-spin :show="loading || listsLoading">
           <div v-if="soldTrades.length === 0" class="empty-wrap">
             <n-empty description="暂无已卖出记录" />
           </div>
-          <n-table v-else striped>
+
+          <n-table v-else striped class="ops-table">
             <thead>
               <tr>
                 <th>标题</th>
@@ -286,7 +382,11 @@
                 <td class="title-cell">{{ trade.title }}</td>
                 <td>￥{{ toMoney(trade.approved_buy_price) }}</td>
                 <td>￥{{ toMoney(trade.sold_price) }}</td>
-                <td :class="{ good: (trade.sold_price || 0) > (trade.approved_buy_price || 0) }">
+                <td
+                  :class="{
+                    good: (trade.sold_price || 0) > (trade.approved_buy_price || 0),
+                  }"
+                >
                   ￥{{ toMoney((trade.sold_price || 0) - (trade.approved_buy_price || 0)) }}
                 </td>
                 <td>{{ trade.updated_at }}</td>
@@ -299,8 +399,16 @@
 
     <n-tab-pane name="executionLogs" tab="执行日志">
       <n-card :bordered="false" class="table-card">
+        <div class="tab-panel-head">
+          <div>
+            <div class="section-title">执行日志</div>
+            <div class="section-subtitle">仅在切到这个页签后加载，适合排查执行失败与补跑。</div>
+          </div>
+          <n-tag size="small" type="warning">{{ executionLogs.length }} 条</n-tag>
+        </div>
+
         <n-spin :show="loading || executionLogsLoading">
-          <n-space style="margin-bottom: 12px" wrap>
+          <div class="table-toolbar">
             <n-input
               :value="executionLogFilters.trade_id"
               clearable
@@ -332,12 +440,18 @@
               style="width: 140px"
               @update:value="value => updateLogFilter('result', value)"
             />
-            <n-button size="small" type="primary" :loading="executionLogsLoading" @click="$emit('loadExecutionLogs')">
+            <n-button
+              size="small"
+              type="primary"
+              :loading="executionLogsLoading"
+              @click="$emit('loadExecutionLogs')"
+            >
               刷新日志
             </n-button>
             <n-button size="small" tertiary @click="$emit('resetExecutionLogFilters')">
               重置筛选
             </n-button>
+
             <n-select
               :value="executionRetryAction"
               :options="executionRetryActionOptions"
@@ -351,22 +465,35 @@
               style="width: 120px"
               @update:value="value => $emit('update:executionRetryLimit', value)"
             />
-            <n-switch :value="executionRetryDryRun" @update:value="value => $emit('update:executionRetryDryRun', value)">
+            <n-switch
+              :value="executionRetryDryRun"
+              @update:value="value => $emit('update:executionRetryDryRun', value)"
+            >
               <template #checked>retry dry-run</template>
               <template #unchecked>retry live</template>
             </n-switch>
-            <n-switch :value="executionRetryForce" @update:value="value => $emit('update:executionRetryForce', value)">
-              <template #checked>force</template>
-              <template #unchecked>strict</template>
+            <n-switch
+              :value="executionRetryForce"
+              @update:value="value => $emit('update:executionRetryForce', value)"
+            >
+              <template #checked>强制</template>
+              <template #unchecked>严格</template>
             </n-switch>
-            <n-button size="small" type="warning" :loading="executionRetryLoading" @click="$emit('retryFailedExecutions')">
-              重试失败
+            <n-button
+              size="small"
+              type="warning"
+              :loading="executionRetryLoading"
+              @click="$emit('retryFailedExecutions')"
+            >
+              重试失败记录
             </n-button>
-          </n-space>
+          </div>
+
           <div v-if="executionLogs.length === 0" class="empty-wrap">
             <n-empty description="暂无执行日志" />
           </div>
-          <n-table v-else striped size="small">
+
+          <n-table v-else striped size="small" class="ops-table">
             <thead>
               <tr>
                 <th>时间</th>
@@ -384,7 +511,7 @@
               <tr v-for="row in executionLogs" :key="row.id">
                 <td>{{ row.created_at }}</td>
                 <td>{{ row.trade_id }}</td>
-                <td>{{ row.action }}</td>
+                <td>{{ getExecutionActionText(row.action) }}</td>
                 <td>{{ row.provider }}</td>
                 <td>
                   <n-tag size="small" :type="row.dry_run ? 'warning' : 'success'">
@@ -483,4 +610,18 @@ const updateLogFilter = (key, value) => {
     [key]: value,
   });
 };
+
+const getTradeStatusText = (status) =>
+  ({
+    approved_for_buy: "待买入",
+    listed_for_sale: "已上架",
+    sold: "已卖出",
+  })[status] || status;
+
+const getExecutionActionText = (action) =>
+  ({
+    buy: "买入",
+    list: "上架",
+    sell: "卖出",
+  })[action] || action;
 </script>

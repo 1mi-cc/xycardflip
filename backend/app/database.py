@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Iterator
 
+from .auth_utils import hash_password
+from .auth_utils import utcnow
 from .config import settings
 
 
@@ -23,6 +25,7 @@ def _connect() -> sqlite3.Connection:
     settings.ensure_paths()
     conn = sqlite3.connect(settings.sqlite_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -63,7 +66,7 @@ def _snapshot_data_integrity(conn: sqlite3.Connection) -> dict[str, object]:
         for row in duplicate_rows
     ]
     return {
-        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "checked_at": utcnow().astimezone(timezone.utc).isoformat(),
         "trade_opportunity_unique_index": _trade_unique_index_exists(conn),
         "has_duplicate_trade_opportunities": bool(duplicate_items),
         "duplicate_trade_opportunity_count": len(duplicate_items),
@@ -105,6 +108,57 @@ def _ensure_trade_uniqueness(conn: sqlite3.Connection) -> dict[str, object]:
     )
     _set_data_integrity_status(snapshot)
     return snapshot
+
+
+def _ensure_seed_admin(conn: sqlite3.Connection) -> None:
+    username = settings.ui_auth_username.strip() or "operator"
+    nickname = settings.ui_auth_nickname.strip() or username
+    password_hash = hash_password(settings.ui_auth_password)
+    now = utcnow().isoformat()
+
+    existing = conn.execute(
+        """
+        SELECT id
+        FROM users
+        WHERE lower(username) = lower(?)
+        LIMIT 1
+        """,
+        (username,),
+    ).fetchone()
+
+    if existing:
+        conn.execute(
+            """
+            UPDATE users
+            SET nickname = ?,
+                password_hash = ?,
+                role = 'admin',
+                is_active = 1,
+                is_seeded_admin = 1,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (nickname, password_hash, now, int(existing["id"])),
+        )
+        return
+
+    conn.execute(
+        """
+        INSERT INTO users (
+            username,
+            email,
+            password_hash,
+            nickname,
+            role,
+            is_active,
+            is_seeded_admin,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, 'admin', 1, 1, ?, ?)
+        """,
+        (username, f"{username}@local", password_hash, nickname, now, now),
+    )
 
 
 def init_db() -> None:
@@ -221,6 +275,58 @@ def init_db() -> None:
         FOREIGN KEY(listing_row_id) REFERENCES listings_raw(id)
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        email TEXT UNIQUE,
+        password_hash TEXT NOT NULL,
+        nickname TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT 'user',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        is_seeded_admin INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS support_tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_no TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'general',
+        priority TEXT NOT NULL DEFAULT 'normal',
+        status TEXT NOT NULL DEFAULT 'open',
+        description TEXT NOT NULL DEFAULT '',
+        admin_assignee TEXT NOT NULL DEFAULT '',
+        last_reply_by TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        closed_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS support_ticket_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_id INTEGER NOT NULL,
+        author_user_id INTEGER NOT NULL,
+        author_role TEXT NOT NULL DEFAULT 'user',
+        is_internal INTEGER NOT NULL DEFAULT 0,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE,
+        FOREIGN KEY(author_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sales_title ON sales_raw(title);
     CREATE INDEX IF NOT EXISTS idx_listings_status ON listings_raw(status);
     CREATE INDEX IF NOT EXISTS idx_opp_status ON opportunities(status);
@@ -228,7 +334,13 @@ def init_db() -> None:
     CREATE INDEX IF NOT EXISTS idx_execution_logs_action_created ON execution_logs(action, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_opp_reject_logs_opp_id ON opportunity_reject_logs(opportunity_id);
     CREATE INDEX IF NOT EXISTS idx_opp_reject_logs_created ON opportunity_reject_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
+    CREATE INDEX IF NOT EXISTS idx_support_tickets_status_updated ON support_tickets(status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket_id ON support_ticket_messages(ticket_id, created_at ASC);
     """
     with get_conn() as conn:
         conn.executescript(ddl)
+        _ensure_seed_admin(conn)
         _ensure_trade_uniqueness(conn)

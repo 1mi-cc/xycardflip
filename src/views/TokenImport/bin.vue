@@ -1,251 +1,169 @@
 <template>
-  <!-- 手动输入表单 -->
-  <n-form
-    :model="importForm"
-    :label-placement="'top'"
-    :size="'large'"
-    :show-label="true"
-  >
-    <n-form-item :label="'游戏角色名称'" :show-label="true">
-      <n-input
-        v-model:value="importForm.name"
-        placeholder="例如：主号战士"
-        clearable
-      />
-    </n-form-item>
-
-    <n-form-item :label="'bin文件'" :show-label="true">
-      <a-upload
-        multiple
-        accept="*.bin,*.dmp"
-        @before-upload="uploadBin"
-        draggable
-        dropzone
-        placeholder="粘贴Token字符串..."
-        clearable
-      >
-        <!-- <div class="dropzone-content">
-          请点击上传或将bind文件拖拽到此处
-        </div> -->
-      </a-upload>
-    </n-form-item>
-    <a-list>
-      <a-list-item v-for="(role, index) in roleList" :key="index">
-        <div>
-          <strong>角色名称:</strong> {{ role.name || "未命名角色" }}<br />
-          <strong>Token:</strong>
-          <span style="word-break: break-all">{{ role.token }}</span
-          ><br />
-          <strong>服务器:</strong> {{ role.server || "未指定" }}
+  <div class="bin-import">
+    <n-form label-placement="top" size="large">
+      <n-form-item label="上传 bin / dmp 文件">
+        <input
+          ref="fileInputRef"
+          class="file-input"
+          type="file"
+          accept=".bin,.dmp"
+          multiple
+          @change="handleFileChange"
+        />
+        <div class="upload-hint">
+          选择一个或多个本地文件。系统会尝试把文件内容转换成可用 Token，并加入待导入列表。
         </div>
-      </a-list-item>
-    </a-list>
+      </n-form-item>
+    </n-form>
 
-    <!-- 角色详情 -->
-    <n-collapse>
-      <n-collapse-item title="角色详情 (可选)" name="optional">
-        <div class="optional-fields">
-          <n-form-item label="服务器">
-            <n-input
-              v-model:value="importForm.server"
-              placeholder="服务器名称"
-            />
-          </n-form-item>
-
-          <n-form-item label="自定义连接地址">
-            <n-input
-              v-model:value="importForm.wsUrl"
-              placeholder="留空使用默认连接"
-            />
-          </n-form-item>
+    <div v-if="roles.length" class="role-list">
+      <article v-for="role in roles" :key="role.name" class="role-card">
+        <div class="role-head">
+          <strong>{{ role.name }}</strong>
+          <n-tag size="small" type="info">{{ role.server || "未指定服务器" }}</n-tag>
         </div>
-      </n-collapse-item>
-    </n-collapse>
+        <div class="role-token">{{ role.token }}</div>
+      </article>
+    </div>
 
     <div class="form-actions">
-      <n-button
-        type="primary"
-        size="large"
-        block
-        :loading="isImporting"
-        @click="handleImport"
-      >
-        <template #icon>
-          <n-icon>
-            <CloudUpload />
-          </n-icon>
-        </template>
-        添加Token
+      <n-button type="primary" block :loading="submitting" @click="handleSubmit">
+        添加 Token
       </n-button>
-
-      <n-button v-if="tokenStore.hasTokens" size="large" block @click="cancel">
+      <n-button v-if="tokenStore.hasTokens" block @click="handleCancel">
         取消
       </n-button>
     </div>
-  </n-form>
+  </div>
 </template>
 
-<script lang="ts" setup>
-import { ref, reactive } from "vue";
+<script setup lang="ts">
+import { ref } from "vue";
+import { useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
-import { CloudUpload } from "@vicons/ionicons5";
-
-import {
-  NForm,
-  NFormItem,
-  NInput,
-  NButton,
-  NIcon,
-  NCollapse,
-  NCollapseItem,
-  useMessage,
-} from "naive-ui";
-
-import PQueue from "p-queue";
-// import { useI18n } from 'vue-i18n';
-import useIndexedDB from "@/hooks/useIndexedDB";
 import { transformToken } from "@/utils/token";
 
-const $emit = defineEmits(["cancel", "ok"]);
-
-const { storeArrayBuffer } = useIndexedDB();
-
-const cancel = () => {
-  roleList.value = [];
-  $emit("cancel");
+type RoleItem = {
+  name: string;
+  token: string;
+  server: string;
+  wsUrl: string;
 };
 
+const emit = defineEmits(["cancel", "ok"]);
 const tokenStore = useTokenStore();
 const message = useMessage();
-const isImporting = ref(false);
-const importForm = reactive({
-  name: "",
-  server: "",
-  wsUrl: "",
-  importMethod: '',
-});
-const roleList = ref<
-  Array<{ name: string; token: string; server: string; wsUrl: string }>
->([]);
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const roles = ref<RoleItem[]>([]);
+const submitting = ref(false);
 
-const tQueue = new PQueue({ concurrency: 1, interval: 1000 });
-
-const initName = (fileName: string) => {
-  if (!fileName) return;
-  fileName = fileName.trim();
-  let binRes = fileName.match(/^bin-(.*?)服-([0-2])-([0-9]{6,12})-(.*)\.bin$/);
-  console.log(binRes);
-  if (binRes) {
-    importForm.name = `${binRes[1]}_${binRes[2]}_${binRes[4]}`;
-    return {
-      server: binRes[1],
-      roleIndex: binRes[2],
-      roleId: binRes[3],
-      roleName: binRes[4],
-    };
+const handleCancel = () => {
+  roles.value = [];
+  if (fileInputRef.value) {
+    fileInputRef.value.value = "";
   }
-  return {
-    server: "",
-    roleIndex: "",
-    roleId: "",
-    roleName: importForm.name || "",
-  };
+  emit("cancel");
 };
 
-const uploadBin = (binFile: File) => {
-  tQueue.add(async () => {
-    console.log("上传文件数据:", binFile);
-    const roleMeta = initName(binFile.name) as any;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const userToken = e.target?.result as ArrayBuffer;
-      // console.log('转换Token:', userToken);
-      const roleToken = await transformToken(userToken);
-      const roleName = roleMeta.roleName || binFile.name.split(".")?.[0] || "";
-      // 刷新indexDB数据库token数据
-      storeArrayBuffer(roleName, userToken);
-      // 上传列表中发现已存在的重复名称，提示消息
-      if (roleList.value.some((role) => role.name === roleName)) {
-        message.error("上传列表中已存在同名角色! ");
-        return;
-      }
-      // 检查待上传的角色是否已在tokenStore中存在
-      const existingToken = tokenStore.gameTokens.find(
-        (t) => t.name === roleName,
-      );
-      if (existingToken) {
-        message.warning(`角色"${roleName}"已存在，将更新该角色的Token`);
-      }
-      message.success("Token读取成功，请检查角色名称等信息后提交");
-      roleList.value.push({
-        name: roleName,
-        token: roleToken,
-        server: roleMeta.server + "" + roleMeta.roleIndex || "",
-        wsUrl: importForm.wsUrl || "",
-        importMethod: 'bin'
+const handleFileChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = Array.from(target.files || []);
+  if (!files.length) return;
+
+  for (const file of files) {
+    try {
+      const buffer = await file.arrayBuffer();
+      const token = await transformToken(buffer);
+      const name = file.name.replace(/\.(bin|dmp)$/i, "");
+      roles.value.push({
+        name,
+        token,
+        server: "",
+        wsUrl: "",
       });
-    };
-    reader.onerror = () => {
-      message.error("读取文件失败，请重试");
-    };
-    reader.readAsArrayBuffer(binFile);
-  });
-  return false; // 阻止自动上传
+    } catch (error: any) {
+      message.error(`${file.name} 转换失败：${error?.message || "未知错误"}`);
+    }
+  }
 };
 
-const handleImport = async () => {
-  if (roleList.value.length === 0) {
-    message.error("请先上传bin文件！");
+const handleSubmit = async () => {
+  if (!roles.value.length) {
+    message.warning("请先上传 bin 文件");
     return;
   }
-  roleList.value.forEach((role) => {
-    // tokenStore.gameTokens中发现已存在的重复名称，则移出token后重新添加
-    const gameToken = tokenStore.gameTokens.find((t) => t.name === role.name);
-    if (gameToken) {
-      console.log("移除同名token:", gameToken);
-      // tokenStore.removeToken(gameToken.id);
-      tokenStore.updateToken(gameToken.id, {
-        ...role,
-      });
-    } else {
+
+  submitting.value = true;
+  try {
+    for (const role of roles.value) {
       tokenStore.addToken({
-        ...role,
+        name: role.name,
+        token: role.token,
+        server: role.server,
+        wsUrl: role.wsUrl,
+        importMethod: "bin",
       });
     }
-  });
-  console.log("当前Token列表:", tokenStore.gameTokens);
-  message.success("Token添加成功");
-  roleList.value = [];
-  $emit("ok");
+    message.success(`已导入 ${roles.value.length} 个 Token`);
+    roles.value = [];
+    if (fileInputRef.value) {
+      fileInputRef.value.value = "";
+    }
+    emit("ok");
+  } finally {
+    submitting.value = false;
+  }
 };
 </script>
 
 <style scoped lang="scss">
-.optional-fields {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
+.file-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-medium);
+  border-radius: 12px;
+  background: #fff;
+}
 
-  n-form-item {
-    flex: 1;
-    min-width: 200px;
-  }
+.upload-hint {
+  margin-top: 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.role-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.role-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+}
+
+.role-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.role-token {
+  margin-top: 10px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  word-break: break-all;
+  color: var(--text-secondary);
 }
 
 .form-actions {
-  margin-top: 24px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 12px;
-}
-
-.dropzone-content {
-  width: 100%;
-  border: 1px dashed #fcc;
-  border-radius: 8px;
-  text-align: center;
-  color: #888;
-  padding: 40px 20px;
-  font-size: 12px;
+  margin-top: 20px;
 }
 </style>

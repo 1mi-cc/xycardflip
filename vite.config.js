@@ -98,6 +98,7 @@ export default defineConfig(async () => {
   ].filter(Boolean);
 
   return {
+    root: __dirname,
     plugins,
     resolve: {
       alias: {

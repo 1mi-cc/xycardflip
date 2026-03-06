@@ -301,8 +301,11 @@ class Settings:
     supabase_sync_batch_size: int = _get_int("SUPABASE_SYNC_BATCH_SIZE", 200)
     auto_start_supabase_sync: bool = _get_bool("AUTO_START_SUPABASE_SYNC", False)
     ui_auth_username: str = os.getenv("UI_AUTH_USERNAME", "operator")
+    ui_auth_password: str = os.getenv("UI_AUTH_PASSWORD", "admin123456")
     ui_auth_nickname: str = os.getenv("UI_AUTH_NICKNAME", "本地操作员")
     ui_auth_default_role: str = os.getenv("UI_AUTH_DEFAULT_ROLE", "admin").strip().lower() or "admin"
+    ui_auth_session_hours: int = _get_int("UI_AUTH_SESSION_HOURS", 72)
+    ui_auth_allow_registration: bool = _get_bool("UI_AUTH_ALLOW_REGISTRATION", True)
     ui_user_roles: str = os.getenv("UI_USER_ROLES", "")
     ui_menu_roles: tuple[str, ...] = _parse_csv_tokens(
         os.getenv("UI_MENU_ROLES", "admin"),

@@ -6,206 +6,60 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi import Request
 
+from ..auth_utils import auth_failed
+from ..auth_utils import build_user_profile
+from ..auth_utils import extract_bearer_token
+from ..auth_utils import fetch_user_by_session_token
+from ..auth_utils import hash_password
+from ..auth_utils import issue_session_token
+from ..auth_utils import normalize_role
+from ..auth_utils import require_current_user
+from ..auth_utils import session_expires_at
+from ..auth_utils import success_response
+from ..auth_utils import utcnow_iso
+from ..auth_utils import verify_password
 from ..config import settings
+from ..database import get_conn
 
 router = APIRouter(tags=["auth"])
 
-VALID_ROLES: tuple[str, ...] = ("admin", "ops", "viewer")
-TOKEN_USERNAME_RE = re.compile(r"^local_token_(?P<username>[A-Za-z0-9_.@-]+)$")
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{3,32}$")
 
 
-def _normalize_strings(values: list[str] | tuple[str, ...]) -> list[str]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for raw in values:
-        text = str(raw or "").strip()
-        if not text:
-            continue
-        lowered = text.lower()
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        normalized.append(text)
-    return normalized
+def _normalize_body(payload: dict[str, Any] | None) -> dict[str, Any]:
+    return payload if isinstance(payload, dict) else {}
 
 
-def _to_string_array(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return _normalize_strings([str(item) for item in value if isinstance(item, str)])
-
-
-def _normalize_role(role: str | None) -> str:
-    text = (role or "").strip().lower()
-    if text in VALID_ROLES:
-        return text
-    if text in {"operator", "operation", "ops-user"}:
-        return "ops"
-    if text in {"read", "readonly", "guest"}:
-        return "viewer"
-    return settings.ui_auth_default_role if settings.ui_auth_default_role in VALID_ROLES else "admin"
-
-
-def _role_permission_map() -> dict[str, list[str]]:
+def _serialize_auth_payload(user_row: Any, token: str) -> dict[str, Any]:
+    profile = build_user_profile(user_row)
     return {
-        "admin": _normalize_strings(list(settings.ui_role_permissions_admin)),
-        "ops": _normalize_strings(list(settings.ui_role_permissions_ops)),
-        "viewer": _normalize_strings(list(settings.ui_role_permissions_viewer)),
+        "token": token,
+        "user": profile,
+        "roles": profile["roles"],
+        "permissions": profile["permissions"],
+        "perms": profile["perms"],
     }
 
 
-def _parse_user_role_map(raw: str | None) -> dict[str, list[str]]:
-    text = (raw or "").strip()
-    if not text:
-        return {}
-
-    mapping: dict[str, list[str]] = {}
-    segments = [part.strip() for part in re.split(r"[,;\n\r]+", text) if part.strip()]
-    for segment in segments:
-        if ":" not in segment:
-            continue
-        username, raw_roles = segment.split(":", 1)
-        key = username.strip().lower()
-        if not key:
-            continue
-        role_parts = [item.strip() for item in re.split(r"[|/]+", raw_roles) if item.strip()]
-        normalized_roles = [_normalize_role(item) for item in role_parts]
-        normalized_roles = _normalize_strings(normalized_roles)
-        if not normalized_roles:
-            normalized_roles = [_normalize_role(settings.ui_auth_default_role)]
-        mapping[key] = normalized_roles
-    return mapping
-
-
-def _extract_bearer_token(request: Request) -> str:
-    auth_header = (request.headers.get("authorization") or "").strip()
-    if not auth_header:
-        return ""
-    lower = auth_header.lower()
-    if lower.startswith("bearer "):
-        return auth_header[7:].strip()
-    return ""
-
-
-def _username_from_token(token: str) -> str:
-    if not token:
-        return ""
-    matched = TOKEN_USERNAME_RE.match(token)
-    if not matched:
-        return ""
-    return matched.group("username").strip()
-
-
-def _resolve_username(request: Request, payload: dict[str, Any] | None = None) -> str:
-    body = payload or {}
-    for key in ("username", "userName", "user"):
-        value = str(body.get(key) or "").strip()
-        if value:
-            return value
-
-    from_query = (request.query_params.get("username") or "").strip()
-    if from_query:
-        return from_query
-
-    from_header = (request.headers.get("x-username") or "").strip()
-    if from_header:
-        return from_header
-
-    from_token = _username_from_token(_extract_bearer_token(request))
-    if from_token:
-        return from_token
-
-    return settings.ui_auth_username
-
-
-def _resolve_role_keys(
-    request: Request,
-    username: str,
-    payload: dict[str, Any] | None = None,
-) -> list[str]:
-    body = payload or {}
-
-    if isinstance(body.get("role"), str):
-        return [_normalize_role(body.get("role"))]
-
-    incoming_roles = _to_string_array(body.get("roles"))
-    if incoming_roles:
-        return _normalize_strings([_normalize_role(role) for role in incoming_roles])
-
-    user_role_map = _parse_user_role_map(settings.ui_user_roles)
-    mapped = user_role_map.get(username.lower())
-    if mapped:
-        return mapped
-
-    configured = _normalize_strings([_normalize_role(role) for role in settings.ui_menu_roles])
-    if configured:
-        return configured
-
-    query_role = _normalize_role(request.query_params.get("role"))
-    if query_role:
-        return [query_role]
-
-    return [_normalize_role(settings.ui_auth_default_role)]
-
-
-def _resolve_permissions(role_keys: list[str]) -> list[str]:
-    role_to_permissions = _role_permission_map()
-    merged: list[str] = []
-    seen: set[str] = set()
-
-    for role in role_keys:
-        permissions = role_to_permissions.get(role)
-        if permissions is None:
-            permissions = _normalize_strings(list(settings.ui_menu_permissions))
-        for permission in permissions:
-            lowered = permission.lower()
-            if lowered in seen:
-                continue
-            seen.add(lowered)
-            merged.append(permission)
-    return merged
-
-
-def _build_user_profile(request: Request, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    username = _resolve_username(request, payload)
-    role_keys = _resolve_role_keys(request, username, payload)
-    permissions = _resolve_permissions(role_keys)
-    roles = [
-        {
-            "key": role,
-            "name": role,
-            "permissions": permissions,
-            "perms": permissions,
-        }
-        for role in role_keys
-    ]
-
-    return {
-        "id": f"user_{username}",
-        "username": username,
-        "nickname": settings.ui_auth_nickname or username,
-        "roles": roles,
-        "roleKeys": role_keys,
-        "permissions": permissions,
-        "perms": permissions,
-    }
-
-
-def _success(data: dict[str, Any], message: str = "success") -> dict[str, Any]:
-    return {
-        "success": True,
-        "data": data,
-        "message": message,
-    }
+def _lookup_user_for_login(conn, identity: str):
+    return conn.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE lower(username) = lower(?) OR lower(email) = lower(?)
+        LIMIT 1
+        """,
+        (identity, identity),
+    ).fetchone()
 
 
 @router.get("/auth/user")
 def get_auth_user(request: Request) -> dict[str, Any]:
-    profile = _build_user_profile(request)
-    token = _extract_bearer_token(request)
-    if token:
-        profile["token"] = token
-    return _success(profile)
+    with get_conn() as conn:
+        user_row = require_current_user(conn, request)
+        token = extract_bearer_token(request)
+        payload = _serialize_auth_payload(user_row, token)
+    return success_response(payload)
 
 
 @router.get("/auth/userinfo")
@@ -215,64 +69,133 @@ def get_auth_userinfo(request: Request) -> dict[str, Any]:
 
 @router.get("/user/profile")
 def get_user_profile(request: Request) -> dict[str, Any]:
-    profile = _build_user_profile(request)
-    payload = {
-        "user": profile,
-        "roles": profile["roles"],
-        "permissions": profile["permissions"],
-        "perms": profile["perms"],
-    }
-    return _success(payload)
-
-
-@router.post("/auth/login")
-def login(request: Request, body: dict[str, Any] | None = None) -> dict[str, Any]:
-    payload = body or {}
-    profile = _build_user_profile(request, payload)
-    username = profile["username"]
-    token = f"local_token_{username}"
-    return _success(
+    with get_conn() as conn:
+        user_row = require_current_user(conn, request)
+        profile = build_user_profile(user_row)
+    return success_response(
         {
-            "token": token,
             "user": profile,
             "roles": profile["roles"],
             "permissions": profile["permissions"],
             "perms": profile["perms"],
-        },
-        message="login_success",
+        }
     )
 
 
+@router.post("/auth/login")
+def login(request: Request, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = _normalize_body(body)
+    identity = str(payload.get("username") or payload.get("email") or "").strip()
+    password = str(payload.get("password") or "").strip()
+    if not identity or not password:
+        auth_failed("请输入用户名和密码", status_code=400)
+
+    with get_conn() as conn:
+        user_row = _lookup_user_for_login(conn, identity)
+        if user_row is None or not verify_password(password, user_row["password_hash"]):
+            auth_failed("用户名或密码错误", status_code=401)
+        if int(user_row["is_active"] or 0) != 1:
+            auth_failed("当前账号已被停用", status_code=403)
+
+        token = issue_session_token()
+        now = utcnow_iso()
+        conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (int(user_row["id"]),))
+        conn.execute(
+            """
+            INSERT INTO auth_sessions (user_id, token, expires_at, created_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (int(user_row["id"]), token, session_expires_at(), now, now),
+        )
+
+        refreshed = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_row["id"]),)).fetchone()
+        payload = _serialize_auth_payload(refreshed, token)
+    return success_response(payload, message="login_success")
+
+
 @router.post("/auth/register")
-def register(request: Request, body: dict[str, Any] | None = None) -> dict[str, Any]:
-    payload = body or {}
+def register(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not settings.ui_auth_allow_registration:
+        auth_failed("当前软件未开放自助注册", status_code=403)
+
+    payload = _normalize_body(body)
     username = str(payload.get("username") or "").strip()
-    role_keys = _resolve_role_keys(request, username or settings.ui_auth_username, payload)
-    return _success(
+    email = str(payload.get("email") or "").strip()
+    password = str(payload.get("password") or "").strip()
+    nickname = str(payload.get("nickname") or payload.get("displayName") or username).strip()
+
+    if not USERNAME_RE.match(username):
+        auth_failed("用户名需为 3-32 位字母、数字或 ._@-", status_code=400)
+    if len(password) < 6:
+        auth_failed("密码长度不能少于 6 位", status_code=400)
+    if email and "@" not in email:
+        auth_failed("邮箱格式不正确", status_code=400)
+
+    role = normalize_role(payload.get("role"))
+    if role != "user":
+        role = "user"
+
+    with get_conn() as conn:
+        duplicate = conn.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE lower(username) = lower(?)
+               OR (? <> '' AND lower(email) = lower(?))
+            LIMIT 1
+            """,
+            (username, email, email),
+        ).fetchone()
+        if duplicate is not None:
+            auth_failed("用户名或邮箱已存在", status_code=409)
+
+        now = utcnow_iso()
+        conn.execute(
+            """
+            INSERT INTO users (
+                username,
+                email,
+                password_hash,
+                nickname,
+                role,
+                is_active,
+                is_seeded_admin,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)
+            """,
+            (username, email or None, hash_password(password), nickname or username, role, now, now),
+        )
+
+    return success_response(
         {
             "username": username,
             "registered": True,
-            "roleKeys": role_keys,
+            "roleKeys": [role],
         },
         message="register_success",
     )
 
 
 @router.post("/auth/logout")
-def logout() -> dict[str, Any]:
-    return _success({"logout": True}, message="logout_success")
+def logout(request: Request) -> dict[str, Any]:
+    token = extract_bearer_token(request)
+    if token:
+        with get_conn() as conn:
+            conn.execute("DELETE FROM auth_sessions WHERE token = ?", (token,))
+    return success_response({"logout": True}, message="logout_success")
 
 
 @router.post("/auth/refresh")
 def refresh(request: Request) -> dict[str, Any]:
-    profile = _build_user_profile(request)
-    token = _extract_bearer_token(request) or f"local_token_{profile['username']}"
-    return _success(
-        {
-            "token": token,
-            "roles": profile["roles"],
-            "permissions": profile["permissions"],
-            "perms": profile["perms"],
-        },
-        message="refresh_success",
-    )
+    token = extract_bearer_token(request)
+    if not token:
+        auth_failed("请先登录", status_code=401)
+
+    with get_conn() as conn:
+        user_row = fetch_user_by_session_token(conn, token, touch_session=True)
+        if user_row is None:
+            auth_failed("登录已失效，请重新登录", status_code=401)
+        payload = _serialize_auth_payload(user_row, token)
+    return success_response(payload, message="refresh_success")

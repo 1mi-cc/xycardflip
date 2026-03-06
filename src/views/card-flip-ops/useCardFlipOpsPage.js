@@ -1,4 +1,4 @@
-import { computed, onMounted, reactive, ref, watch } from "vue";
+﻿import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import cardFlipApi from "@/api/cardFlip";
 import { useAuthStore } from "@/stores/auth";
@@ -354,7 +354,7 @@ export function useCardFlipOpsPage() {
       low: "低风险",
     })[level] || "未知";
   const riskReasonTextMap = {
-    list_price_above_buy_limit: "当前价高于买入上限",
+    list_price_above_buy_limit: "当前价格高于买入上限",
     buy_limit_non_positive: "买入上限异常",
     too_few_comparables: "可比成交样本不足",
     low_model_confidence: "模型置信度偏低",
@@ -378,10 +378,12 @@ export function useCardFlipOpsPage() {
   const monitorStopReason = computed(() => {
     const monitor = automationStatus.value?.monitor || {};
     if (monitor.is_running) return "";
-    if (monitor.circuit_open && monitor.circuit_reason)
-      return `熔断中: ${monitor.circuit_reason}`;
-    if (monitor.last_error)
-      return `最近错误: ${shortText(monitor.last_error, 120)}`;
+    if (monitor.circuit_open && monitor.circuit_reason) {
+      return `熔断中：${monitor.circuit_reason}`;
+    }
+    if (monitor.last_error) {
+      return `最近错误：${shortText(monitor.last_error, 120)}`;
+    }
     return "未运行（可能未启动或启动被拒绝）";
   });
   const monitorCookieStatusHint = computed(() => {
@@ -392,7 +394,7 @@ export function useCardFlipOpsPage() {
     const expireAt = String(cookieMeta?.m_h5_tk_expire_at || "");
     const expired = Boolean(cookieMeta?.m_h5_tk_expired);
     if (expired || ttl <= 0) {
-      return "Cookie token 已过期，建议立即点击“刷新Cookie”后再启动 Monitor。";
+      return "Cookie token 已过期，建议先刷新 Cookie，再启动 Monitor。";
     }
     if (ttl <= 3600) {
       const mins = Math.max(1, Math.floor(ttl / 60));
@@ -417,7 +419,6 @@ export function useCardFlipOpsPage() {
     if (!items.length) return "";
     return "有自动化任务正在执行，重复触发会立即返回 busy。";
   });
-
   const cachePricingItems = (items = []) => {
     const merged = { ...pricingPreviewMap.value };
     for (const item of items) {
@@ -643,11 +644,11 @@ export function useCardFlipOpsPage() {
       if (!silent) showActionError("加载健康状态失败", error);
       return null;
     } finally {
-      if (!silent && isLatestRequest("health", requestId))
+      if (!silent && isLatestRequest("health", requestId)) {
         healthLoading.value = false;
+      }
     }
   };
-
   const loadOverview = async (silent = false) => {
     const requestId = nextRequestId("overview");
     if (!silent) overviewLoading.value = true;
@@ -656,8 +657,9 @@ export function useCardFlipOpsPage() {
         cardFlipApi.getMetrics(),
         cardFlipApi.getExecutionStatus(),
       ]);
-      if (!isLatestRequest("overview", requestId))
+      if (!isLatestRequest("overview", requestId)) {
         return { metricsRes, executionRes };
+      }
       metrics.value = metricsRes || metrics.value;
       executionStatus.value = executionRes || executionStatus.value;
       shardErrors.overview = "";
@@ -668,11 +670,11 @@ export function useCardFlipOpsPage() {
       if (!silent) showActionError("加载总览失败", error);
       return null;
     } finally {
-      if (!silent && isLatestRequest("overview", requestId))
+      if (!silent && isLatestRequest("overview", requestId)) {
         overviewLoading.value = false;
+      }
     }
   };
-
   const loadAutomationStatus = async (silent = false) => {
     const requestId = nextRequestId("automation");
     if (!silent) automationStatusLoading.value = true;
@@ -689,11 +691,11 @@ export function useCardFlipOpsPage() {
       if (!silent) showActionError("加载 Automation 状态失败", error);
       return null;
     } finally {
-      if (!silent && isLatestRequest("automation", requestId))
+      if (!silent && isLatestRequest("automation", requestId)) {
         automationStatusLoading.value = false;
+      }
     }
   };
-
   const loadAutotradeStatus = async (silent = false) => {
     const requestId = nextRequestId("autotrade");
     if (!silent) autotradeStatusLoading.value = true;
@@ -709,11 +711,11 @@ export function useCardFlipOpsPage() {
       if (!silent) showActionError("加载 AutoTrade 状态失败", error);
       return null;
     } finally {
-      if (!silent && isLatestRequest("autotrade", requestId))
+      if (!silent && isLatestRequest("autotrade", requestId)) {
         autotradeStatusLoading.value = false;
+      }
     }
   };
-
   const loadExecutionRetryServiceStatus = async (silent = false) => {
     const requestId = nextRequestId("executionRetry");
     if (!silent) executionRetryServiceStatusLoading.value = true;
@@ -731,11 +733,11 @@ export function useCardFlipOpsPage() {
       if (!silent) showActionError("加载 ExecutionRetry 状态失败", error);
       return null;
     } finally {
-      if (!silent && isLatestRequest("executionRetry", requestId))
+      if (!silent && isLatestRequest("executionRetry", requestId)) {
         executionRetryServiceStatusLoading.value = false;
+      }
     }
   };
-
   const loadLists = async (silent = false) => {
     const requestId = nextRequestId("lists");
     if (!silent) listsLoading.value = true;
@@ -773,18 +775,19 @@ export function useCardFlipOpsPage() {
       if (!silent) showActionError("加载列表失败", error);
       return null;
     } finally {
-      if (!silent && isLatestRequest("lists", requestId))
+      if (!silent && isLatestRequest("lists", requestId)) {
         listsLoading.value = false;
+      }
     }
   };
-
   const loadExecutionLogs = async (silent = false, force = false) => {
     if (
       !force &&
       activeTab.value !== "executionLogs" &&
       !executionLogsInitialized.value
-    )
+    ) {
       return null;
+    }
     const requestId = nextRequestId("executionLogs");
     if (!silent) executionLogsLoading.value = true;
     try {
@@ -802,11 +805,11 @@ export function useCardFlipOpsPage() {
       if (!silent) showActionError("加载执行日志失败", error);
       return null;
     } finally {
-      if (!silent && isLatestRequest("executionLogs", requestId))
+      if (!silent && isLatestRequest("executionLogs", requestId)) {
         executionLogsLoading.value = false;
+      }
     }
   };
-
   const resetExecutionLogFilters = async () => {
     executionLogFilters.value = { ...defaultExecutionLogFilters };
     await loadExecutionLogs(false, true);
@@ -1938,3 +1941,6 @@ export function useCardFlipOpsPage() {
 }
 
 export default useCardFlipOpsPage;
+
+
+

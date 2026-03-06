@@ -1,188 +1,125 @@
 <template>
-  <!-- 手动输入表单 -->
   <n-form
-    ref="importFormRef"
-    :model="importForm"
-    :rules="importRules"
-    :label-placement="'top'"
-    :size="'large'"
-    :show-label="true"
+    ref="formRef"
+    :model="form"
+    :rules="rules"
+    label-placement="top"
+    size="large"
   >
-    <n-form-item :label="'游戏角色名称'" :path="'name'" :show-label="true">
+    <n-form-item label="账户名称" path="name">
       <n-input
-        v-model:value="importForm.name"
+        v-model:value="form.name"
         placeholder="例如：主号战士"
         clearable
       />
     </n-form-item>
 
-    <n-form-item
-      :label="'Token字符串'"
-      :path="'base64Token'"
-      :show-label="true"
-    >
+    <n-form-item label="Token 字符串" path="token">
       <n-input
-        v-model:value="importForm.base64Token"
+        v-model:value="form.token"
         type="textarea"
-        :rows="3"
-        placeholder="粘贴Token字符串..."
+        :rows="4"
+        placeholder="粘贴 Base64 Token 或接口返回的 token 字符串"
         clearable
-      >
-        <template #suffix>
-          <n-popover placement="right" trigger="hover">
-            <template #trigger>
-              <n-icon :depth="1">
-                <AlertCircleOutline />
-              </n-icon>
-            </template>
-            <div class="large-text">
-              输入格式为：{"roleToken":"****","sessId":***,"connId":***,"isRestore":***}
-            </div>
-          </n-popover>
-        </template>
-      </n-input>
+      />
     </n-form-item>
 
-    <!-- 角色详情 -->
-    <n-collapse>
-      <n-collapse-item title="角色详情 (可选)" name="optional">
-        <div class="optional-fields">
-          <n-form-item label="服务器">
-            <n-input
-              v-model:value="importForm.server"
-              placeholder="服务器名称"
-            />
-          </n-form-item>
-
-          <n-form-item label="自定义连接地址">
-            <n-input
-              v-model:value="importForm.wsUrl"
-              placeholder="留空使用默认连接"
-            />
-          </n-form-item>
-        </div>
-      </n-collapse-item>
-    </n-collapse>
+    <div class="optional-fields">
+      <n-form-item label="服务器">
+        <n-input v-model:value="form.server" placeholder="可选" />
+      </n-form-item>
+      <n-form-item label="WebSocket 地址">
+        <n-input v-model:value="form.wsUrl" placeholder="留空则使用默认地址" />
+      </n-form-item>
+    </div>
 
     <div class="form-actions">
-      <n-button
-        type="primary"
-        size="large"
-        block
-        :loading="isImporting"
-        @click="handleImport"
-      >
-        <template #icon>
-          <n-icon>
-            <CloudUpload />
-          </n-icon>
-        </template>
-        添加Token
+      <n-button type="primary" block :loading="submitting" @click="handleSubmit">
+        添加 Token
       </n-button>
-
-      <n-button v-if="tokenStore.hasTokens" size="large" block @click="cancel">
+      <n-button v-if="tokenStore.hasTokens" block @click="$emit('cancel')">
         取消
       </n-button>
     </div>
   </n-form>
 </template>
-<script lang="ts" setup>
-import { useTokenStore } from "@/stores/tokenStore";
-import { CloudUpload, AlertCircleOutline } from "@vicons/ionicons5";
-import {
-  NButton,
-  NCollapse,
-  NCollapseItem,
-  NForm,
-  NFormItem,
-  NIcon,
-  NInput,
-  useMessage,
-} from "naive-ui";
+
+<script setup lang="ts">
 import { reactive, ref } from "vue";
+import { useMessage } from "naive-ui";
+import { useTokenStore } from "@/stores/tokenStore";
 
-const $emit = defineEmits(["cancel", "ok"]);
-
-const cancel = () => {
-  $emit("cancel");
-};
-
+const emit = defineEmits(["cancel", "ok"]);
 const tokenStore = useTokenStore();
 const message = useMessage();
-const importFormRef = ref();
-const isImporting = ref(false);
-const importForm = reactive({
+const formRef = ref();
+const submitting = ref(false);
+
+const form = reactive({
   name: "",
-  base64Token: "",
+  token: "",
   server: "",
   wsUrl: "",
 });
-const importRules = {
-  name: [
-    { required: true, message: "请输入角色名称", trigger: "blur" },
-    {
-      min: 1,
-      max: 50,
-      message: "名称长度应在1到50个字符之间",
-      trigger: "blur",
-    },
-  ],
-  base64Token: [
-    { required: true, message: "请输入Token字符串", trigger: "blur" },
-    { min: 20, message: "Token字符串长度应至少20个字符", trigger: "blur" },
-  ],
+
+const rules = {
+  name: [{ required: true, message: "请输入账户名称", trigger: "blur" }],
+  token: [{ required: true, message: "请输入 Token 字符串", trigger: "blur" }],
 };
-const handleImport = () => {
-  isImporting.value = true;
+
+const reset = () => {
+  form.name = "";
+  form.token = "";
+  form.server = "";
+  form.wsUrl = "";
+};
+
+const handleSubmit = async () => {
   try {
-    tokenStore.addToken({
-      name: importForm.name,
-      token: importForm.base64Token,
-      server: importForm.server,
-      wsUrl: importForm.wsUrl,
+    await formRef.value?.validate();
+  } catch {
+    return;
+  }
+
+  submitting.value = true;
+  try {
+    const result = tokenStore.importBase64Token(form.name, form.token, {
+      server: form.server,
+      wsUrl: form.wsUrl,
+      importMethod: "manual",
     });
-    message.success("Token添加成功");
-    importForm.name = "";
-    importForm.base64Token = "";
-    importForm.server = "";
-    importForm.wsUrl = "";
-    $emit("ok");
+
+    if (!result?.success) {
+      throw new Error(result?.message || "导入失败");
+    }
+
+    message.success(result.message || "Token 已添加");
+    reset();
+    emit("ok");
   } catch (error: any) {
-    message.error(`添加Token失败: ${error.message || error}`);
+    message.error(error?.message || "添加 Token 失败");
   } finally {
-    isImporting.value = false;
+    submitting.value = false;
   }
 };
 </script>
-<style lang="scss" scoped>
-.optional-fields {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
 
-  n-form-item {
-    flex: 1 1 45%;
-    min-width: 200px;
-  }
+<style scoped lang="scss">
+.optional-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .form-actions {
-  margin-top: 24px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 12px;
+  margin-top: 20px;
 }
 
-.form-tips {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: #888;
-}
-
-.cors-tip {
-  color: #e67e22;
+@media (max-width: 640px) {
+  .optional-fields {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

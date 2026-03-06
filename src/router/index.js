@@ -1,5 +1,6 @@
-﻿import { createRouter, createWebHistory } from "vue-router";
+import { createRouter, createWebHistory } from "vue-router";
 import * as autoRoutes from "vue-router/auto-routes";
+import { useAuthStore } from "@/stores/auth";
 import { useTokenStore } from "@/stores/tokenStore";
 
 const generatedRoutes = autoRoutes.routes ?? [];
@@ -7,11 +8,34 @@ const generatedRoutes = autoRoutes.routes ?? [];
 const myRoutes = [
   {
     path: "/",
-    name: "Home",
-    component: () => import("@/views/Home.vue"),
+    redirect: "/login",
+  },
+  {
+    path: "/login",
+    name: "Login",
+    component: () => import("@/views/Login.vue"),
     meta: {
-      title: "首页",
-      requiresToken: false,
+      title: "登录",
+      guestOnly: true,
+    },
+  },
+  {
+    path: "/register",
+    name: "Register",
+    component: () => import("@/views/Register.vue"),
+    meta: {
+      title: "注册",
+      guestOnly: true,
+    },
+  },
+  {
+    path: "/support/tickets",
+    name: "SupportTicketsPortal",
+    component: () => import("@/views/SupportTickets.vue"),
+    meta: {
+      title: "工单中心",
+      requiresAuth: true,
+      permission: "support:ticket:view",
     },
   },
   {
@@ -20,9 +44,10 @@ const myRoutes = [
     component: () => import("@/views/TokenImport/index.vue"),
     meta: {
       title: "Token 管理",
-      requiresToken: false,
+      requiresAuth: true,
+      permission: "token:view",
     },
-    props: (route) => ({
+    props: route => ({
       token: route.query.token,
       name: route.query.name,
       server: route.query.server,
@@ -35,6 +60,9 @@ const myRoutes = [
     name: "DefaultLayout",
     path: "/admin",
     component: () => import("@/layout/DefaultLayout.vue"),
+    meta: {
+      requiresAuth: true,
+    },
     children: [
       {
         path: "dashboard",
@@ -42,7 +70,7 @@ const myRoutes = [
         component: () => import("@/views/Dashboard.vue"),
         meta: {
           title: "控制台",
-          requiresToken: true,
+          permission: "dashboard:view",
         },
       },
       {
@@ -51,6 +79,7 @@ const myRoutes = [
         component: () => import("@/views/GameFeatures.vue"),
         meta: {
           title: "游戏功能",
+          permission: "game:feature:view",
           requiresToken: true,
         },
       },
@@ -60,7 +89,7 @@ const myRoutes = [
         component: () => import("@/views/card-flip-ops/CardFlipOpsPage.vue"),
         meta: {
           title: "卡片倒卖 · 操作台",
-          requiresToken: true,
+          permission: "cardflip:view",
         },
       },
       {
@@ -74,7 +103,7 @@ const myRoutes = [
         props: { mode: "simulation" },
         meta: {
           title: "卡片倒卖 · 模拟盘",
-          requiresToken: true,
+          permission: "cardflip:view",
         },
       },
       {
@@ -84,7 +113,25 @@ const myRoutes = [
         props: { mode: "live" },
         meta: {
           title: "卡片倒卖 · 实战盘",
-          requiresToken: true,
+          permission: "cardflip:view",
+        },
+      },
+      {
+        path: "card-flip/docs",
+        name: "CardFlipDocs",
+        component: () => import("@/views/card-flip-ops/CardFlipDocsPage.vue"),
+        meta: {
+          title: "卡片倒卖 · 使用文档",
+          permission: "cardflip:view",
+        },
+      },
+      {
+        path: "support-tickets",
+        name: "SupportTicketsAdmin",
+        component: () => import("@/views/SupportTickets.vue"),
+        meta: {
+          title: "工单处理台",
+          permission: "support:ticket:manage",
         },
       },
       {
@@ -93,7 +140,7 @@ const myRoutes = [
         component: () => import("@/components/Test/MessageTester.vue"),
         meta: {
           title: "消息测试",
-          requiresToken: true,
+          permission: "message:test",
         },
       },
       {
@@ -102,7 +149,7 @@ const myRoutes = [
         component: () => import("@/views/Profile.vue"),
         meta: {
           title: "个人设置",
-          requiresToken: true,
+          permission: "profile:view",
         },
       },
       {
@@ -111,6 +158,7 @@ const myRoutes = [
         component: () => import("@/views/DailyTasks.vue"),
         meta: {
           title: "日常任务",
+          permission: "task:view",
           requiresToken: true,
         },
       },
@@ -120,6 +168,7 @@ const myRoutes = [
         component: () => import("@/views/BatchDailyTasks.vue"),
         meta: {
           title: "批量日常",
+          permission: "task:batch",
           requiresToken: true,
         },
       },
@@ -131,20 +180,10 @@ const myRoutes = [
     component: () => import("@/components/Test/WebSocketTester.vue"),
     meta: {
       title: "WebSocket 测试",
+      requiresAuth: true,
+      permission: "message:test",
       requiresToken: true,
     },
-  },
-  {
-    path: "/login",
-    redirect: "/tokens",
-  },
-  {
-    path: "/register",
-    redirect: "/tokens",
-  },
-  {
-    path: "/game-roles",
-    redirect: "/tokens",
   },
   ...generatedRoutes,
   {
@@ -160,31 +199,50 @@ const myRoutes = [
 const router = createRouter({
   history: createWebHistory(),
   routes: myRoutes,
-  scrollBehavior(to, from, savedPosition) {
+  scrollBehavior(to, _from, savedPosition) {
     if (savedPosition)
       return savedPosition;
     return { top: 0 };
   },
 });
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
+  const authStore = useAuthStore();
   const tokenStore = useTokenStore();
 
   document.title = to.meta.title
     ? `${to.meta.title} - XYZW 游戏管理系统`
     : "XYZW 游戏管理系统";
 
+  if (!authStore.initialized) {
+    await authStore.initAuth();
+  }
+
+  if (to.meta.guestOnly && authStore.isAuthenticated) {
+    next(authStore.getDefaultHomeRoute());
+    return;
+  }
+
+  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    next({
+      path: "/login",
+      query: to.fullPath && to.fullPath !== "/login" ? { redirect: to.fullPath } : undefined,
+    });
+    return;
+  }
+
+  const requiredPermission = to.meta.permission;
+  if (requiredPermission && authStore.isAuthenticated && !authStore.hasPermission(requiredPermission)) {
+    next(authStore.getDefaultHomeRoute());
+    return;
+  }
+
   if (to.meta.requiresToken && !tokenStore.hasTokens) {
     next("/tokens");
-  } else if (to.path === "/" && tokenStore.hasTokens) {
-    if (tokenStore.selectedToken)
-      next("/admin/dashboard");
-    else
-      next("/tokens");
-  } else {
-    next();
+    return;
   }
+
+  next();
 });
 
 export default router;
-

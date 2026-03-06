@@ -3,10 +3,10 @@ import { computed, ref } from "vue";
 import { useLocalTokenStore } from "./localTokenManager";
 
 const AUTH_ENDPOINTS = {
-  login: ["/card-api/auth/login", "/auth/login", "/api/v1/auth/login"],
-  register: ["/card-api/auth/register", "/auth/register", "/api/v1/auth/register"],
-  logout: ["/card-api/auth/logout", "/auth/logout", "/api/v1/auth/logout"],
-  refresh: ["/card-api/auth/refresh", "/auth/refresh", "/api/v1/auth/refresh"],
+  login: ["/card-api/auth/login", "/auth/login"],
+  register: ["/card-api/auth/register", "/auth/register"],
+  logout: ["/card-api/auth/logout", "/auth/logout"],
+  refresh: ["/card-api/auth/refresh", "/auth/refresh"],
   userInfo: [
     "/card-api/auth/user",
     "/card-api/auth/userinfo",
@@ -14,36 +14,6 @@ const AUTH_ENDPOINTS = {
     "/auth/user",
     "/auth/userinfo",
     "/user/profile",
-    "/api/v1/auth/user",
-    "/api/v1/auth/userinfo",
-    "/api/v1/user/profile",
-  ],
-};
-
-const FALLBACK_ROLE_PERMISSIONS = {
-  admin: [
-    "dashboard:view",
-    "game:feature:view",
-    "cardflip:view",
-    "task:view",
-    "task:batch",
-    "message:test",
-    "token:view",
-    "profile:view",
-  ],
-  ops: [
-    "dashboard:view",
-    "cardflip:view",
-    "task:view",
-    "task:batch",
-    "message:test",
-    "token:view",
-  ],
-  viewer: [
-    "dashboard:view",
-    "cardflip:view",
-    "token:view",
-    "profile:view",
   ],
 };
 
@@ -75,20 +45,33 @@ const uniqueStrings = (items) => {
 const normalizeApiPayload = (payload) => {
   if (!payload || typeof payload !== "object")
     return {};
-  if (payload.success !== undefined && payload.data && typeof payload.data === "object")
-    return payload.data;
   if (payload.data && typeof payload.data === "object")
     return payload.data;
   return payload;
 };
 
-const inferRoleFromUsername = (username) => {
-  const lowered = String(username || "").toLowerCase();
-  if (lowered.includes("ops"))
-    return "ops";
-  if (lowered.includes("viewer") || lowered.includes("guest"))
-    return "viewer";
-  return "admin";
+const extractErrorMessage = (payload, fallback = "请求失败") => {
+  if (!payload)
+    return fallback;
+  if (typeof payload === "string")
+    return payload;
+  if (typeof payload.message === "string" && payload.message.trim())
+    return payload.message.trim();
+  if (typeof payload.detail === "string" && payload.detail.trim())
+    return payload.detail.trim();
+  if (Array.isArray(payload.detail) && payload.detail.length) {
+    const first = payload.detail[0];
+    if (typeof first === "string")
+      return first;
+    if (first && typeof first === "object") {
+      const msg = first.msg || first.message || first.detail;
+      if (typeof msg === "string" && msg.trim())
+        return msg.trim();
+    }
+  }
+  if (payload.error && typeof payload.error === "string")
+    return payload.error;
+  return fallback;
 };
 
 const normalizeRoleKeys = (profile, payload) => {
@@ -107,71 +90,40 @@ const normalizeRoleKeys = (profile, payload) => {
     .filter(role => role && typeof role === "object")
     .flatMap(role => toStringArray([role.key, role.name]));
 
-  if (fromRoleObjects.length)
-    return uniqueStrings(fromRoleObjects);
-
-  return [];
-};
-
-const normalizePermissions = (profile, payload, roleKeys, username) => {
-  const permissions = uniqueStrings([
-    ...toStringArray(profile?.permissions),
-    ...toStringArray(profile?.perms),
-    ...toStringArray(payload?.permissions),
-    ...toStringArray(payload?.perms),
-  ]);
-
-  if (permissions.length)
-    return permissions;
-
-  const primaryRole = roleKeys[0] || inferRoleFromUsername(username);
-  return FALLBACK_ROLE_PERMISSIONS[primaryRole] || FALLBACK_ROLE_PERMISSIONS.admin;
+  return uniqueStrings(fromRoleObjects);
 };
 
 const normalizeUserPayload = (payload) => {
   const data = normalizeApiPayload(payload);
   const profile = data?.user && typeof data.user === "object" ? data.user : data;
-  const username = String(profile?.username || data?.username || "operator").trim() || "operator";
+  const username = String(profile?.username || "user").trim() || "user";
   const roleKeys = normalizeRoleKeys(profile, data);
-  if (!roleKeys.length) {
-    roleKeys.push(inferRoleFromUsername(username));
-  }
-  const permissions = normalizePermissions(profile, data, roleKeys, username);
-  const roles = roleKeys.map(role => ({
-    key: role,
-    name: role,
-    permissions,
-    perms: permissions,
-  }));
+  const permissions = uniqueStrings([
+    ...toStringArray(profile?.permissions),
+    ...toStringArray(profile?.perms),
+    ...toStringArray(data?.permissions),
+    ...toStringArray(data?.perms),
+  ]);
+  const roles = Array.isArray(profile?.roles) && profile.roles.length
+    ? profile.roles
+    : roleKeys.map(role => ({
+        key: role,
+        name: role,
+        permissions,
+        perms: permissions,
+      }));
 
   return {
     ...profile,
     id: profile?.id || `user_${username}`,
     username,
+    nickname: profile?.nickname || username,
     roleKeys,
+    permissions,
+    perms: permissions,
     roles,
-    permissions,
-    perms: permissions,
+    isAdmin: Boolean(profile?.isAdmin) || roleKeys.includes("admin"),
   };
-};
-
-const createFallbackLoginData = (credentials) => {
-  const username = String(credentials?.username || "operator").trim() || "operator";
-  const role = inferRoleFromUsername(username);
-  const permissions = FALLBACK_ROLE_PERMISSIONS[role] || FALLBACK_ROLE_PERMISSIONS.admin;
-  const user = {
-    id: `local_user_${Date.now()}`,
-    username,
-    email: credentials?.email || `${username}@local.game`,
-    avatar: "/icons/xiaoyugan.png",
-    createdAt: new Date().toISOString(),
-    roleKeys: [role],
-    roles: [{ key: role, name: role, permissions, perms: permissions }],
-    permissions,
-    perms: permissions,
-  };
-  const token = `local_token_${username}`;
-  return { user, token };
 };
 
 const requestAuth = async ({
@@ -180,53 +132,85 @@ const requestAuth = async ({
   body = null,
   authToken = "",
 }) => {
+  let lastError = null;
+
   for (const endpoint of endpoints) {
     try {
       const headers = { Accept: "application/json" };
-      if (body !== null) {
+      if (body !== null)
         headers["Content-Type"] = "application/json";
-      }
-      if (authToken) {
+      if (authToken)
         headers.Authorization = `Bearer ${authToken}`;
-      }
+
       const response = await fetch(endpoint, {
         method,
         headers,
         credentials: "same-origin",
         body: body !== null ? JSON.stringify(body) : undefined,
       });
-      if (!response.ok)
-        continue;
+
       const payload = await response.json().catch(() => null);
-      if (payload && typeof payload === "object") {
+      if (response.ok)
         return payload;
+
+      if (response.status === 404) {
+        lastError = new Error("接口不存在");
+        continue;
       }
+
+      throw new Error(extractErrorMessage(payload, "请求失败"));
     }
-    catch {
-      // keep trying next endpoint
+    catch (error) {
+      lastError = error instanceof Error ? error : new Error("请求失败");
     }
   }
-  return null;
+
+  throw lastError || new Error("服务暂时不可用");
 };
 
 export const useAuthStore = defineStore("auth", () => {
   const user = ref(null);
-  const token = ref(localStorage.getItem("token") || null);
+  const token = ref(localStorage.getItem("token") || "");
   const isLoading = ref(false);
+  const initialized = ref(false);
 
   const localTokenStore = useLocalTokenStore();
 
-  const isAuthenticated = computed(() => !!token.value && !!user.value);
+  const isAuthenticated = computed(() => Boolean(token.value && user.value));
   const userInfo = computed(() => user.value);
 
+  const permissions = computed(() => {
+    const info = user.value || {};
+    return uniqueStrings([
+      ...toStringArray(info?.permissions),
+      ...toStringArray(info?.perms),
+    ]);
+  });
+
+  const hasPermission = (permission) => {
+    if (!permission)
+      return true;
+    return permissions.value.includes(permission);
+  };
+
+  const getDefaultHomeRoute = () => {
+    if (hasPermission("support:ticket:manage"))
+      return "/admin/dashboard";
+    if (hasPermission("support:ticket:view"))
+      return "/support/tickets";
+    return "/login";
+  };
+
   const persistAuthState = () => {
-    if (token.value) {
+    if (token.value)
       localStorage.setItem("token", token.value);
-      localTokenStore.setUserToken(token.value);
-    }
-    if (user.value) {
+    else
+      localStorage.removeItem("token");
+
+    if (user.value)
       localStorage.setItem("user", JSON.stringify(user.value));
-    }
+    else
+      localStorage.removeItem("user");
   };
 
   const clearPersistedAuthState = () => {
@@ -237,39 +221,38 @@ export const useAuthStore = defineStore("auth", () => {
     localTokenStore.clearAllGameTokens();
   };
 
+  const applyAuthPayload = (payload, fallbackToken = "") => {
+    const normalizedUser = normalizeUserPayload(payload);
+    const data = normalizeApiPayload(payload);
+    const nextToken = String(data?.token || fallbackToken || token.value || "").trim();
+
+    user.value = normalizedUser;
+    token.value = nextToken;
+    if (nextToken)
+      localTokenStore.setUserToken(nextToken);
+    persistAuthState();
+  };
+
   const login = async (credentials) => {
     try {
       isLoading.value = true;
-
-      const remotePayload = await requestAuth({
+      const payload = await requestAuth({
         method: "POST",
         endpoints: AUTH_ENDPOINTS.login,
         body: {
           username: credentials?.username,
           password: credentials?.password,
-          email: credentials?.email,
         },
       });
-
-      if (remotePayload) {
-        const normalizedUser = normalizeUserPayload(remotePayload);
-        const data = normalizeApiPayload(remotePayload);
-        const remoteToken = String(data?.token || `local_token_${normalizedUser.username}`).trim();
-        token.value = remoteToken || `local_token_${normalizedUser.username}`;
-        user.value = normalizedUser;
-        persistAuthState();
-        return { success: true };
-      }
-
-      const fallback = createFallbackLoginData(credentials);
-      token.value = fallback.token;
-      user.value = fallback.user;
-      persistAuthState();
+      applyAuthPayload(payload);
+      initialized.value = true;
       return { success: true };
     }
     catch (error) {
-      console.error("登录错误:", error);
-      return { success: false, message: "登录失败" };
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "登录失败",
+      };
     }
     finally {
       isLoading.value = false;
@@ -279,121 +262,118 @@ export const useAuthStore = defineStore("auth", () => {
   const register = async (userInfoData) => {
     try {
       isLoading.value = true;
-
-      const remotePayload = await requestAuth({
+      await requestAuth({
         method: "POST",
         endpoints: AUTH_ENDPOINTS.register,
         body: userInfoData || {},
       });
-      if (remotePayload) {
-        return { success: true, message: "注册成功，请登录" };
-      }
-
-      const existingUsers = JSON.parse(localStorage.getItem("registeredUsers") || "[]");
-      const userExists = existingUsers.some(u => u.username === userInfoData.username);
-      if (userExists) {
-        return { success: false, message: "用户名已存在" };
-      }
-      const newUser = {
-        ...userInfoData,
-        id: `user_${Date.now()}`,
-        createdAt: new Date().toISOString(),
-      };
-      existingUsers.push(newUser);
-      localStorage.setItem("registeredUsers", JSON.stringify(existingUsers));
       return { success: true, message: "注册成功，请登录" };
     }
     catch (error) {
-      console.error("注册错误:", error);
-      return { success: false, message: "注册失败" };
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "注册失败",
+      };
     }
     finally {
       isLoading.value = false;
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     const tokenSnapshot = token.value;
-    void requestAuth({
-      method: "POST",
-      endpoints: AUTH_ENDPOINTS.logout,
-      authToken: tokenSnapshot || "",
-    });
-
+    try {
+      if (tokenSnapshot) {
+        await requestAuth({
+          method: "POST",
+          endpoints: AUTH_ENDPOINTS.logout,
+          authToken: tokenSnapshot,
+        });
+      }
+    }
+    catch {
+      // ignore logout transport errors
+    }
     user.value = null;
-    token.value = null;
+    token.value = "";
+    initialized.value = true;
     clearPersistedAuthState();
   };
 
   const fetchUserInfo = async () => {
+    if (!token.value) {
+      user.value = null;
+      initialized.value = true;
+      return false;
+    }
     try {
-      if (!token.value)
-        return false;
-
-      const remotePayload = await requestAuth({
+      const payload = await requestAuth({
         method: "GET",
         endpoints: AUTH_ENDPOINTS.userInfo,
         authToken: token.value,
       });
-
-      if (remotePayload) {
-        user.value = normalizeUserPayload(remotePayload);
-        persistAuthState();
-        return true;
-      }
-
-      const savedUser = localStorage.getItem("user");
-      if (!savedUser) {
-        logout();
-        return false;
-      }
-      user.value = normalizeUserPayload(JSON.parse(savedUser));
-      persistAuthState();
+      applyAuthPayload(payload, token.value);
+      initialized.value = true;
       return true;
     }
-    catch (error) {
-      console.error("获取用户信息失败:", error);
-      logout();
+    catch {
+      user.value = null;
+      token.value = "";
+      clearPersistedAuthState();
+      initialized.value = true;
       return false;
     }
   };
 
   const initAuth = async () => {
-    if (!token.value)
-      return;
+    if (initialized.value)
+      return isAuthenticated.value;
 
-    const ok = await fetchUserInfo();
-    if (ok) {
-      localTokenStore.initTokenManager();
+    const savedUser = localStorage.getItem("user");
+    if (savedUser && !user.value) {
+      try {
+        user.value = normalizeUserPayload(JSON.parse(savedUser));
+      }
+      catch {
+        user.value = null;
+      }
     }
+
+    if (!token.value) {
+      initialized.value = true;
+      return false;
+    }
+
+    return fetchUserInfo();
   };
 
   const refreshToken = async () => {
     if (!token.value)
       return false;
-    const remotePayload = await requestAuth({
-      method: "POST",
-      endpoints: AUTH_ENDPOINTS.refresh,
-      authToken: token.value,
-    });
-    if (!remotePayload)
-      return false;
-    const data = normalizeApiPayload(remotePayload);
-    const nextToken = String(data?.token || "").trim();
-    if (nextToken) {
-      token.value = nextToken;
+    try {
+      const payload = await requestAuth({
+        method: "POST",
+        endpoints: AUTH_ENDPOINTS.refresh,
+        authToken: token.value,
+      });
+      applyAuthPayload(payload, token.value);
+      return true;
     }
-    user.value = normalizeUserPayload(remotePayload);
-    persistAuthState();
-    return true;
+    catch {
+      return false;
+    }
   };
 
   return {
     user,
     token,
     isLoading,
+    initialized,
     isAuthenticated,
     userInfo,
+    permissions,
+    hasPermission,
+    getDefaultHomeRoute,
     login,
     register,
     logout,

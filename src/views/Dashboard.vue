@@ -1,295 +1,293 @@
 <template>
   <div class="dashboard-page">
-    <!-- 主要内容 -->
-    <main class="dashboard-main">
-      <div class="main-container">
-        <!-- 欢迎区域 -->
-        <section class="welcome-section">
-          <div class="welcome-content">
-            <div class="welcome-text">
-              <h1>
-                欢迎回来，{{ tokenStore.selectedToken?.name || "游戏玩家" }}！
-              </h1>
-              <p>今天是 {{ currentDate }}，继续您的游戏管理之旅吧</p>
-            </div>
-            <div class="welcome-actions">
-              <n-button
-                type="primary"
-                size="large"
-                @click="router.push('/admin/game-features')"
-              >
-                进入游戏功能
-              </n-button>
-              <n-button size="large" @click="handleManageTokens">
-                管理Token
-              </n-button>
-            </div>
-          </div>
-        </section>
-
-        <!-- 统计卡片 -->
-        <section class="stats-section">
-          <div class="stats-grid">
-            <div v-for="stat in statistics" :key="stat.id" class="stat-card">
-              <div class="stat-icon" :style="{ color: stat.color }">
-                <component :is="stat.icon" />
-              </div>
-              <div class="stat-content">
-                <div class="stat-number">
-                  {{ stat.value }}
-                </div>
-                <div class="stat-label">
-                  {{ stat.label }}
-                </div>
-                <div class="stat-change" :class="stat.changeType">
-                  {{ stat.change }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 快速操作 -->
-        <section class="quick-actions-section">
-          <h2 class="section-title">快速操作</h2>
-          <div class="actions-grid">
-            <div
-              v-for="action in quickActions"
-              :key="action.id"
-              class="action-card"
-              @click="handleQuickAction(action)"
-            >
-              <div class="action-icon">
-                <component :is="action.icon" />
-              </div>
-              <div class="action-content">
-                <h3>{{ action.title }}</h3>
-                <p>{{ action.description }}</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 最近活动 -->
-        <section class="recent-activity-section">
-          <div class="activity-header">
-            <h2 class="section-title">最近活动</h2>
-            <n-button text type="primary" @click="refreshActivity">
-              刷新
-            </n-button>
-          </div>
-
-          <div v-if="recentActivities.length" class="activity-list">
-            <div
-              v-for="activity in recentActivities"
-              :key="activity.id"
-              class="activity-item"
-            >
-              <div class="activity-icon" :class="activity.type">
-                <component :is="getActivityIcon(activity.type)" />
-              </div>
-              <div class="activity-content">
-                <div class="activity-text">
-                  {{ activity.message }}
-                </div>
-                <div class="activity-time">
-                  {{ formatTime(activity.timestamp) }}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else class="empty-activity">
-            <n-empty description="暂无活动记录" />
-          </div>
-        </section>
+    <section class="overview-hero">
+      <div class="hero-copy">
+        <div class="hero-kicker">Workbench</div>
+        <h1>欢迎回来，{{ tokenStore.selectedToken?.name || "游戏玩家" }}</h1>
+        <p>
+          今天是 {{ currentDate }}。这里集中展示账户状态、卡片倒卖入口和最近动作，
+          方便你像标准后台一样快速切换工作。
+        </p>
+        <div class="hero-tags">
+          <n-tag size="small" round type="info">
+            当前 Token：{{ tokenStore.selectedToken?.name || "未选择" }}
+          </n-tag>
+          <n-tag size="small" round type="success">
+            已导入 {{ tokenStore.gameTokens.length }} 个 Token
+          </n-tag>
+          <n-tag size="small" round :type="tokenStore.hasTokens ? 'warning' : 'error'">
+            {{ tokenStore.hasTokens ? "已准备进入后台" : "请先导入 Token" }}
+          </n-tag>
+        </div>
       </div>
-    </main>
+
+      <div class="hero-actions">
+        <n-button type="primary" size="large" @click="router.push('/admin/card-flip-ops')">
+          进入卡片倒卖操作台
+        </n-button>
+        <n-button size="large" @click="handleManageTokens">管理 Token</n-button>
+        <n-button quaternary size="large" @click="router.push('/admin/card-flip/docs')">
+          查看使用文档
+        </n-button>
+      </div>
+    </section>
+
+    <section class="summary-grid">
+      <article v-for="stat in statistics" :key="stat.id" class="summary-card">
+        <div class="summary-icon" :style="{ color: stat.color, background: stat.bg }">
+          <component :is="stat.icon" />
+        </div>
+        <div class="summary-body">
+          <span class="summary-label">{{ stat.label }}</span>
+          <strong class="summary-value">{{ stat.value }}</strong>
+          <span class="summary-foot" :class="stat.changeType">{{ stat.change }}</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="panel-card">
+        <div class="panel-head">
+          <div>
+            <span class="panel-kicker">Quick Access</span>
+            <h2>高频入口</h2>
+          </div>
+        </div>
+        <div class="quick-grid">
+          <button
+            v-for="action in quickActions"
+            :key="action.id"
+            type="button"
+            class="quick-card"
+            @click="handleQuickAction(action)"
+          >
+            <div class="quick-icon">
+              <component :is="action.icon" />
+            </div>
+            <div class="quick-copy">
+              <h3>{{ action.title }}</h3>
+              <p>{{ action.description }}</p>
+            </div>
+          </button>
+        </div>
+      </article>
+
+      <article class="panel-card compact-panel">
+        <div class="panel-head">
+          <div>
+            <span class="panel-kicker">Guidance</span>
+            <h2>今日建议</h2>
+          </div>
+        </div>
+        <div class="tips-list">
+          <div class="tip-item">
+            <strong>1.</strong>
+            <span>先看模拟盘，再切到操作台调参，最后才考虑实战盘。</span>
+          </div>
+          <div class="tip-item">
+            <strong>2.</strong>
+            <span>实战前先确认 Token、代理、自动化开关和风险分阈值都正常。</span>
+          </div>
+          <div class="tip-item">
+            <strong>3.</strong>
+            <span>如果你是第一次用这套系统，优先打开“使用文档”按步骤照做。</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel-card">
+      <div class="panel-head">
+        <div>
+          <span class="panel-kicker">Recent Activity</span>
+          <h2>最近活动</h2>
+        </div>
+        <n-button text type="primary" @click="refreshActivity">刷新</n-button>
+      </div>
+
+      <div v-if="recentActivities.length" class="activity-list">
+        <div
+          v-for="activity in recentActivities"
+          :key="activity.id"
+          class="activity-item"
+        >
+          <div class="activity-icon" :class="activity.type">
+            <component :is="getActivityIcon(activity.type)" />
+          </div>
+          <div class="activity-copy">
+            <div class="activity-text">{{ activity.message }}</div>
+            <div class="activity-time">{{ formatTime(activity.timestamp) }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="activity-empty">
+        <n-empty description="最近还没有新的后台记录" />
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { useTokenStore } from "@/stores/tokenStore";
 import {
-  PersonCircle,
-  Cube,
-  Settings,
+  Add,
   CheckmarkCircle,
+  Cloud,
+  Cube,
+  DocumentText,
+  Home,
+  PersonCircle,
+  Settings,
   Time,
   TrendingUp,
-  Add,
-  Cloud,
 } from "@vicons/ionicons5";
 
 const router = useRouter();
 const message = useMessage();
 const tokenStore = useTokenStore();
 
-// 响应式数据
 const recentActivities = ref([]);
 
-// 计算属性
-const currentDate = computed(() => {
-  return new Date().toLocaleDateString("zh-CN", {
+const currentDate = computed(() =>
+  new Date().toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",
     day: "numeric",
     weekday: "long",
-  });
-});
+  }),
+);
 
 const statistics = computed(() => [
   {
     id: 1,
     icon: PersonCircle,
-    label: "游戏Token",
+    label: "已导入 Token",
     value: tokenStore.gameTokens.length,
-    change: "+2 本月",
-    changeType: "positive",
-    color: "#18a058",
+    change: tokenStore.hasTokens ? "账户池已可用" : "等待导入",
+    changeType: tokenStore.hasTokens ? "positive" : "warning",
+    color: "#409eff",
+    bg: "rgba(64, 158, 255, 0.12)",
   },
   {
     id: 2,
     icon: CheckmarkCircle,
-    label: "已完成任务",
-    value: "156",
-    change: "+12 今日",
-    changeType: "positive",
-    color: "#2080f0",
+    label: "默认工作流",
+    value: tokenStore.selectedToken?.name ? "已选定" : "未选择",
+    change: tokenStore.selectedToken?.name || "请先指定一个默认 Token",
+    changeType: tokenStore.selectedToken?.name ? "positive" : "warning",
+    color: "#67c23a",
+    bg: "rgba(103, 194, 58, 0.12)",
   },
   {
     id: 3,
     icon: Time,
-    label: "节省时间",
-    value: "24.5h",
-    change: "+3.2h 本周",
+    label: "模拟优先",
+    value: "Dry-Run",
+    change: "先验证，再放量",
     changeType: "positive",
-    color: "#f0a020",
+    color: "#e6a23c",
+    bg: "rgba(230, 162, 60, 0.12)",
   },
   {
     id: 4,
     icon: TrendingUp,
-    label: "效率提升",
-    value: "85%",
-    change: "+15% 本月",
+    label: "推荐入口",
+    value: "操作台",
+    change: "适合集中调参和执行",
     changeType: "positive",
-    color: "#d03050",
+    color: "#f56c6c",
+    bg: "rgba(245, 108, 108, 0.12)",
   },
 ]);
 
 const quickActions = ref([
   {
     id: 1,
-    icon: Cube,
-    title: "游戏功能",
-    description: "访问所有游戏功能模块",
-    action: "game-features",
+    icon: TrendingUp,
+    title: "模拟盘",
+    description: "先观察最近趋势、执行次数和成功率，不直接上实盘。",
+    action: "/admin/card-flip/sim",
   },
   {
     id: 2,
-    icon: Add,
-    title: "添加Token",
-    description: "快速添加新的游戏Token",
-    action: "add-token",
+    icon: Cube,
+    title: "操作台",
+    description: "集中管理 Automation、AutoTrade、ExecutionRetry 和执行日志。",
+    action: "/admin/card-flip-ops",
   },
   {
     id: 3,
-    icon: CheckmarkCircle,
-    title: "执行任务",
-    description: "一键执行所有待完成任务",
-    action: "execute-tasks",
+    icon: DocumentText,
+    title: "使用文档",
+    description: "给第一次使用的人看的图文说明和从零演示。",
+    action: "/admin/card-flip/docs",
   },
   {
     id: 4,
-    icon: Cloud,
-    title: "WebSocket测试",
-    description: "测试WebSocket连接和游戏命令",
-    action: "websocket-test",
+    icon: Add,
+    title: "新增 Token",
+    description: "打开 Token 管理页，继续导入新的游戏账户。",
+    action: "/tokens",
   },
   {
     id: 5,
+    icon: Cloud,
+    title: "消息与连接测试",
+    description: "排查 WebSocket 和测试消息是否正常送达。",
+    action: "/admin/message-test",
+  },
+  {
+    id: 6,
     icon: Settings,
-    title: "系统设置",
-    description: "配置个人偏好和系统选项",
-    action: "open-settings",
+    title: "个人设置",
+    description: "管理个人资料、权限来源和基础配置。",
+    action: "/admin/profile",
   },
 ]);
 
 const handleManageTokens = () => {
-  // 降噪
-  /* 当前Token状态:
-    hasTokens: tokenStore.hasTokens,
-    selectedToken: tokenStore.selectedToken?.name,
-    tokenCount: tokenStore.gameTokens.length
-  */
-
   try {
     router.push("/tokens");
-    // 降噪
   } catch (error) {
-    console.error("❌ 导航失败:", error);
-    message.error("导航到Token管理页面失败");
+    console.error("导航到 Token 管理失败:", error);
+    message.error("打开 Token 管理页失败");
   }
 };
 
-const handleQuickAction = (action) => {
-  switch (action.action) {
-    case "game-features":
-      router.push("/admin/game-features");
-      break;
-    case "add-token":
-      handleManageTokens();
-      break;
-    case "execute-tasks":
-      router.push("/admin/game-features");
-      break;
-    case "websocket-test":
-      router.push("/websocket-test");
-      break;
-    case "open-settings":
-      router.push("/admin/profile");
-      break;
-  }
-};
+const handleQuickAction = action => router.push(action.action);
 
 const refreshActivity = () => {
-  // 模拟刷新活动数据
   recentActivities.value = [
     {
       id: 1,
       type: "success",
-      message: "成功完成日常任务：每日签到",
-      timestamp: Date.now() - 30 * 60 * 1000,
+      message: "卡片倒卖操作台已就绪，可以继续查看模拟盘和参数设置。",
+      timestamp: Date.now() - 20 * 60 * 1000,
     },
     {
       id: 2,
       type: "info",
-      message: "添加了新的游戏角色：剑士小明",
-      timestamp: Date.now() - 2 * 60 * 60 * 1000,
+      message: `当前已导入 ${tokenStore.gameTokens.length} 个 Token，可切换不同账户进入后台。`,
+      timestamp: Date.now() - 90 * 60 * 1000,
     },
     {
       id: 3,
       type: "warning",
-      message: "任务执行遇到错误，请检查网络连接",
-      timestamp: Date.now() - 4 * 60 * 60 * 1000,
+      message: "若要切到实战盘，先确认 dry-run 相关开关和风险参数已经复核。",
+      timestamp: Date.now() - 3 * 60 * 60 * 1000,
     },
   ];
-  message.success("活动数据已刷新");
+  message.success("活动面板已刷新");
 };
 
 const getActivityIcon = (type) => {
-  switch (type) {
-    case "success":
-      return CheckmarkCircle;
-    case "warning":
-      return Time;
-    case "info":
-    default:
-      return Cube;
-  }
+  if (type === "success") return CheckmarkCircle;
+  if (type === "warning") return Time;
+  return Home;
 };
 
 const formatTime = (timestamp) => {
@@ -298,26 +296,17 @@ const formatTime = (timestamp) => {
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-  if (days > 0) {
-    return `${days}天前`;
-  } else if (hours > 0) {
-    return `${hours}小时前`;
-  } else if (minutes > 0) {
-    return `${minutes}分钟前`;
-  } else {
-    return "刚刚";
-  }
+  if (days > 0) return `${days} 天前`;
+  if (hours > 0) return `${hours} 小时前`;
+  if (minutes > 0) return `${minutes} 分钟前`;
+  return "刚刚";
 };
 
-// 生命周期
-onMounted(async () => {
-  // 确保有Token
+onMounted(() => {
   if (!tokenStore.hasTokens) {
     router.push("/tokens");
     return;
   }
-
-  // 初始化Token数据
   tokenStore.initTokenStore();
   refreshActivity();
 });
@@ -325,302 +314,316 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .dashboard-page {
-  min-height: 100vh;
-  background: var(--bg-secondary);
-}
-
-// 主要内容
-.dashboard-main {
-  padding: var(--spacing-xl);
-}
-
-.main-container {
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-// 欢迎区域
-.welcome-section {
-  background: linear-gradient(
-    135deg,
-    var(--primary-color) 0%,
-    var(--secondary-color) 100%
-  );
-  border-radius: var(--border-radius-xl);
-  padding: var(--spacing-2xl);
-  margin-bottom: var(--spacing-xl);
-  color: white;
-}
-
-.welcome-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--spacing-lg);
-}
-
-.welcome-text {
-  h1 {
-    font-size: var(--font-size-3xl);
-    font-weight: var(--font-weight-bold);
-    margin-bottom: var(--spacing-sm);
-  }
-
-  p {
-    font-size: var(--font-size-lg);
-    opacity: 0.9;
-    margin: 0;
-  }
-}
-
-.welcome-actions {
-  display: flex;
-  gap: var(--spacing-md);
-}
-
-// 统计区域
-.stats-section {
-  margin-bottom: var(--spacing-xl);
-}
-
-.stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--spacing-lg);
+  gap: 20px;
+  min-height: 100%;
+  padding: 4px;
 }
 
-.stat-card {
-  background: var(--bg-primary);
-  border-radius: var(--border-radius-large);
-  padding: var(--spacing-lg);
+.overview-hero,
+.panel-card,
+.summary-card {
+  border: 1px solid var(--border-light);
+  background: var(--panel-bg);
   box-shadow: var(--shadow-light);
-  transition: all var(--transition-normal);
-
-  &:hover {
-    box-shadow: var(--shadow-medium);
-    transform: translateY(-2px);
-  }
 }
 
-.stat-icon {
+.overview-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  gap: 20px;
+  padding: 28px 32px;
+  border-radius: 18px;
+}
+
+.hero-kicker,
+.panel-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary-color-light);
+  color: var(--primary-color);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hero-copy h1 {
+  margin: 16px 0 10px;
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1.08;
+  color: var(--text-primary);
+}
+
+.hero-copy p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.hero-tags,
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hero-tags {
+  margin-top: 18px;
+}
+
+.hero-actions {
+  align-content: start;
+  justify-content: flex-end;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.summary-card {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 20px;
+  border-radius: 14px;
+}
+
+.summary-icon {
   width: 48px;
   height: 48px;
-  margin-bottom: var(--spacing-md);
-
-  :deep(svg) {
-    width: 100%;
-    height: 100%;
-  }
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex: 0 0 auto;
 }
 
-.stat-number {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-xs);
-}
-
-.stat-label {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  margin-bottom: var(--spacing-xs);
-}
-
-.stat-change {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-
-  &.positive {
-    color: var(--success-color);
-  }
-
-  &.negative {
-    color: var(--error-color);
-  }
-}
-
-// 快速操作区域
-.quick-actions-section {
-  margin-bottom: var(--spacing-xl);
-}
-
-.section-title {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-lg);
-}
-
-.actions-grid {
+.summary-body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--spacing-lg);
+  gap: 6px;
 }
 
-.action-card {
-  background: var(--bg-primary);
-  border-radius: var(--border-radius-large);
-  padding: var(--spacing-lg);
-  box-shadow: var(--shadow-light);
-  cursor: pointer;
-  transition: all var(--transition-normal);
+.summary-label {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.summary-value {
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.summary-foot {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.summary-foot.warning {
+  color: var(--warning-color);
+}
+
+.summary-foot.positive {
+  color: var(--success-color);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  gap: 20px;
+}
+
+.panel-card {
+  padding: 22px 24px;
+  border-radius: 16px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.panel-head h2 {
+  margin: 10px 0 0;
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.quick-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff 0%, #f9fbff 100%);
+  text-align: left;
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast);
 
   &:hover {
-    box-shadow: var(--shadow-medium);
     transform: translateY(-2px);
+    border-color: rgba(64, 158, 255, 0.35);
+    box-shadow: var(--shadow-light);
   }
 }
 
-.action-icon {
-  width: 40px;
-  height: 40px;
-  color: var(--primary-color);
-  margin-bottom: var(--spacing-md);
-
-  :deep(svg) {
-    width: 100%;
-    height: 100%;
-  }
-}
-
-.action-content {
-  h3 {
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
-    margin-bottom: var(--spacing-xs);
-  }
-
-  p {
-    color: var(--text-secondary);
-    font-size: var(--font-size-sm);
-    margin: 0;
-  }
-}
-
-// 最近活动区域
-.recent-activity-section {
-  background: var(--bg-primary);
-  border-radius: var(--border-radius-large);
-  padding: var(--spacing-xl);
-  box-shadow: var(--shadow-light);
-}
-
-.activity-header {
-  display: flex;
-  justify-content: space-between;
+.quick-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: inline-flex;
   align-items: center;
-  margin-bottom: var(--spacing-lg);
+  justify-content: center;
+  background: rgba(64, 158, 255, 0.12);
+  color: var(--primary-color);
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+
+.quick-copy h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.quick-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.compact-panel {
+  align-self: start;
+}
+
+.tips-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tip-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  line-height: 1.75;
+}
+
+.tip-item strong {
+  color: var(--primary-color);
 }
 
 .activity-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
+  display: grid;
+  gap: 12px;
 }
 
 .activity-item {
   display: flex;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-  border-radius: var(--border-radius-medium);
-  transition: background var(--transition-fast);
-
-  &:hover {
-    background: var(--bg-tertiary);
-  }
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 14px;
+  border-radius: 14px;
+  background: #fafcff;
+  border: 1px solid var(--border-light);
 }
 
 .activity-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-
-  &.success {
-    background: rgba(24, 160, 88, 0.1);
-    color: var(--success-color);
-  }
-
-  &.warning {
-    background: rgba(240, 160, 32, 0.1);
-    color: var(--warning-color);
-  }
-
-  &.info {
-    background: rgba(32, 128, 240, 0.1);
-    color: var(--info-color);
-  }
-
-  :deep(svg) {
-    width: 16px;
-    height: 16px;
-  }
+  font-size: 18px;
+  flex: 0 0 auto;
 }
 
-.activity-content {
-  flex: 1;
+.activity-icon.success {
+  background: rgba(103, 194, 58, 0.12);
+  color: var(--success-color);
+}
+
+.activity-icon.warning {
+  background: rgba(230, 162, 60, 0.14);
+  color: var(--warning-color);
+}
+
+.activity-icon.info {
+  background: rgba(64, 158, 255, 0.12);
+  color: var(--primary-color);
+}
+
+.activity-copy {
+  display: grid;
+  gap: 6px;
 }
 
 .activity-text {
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  margin-bottom: var(--spacing-xs);
+  line-height: 1.7;
 }
 
 .activity-time {
   color: var(--text-tertiary);
-  font-size: var(--font-size-xs);
+  font-size: 12px;
 }
 
-.empty-activity {
-  text-align: center;
-  padding: var(--spacing-xl) 0;
+.activity-empty {
+  padding: 12px 0;
 }
 
-// 响应式设计
-@media (max-width: 1024px) {
-  .welcome-content {
-    flex-direction: column;
-    text-align: center;
+@media (max-width: 1180px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .dashboard-main {
-    padding: var(--spacing-md);
-  }
-
-  .nav-menu {
-    display: none;
-  }
-
-  .welcome-section {
-    padding: var(--spacing-xl);
-  }
-
-  .welcome-text h1 {
-    font-size: var(--font-size-2xl);
-  }
-
-  .welcome-actions {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .stats-grid {
+  .dashboard-grid,
+  .overview-hero {
     grid-template-columns: 1fr;
   }
 
-  .actions-grid {
+  .hero-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .quick-grid,
+  .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .overview-hero,
+  .panel-card {
+    padding: 20px;
+  }
+
+  .hero-copy h1 {
+    font-size: 28px;
   }
 }
 </style>

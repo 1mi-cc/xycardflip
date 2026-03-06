@@ -144,8 +144,11 @@ When `EXECUTION_WEBHOOK_SECRET` is set, webhook requests include:
 
 ```env
 UI_AUTH_USERNAME=operator
+UI_AUTH_PASSWORD=admin123456
 UI_AUTH_NICKNAME=本地操作员
 UI_AUTH_DEFAULT_ROLE=admin
+UI_AUTH_SESSION_HOURS=72
+UI_AUTH_ALLOW_REGISTRATION=true
 UI_USER_ROLES=admin:admin,ops:ops,viewer:viewer
 UI_MENU_ROLES=admin
 UI_MENU_PERMISSIONS=dashboard:view,game:feature:view,cardflip:view,task:view,task:batch,message:test,token:view,profile:view
@@ -221,7 +224,7 @@ Launcher behavior notes:
 If you run launcher scripts from a copied desktop `.bat`, set a fixed project path first:
 
 ```bash
-set CARD_FLIP_ROOT=C:\Users\25901\Desktop\鐩綍\xyzw_web_helper
+set CARD_FLIP_ROOT=%USERPROFILE%\Desktop\filess\xyzw_web_helper
 start_card_flip.bat check
 start_card_flip.bat
 ```

@@ -1,557 +1,240 @@
 <template>
-  <div class="login-page">
-    <div class="login-container">
-      <!-- 登录表单卡片 -->
-      <div class="login-card glass">
-        <div class="card-header">
-          <div class="brand">
-            <img src="/icons/xiaoyugan.png" alt="XYZW" class="brand-logo" />
-            <h1 class="brand-title">XYZW 游戏管理系统</h1>
+  <div class="auth-page">
+    <div class="auth-shell">
+      <section class="auth-intro">
+        <p class="eyebrow">XYZW 管理系统</p>
+        <h1>管理员登录后台，普通用户通过工单上报问题。</h1>
+        <p class="intro-copy">
+          这是本地软件的统一登录入口。管理员登录后进入后台操作台，普通用户登录后进入工单中心查看处理进度。
+        </p>
+
+        <div class="intro-cards">
+          <div class="intro-card">
+            <h3>管理员</h3>
+            <p>进入控制台、Token 管理、卡片倒卖操作台和工单处理台。</p>
           </div>
-          <p class="welcome-text">欢迎回来，请登录您的账户</p>
-        </div>
-
-        <div class="card-body">
-          <n-form
-            ref="loginFormRef"
-            :model="loginForm"
-            :rules="loginRules"
-            size="large"
-            :show-label="false"
-          >
-            <n-form-item path="username">
-              <n-input
-                v-model:value="loginForm.username"
-                placeholder="用户名或邮箱"
-                :input-props="{ autocomplete: 'username' }"
-              >
-                <template #prefix>
-                  <n-icon>
-                    <PersonCircle />
-                  </n-icon>
-                </template>
-              </n-input>
-            </n-form-item>
-
-            <n-form-item path="password">
-              <n-input
-                v-model:value="loginForm.password"
-                type="password"
-                placeholder="密码"
-                :input-props="{ autocomplete: 'current-password' }"
-                @keydown.enter="handleLogin"
-              >
-                <template #prefix>
-                  <n-icon>
-                    <Lock />
-                  </n-icon>
-                </template>
-              </n-input>
-            </n-form-item>
-
-            <div class="form-options">
-              <n-checkbox v-model:checked="loginForm.rememberMe">
-                记住我
-              </n-checkbox>
-              <n-button
-                text
-                type="primary"
-                @click="router.push('/forgot-password')"
-              >
-                忘记密码？
-              </n-button>
-            </div>
-
-            <n-button
-              type="primary"
-              size="large"
-              block
-              :loading="authStore.isLoading"
-              class="login-button"
-              @click="handleLogin"
-            >
-              登录
-            </n-button>
-          </n-form>
-
-          <n-divider>
-            <span class="divider-text">其他登录方式</span>
-          </n-divider>
-
-          <div class="social-login">
-            <n-button
-              size="large"
-              class="social-button"
-              @click="handleSocialLogin('qq')"
-            >
-              <template #icon>
-                <n-icon>
-                  <PersonCircle />
-                </n-icon>
-              </template>
-              QQ登录
-            </n-button>
-
-            <n-button
-              size="large"
-              class="social-button"
-              @click="handleSocialLogin('wechat')"
-            >
-              <template #icon>
-                <n-icon>
-                  <PersonCircle />
-                </n-icon>
-              </template>
-              微信登录
-            </n-button>
-          </div>
-
-          <div class="register-prompt">
-            <span>还没有账户？</span>
-            <n-button text type="primary" @click="router.push('/register')">
-              立即注册
-            </n-button>
+          <div class="intro-card">
+            <h3>普通用户</h3>
+            <p>提交问题、补充截图说明、查看管理员回复和工单状态。</p>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- 功能展示 -->
-      <div class="features-showcase">
-        <div class="showcase-header">
-          <h2>为什么选择 XYZW？</h2>
-          <p>专业的游戏管理平台，让游戏变得更轻松</p>
-        </div>
-
-        <div class="features-list">
-          <div
-            v-for="feature in features"
-            :key="feature.id"
-            class="feature-item"
-          >
-            <div class="feature-icon">
-              <component :is="feature.icon" />
-            </div>
-            <div class="feature-content">
-              <h3>{{ feature.title }}</h3>
-              <p>{{ feature.description }}</p>
-            </div>
+      <section class="auth-card">
+        <div class="auth-head">
+          <img src="/icons/xiaoyugan.png" alt="XYZW" class="brand-logo" />
+          <div>
+            <h2>登录</h2>
+            <p>输入账号密码后进入对应页面。</p>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- 背景装饰 -->
-    <div class="background-decoration">
-      <div class="decoration-circle circle-1" />
-      <div class="decoration-circle circle-2" />
-      <div class="decoration-circle circle-3" />
+        <n-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-placement="top">
+          <n-form-item label="用户名" path="username">
+            <n-input v-model:value="loginForm.username" placeholder="管理员或用户账号" />
+          </n-form-item>
+          <n-form-item label="密码" path="password">
+            <n-input
+              v-model:value="loginForm.password"
+              type="password"
+              placeholder="输入密码"
+              show-password-on="click"
+              @keydown.enter="handleLogin"
+            />
+          </n-form-item>
+          <div class="auth-actions">
+            <n-button secondary @click="router.push('/register')">注册普通用户</n-button>
+            <n-button type="primary" :loading="authStore.isLoading" @click="handleLogin">登录</n-button>
+          </div>
+        </n-form>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { onMounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { useAuthStore } from "@/stores/auth";
-import { PersonCircle, Cube, Ribbon, Settings } from "@vicons/ionicons5";
 
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 const authStore = useAuthStore();
 const loginFormRef = ref(null);
 
-// 登录表单数据
 const loginForm = reactive({
   username: "",
   password: "",
-  rememberMe: false,
 });
 
-// 表单验证规则
 const loginRules = {
-  username: [
-    {
-      required: true,
-      message: "请输入用户名或邮箱",
-      trigger: ["input", "blur"],
-    },
-  ],
-  password: [
-    {
-      required: true,
-      message: "请输入密码",
-      trigger: ["input", "blur"],
-    },
-    {
-      min: 6,
-      message: "密码长度不能少于6位",
-      trigger: ["input", "blur"],
-    },
-  ],
+  username: {
+    required: true,
+    message: "请输入用户名",
+    trigger: ["blur", "input"],
+  },
+  password: {
+    required: true,
+    message: "请输入密码",
+    trigger: ["blur", "input"],
+  },
 };
 
-// 功能特性数据
-const features = [
-  {
-    id: 1,
-    icon: PersonCircle,
-    title: "多角色管理",
-    description: "统一管理多个游戏角色，随时切换查看",
-  },
-  {
-    id: 2,
-    icon: Cube,
-    title: "任务自动化",
-    description: "智能执行日常任务，解放双手节省时间",
-  },
-  {
-    id: 3,
-    icon: Ribbon,
-    title: "数据统计",
-    description: "详细的进度统计，让游戏数据一目了然",
-  },
-  {
-    id: 4,
-    icon: Settings,
-    title: "个性化配置",
-    description: "灵活的设置选项，打造专属管理方案",
-  },
-];
-
-// 处理登录
 const handleLogin = async () => {
-  if (!loginFormRef.value) return;
-
+  if (!loginFormRef.value)
+    return;
   try {
     await loginFormRef.value.validate();
-
-    const result = await authStore.login({
-      username: loginForm.username,
-      password: loginForm.password,
-      rememberMe: loginForm.rememberMe,
-    });
-
-    if (result.success) {
-      message.success("登录成功");
-
-      // 跳转到dashboard或之前访问的页面
-      const redirect =
-        router.currentRoute.value.query.redirect || "/admin/dashboard";
-      router.push(redirect);
-    } else {
-      message.error(result.message);
+    const result = await authStore.login(loginForm);
+    if (!result.success) {
+      message.error(result.message || "登录失败");
+      return;
     }
-  } catch (error) {
-    // 表单验证失败
-    console.error("Login validation failed:", error);
+    message.success("登录成功");
+    const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
+    router.push(redirect || authStore.getDefaultHomeRoute());
+  }
+  catch {
+    // form validation handles field errors
   }
 };
 
-// 处理社交登录
-const handleSocialLogin = (provider) => {
-  message.info(`${provider === "qq" ? "QQ" : "微信"}登录功能开发中...`);
-};
-
-onMounted(() => {
-  // 如果已经登录，直接跳转
-  if (authStore.isAuthenticated) {
-    router.push("/admin/dashboard");
-  }
+onMounted(async () => {
+  await authStore.initAuth();
+  if (authStore.isAuthenticated)
+    router.replace(authStore.getDefaultHomeRoute());
 });
 </script>
 
 <style scoped lang="scss">
-.login-page {
+.auth-page {
   min-height: 100dvh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
-  padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.16), transparent 24rem),
+    linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
 }
 
-/* 深色主题下背景 */
-[data-theme="dark"] .login-page {
-  background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
-}
-
-.login-container {
+.auth-shell {
+  width: min(1120px, 100%);
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-2xl);
-  max-width: 1200px;
-  width: 100%;
-  padding: var(--spacing-lg);
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 28px;
+  align-items: stretch;
 }
 
-.login-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: var(--border-radius-xl);
-  padding: var(--spacing-2xl);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.auth-intro,
+.auth-card {
+  border-radius: 28px;
+  padding: 36px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.08);
 }
 
-/* 深色主题下登录卡片 */
-[data-theme="dark"] .login-card {
-  background: rgba(17, 24, 39, 0.85);
-  border-color: rgba(255, 255, 255, 0.1);
+.eyebrow {
+  margin: 0;
+  color: #2563eb;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-.card-header {
-  text-align: center;
-  margin-bottom: var(--spacing-xl);
+.auth-intro h1 {
+  margin: 14px 0 16px;
+  font-size: 40px;
+  line-height: 1.15;
+  color: #0f172a;
 }
 
-.brand {
+.intro-copy {
+  margin: 0;
+  max-width: 620px;
+  color: #475569;
+  line-height: 1.8;
+}
+
+.intro-cards {
+  margin-top: 28px;
+  display: grid;
+  gap: 16px;
+}
+
+.intro-card {
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+
+  h3 {
+    margin: 0 0 8px;
+    color: #0f172a;
+  }
+
+  p {
+    margin: 0;
+    color: #475569;
+    line-height: 1.7;
+  }
+}
+
+.auth-head {
   display: flex;
-  flex-direction: column;
+  gap: 14px;
   align-items: center;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: 22px;
+
+  h2 {
+    margin: 0;
+    font-size: 28px;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: #64748b;
+  }
 }
 
 .brand-logo {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--border-radius-large);
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
 }
 
-.brand-title {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.welcome-text {
-  color: var(--text-secondary);
-  font-size: var(--font-size-md);
-  margin: 0;
-}
-
-.card-body {
-  .n-form {
-    .n-form-item {
-      margin-bottom: var(--spacing-lg);
-    }
-  }
-}
-
-.form-options {
+.auth-actions {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-xl);
+  gap: 12px;
+  margin-top: 8px;
 }
 
-.login-button {
-  height: 48px;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-medium);
-  margin-bottom: var(--spacing-lg);
-}
-
-.divider-text {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
-}
-
-.social-login {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-}
-
-.social-button {
-  height: 44px;
-  border: 1px solid var(--border-light);
-
-  &:hover {
-    border-color: var(--primary-color);
-  }
-}
-
-.register-prompt {
-  text-align: center;
-  color: var(--text-secondary);
-
-  span {
-    margin-right: var(--spacing-sm);
-  }
-}
-
-// 功能展示区域
-.features-showcase {
-  color: white;
-  padding: var(--spacing-xl);
-}
-
-.showcase-header {
-  text-align: center;
-  margin-bottom: var(--spacing-xl);
-
-  h2 {
-    font-size: var(--font-size-3xl);
-    font-weight: var(--font-weight-bold);
-    margin-bottom: var(--spacing-md);
-  }
-
-  p {
-    font-size: var(--font-size-lg);
-    opacity: 0.9;
-    margin: 0;
-  }
-}
-
-.features-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xl);
-}
-
-.feature-item {
-  display: flex;
-  gap: var(--spacing-lg);
-  padding: var(--spacing-lg);
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: var(--border-radius-large);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: all var(--transition-normal);
-
-  &:hover {
-    transform: translateX(8px);
-    background: rgba(255, 255, 255, 0.15);
-  }
-}
-
-.feature-icon {
-  width: 48px;
-  height: 48px;
-  color: white;
-  flex-shrink: 0;
-
-  :deep(svg) {
-    width: 100%;
-    height: 100%;
-  }
-}
-
-.feature-content {
-  flex: 1;
-
-  h3 {
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-semibold);
-    margin-bottom: var(--spacing-sm);
-  }
-
-  p {
-    opacity: 0.8;
-    line-height: var(--line-height-relaxed);
-    margin: 0;
-  }
-}
-
-// 背景装饰
-.background-decoration {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  z-index: -1;
-}
-
-.decoration-circle {
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
-  animation: float 6s ease-in-out infinite;
-}
-
-.circle-1 {
-  width: 200px;
-  height: 200px;
-  top: 10%;
-  right: 10%;
-  animation-delay: 0s;
-}
-
-.circle-2 {
-  width: 150px;
-  height: 150px;
-  bottom: 20%;
-  left: 15%;
-  animation-delay: 2s;
-}
-
-.circle-3 {
-  width: 100px;
-  height: 100px;
-  top: 60%;
-  right: 20%;
-  animation-delay: 4s;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-
-  50% {
-    transform: translateY(-20px) rotate(180deg);
-  }
-}
-
-// 响应式设计
-@media (max-width: 1024px) {
-  .login-container {
+@media (max-width: 900px) {
+  .auth-shell {
     grid-template-columns: 1fr;
-    max-width: 500px;
   }
 
-  .features-showcase {
-    order: -1;
-  }
-
-  .showcase-header h2 {
-    font-size: var(--font-size-2xl);
+  .auth-intro h1 {
+    font-size: 30px;
   }
 }
 
 @media (max-width: 640px) {
-  .login-container {
-    padding: var(--spacing-md);
+  .auth-page {
+    padding: 16px;
   }
 
-  .login-card {
-    padding: var(--spacing-xl);
+  .auth-intro,
+  .auth-card {
+    padding: 24px 20px;
   }
 
-  .brand-title {
-    font-size: var(--font-size-xl);
-  }
-
-  .social-login {
-    grid-template-columns: 1fr;
-  }
-
-  .feature-item {
+  .auth-actions {
     flex-direction: column;
-    text-align: center;
-  }
-
-  .decoration-circle {
-    display: none;
   }
 }
 </style>

@@ -1,116 +1,101 @@
 <template>
   <div>
-    <section class="hero">
+    <section class="hero ops-hero">
       <div class="hero-main">
-        <h1>卡片倒卖助手</h1>
-        <p>机会扫描、人工审核、交易流转全流程</p>
+        <div class="hero-eyebrow">Card Flip Operations</div>
+        <h1>卡片倒卖操作台</h1>
+        <p>
+          把总览、人工审批、自动执行和风控处置收在一个工作台里。高频动作前置，低频调参收折叠。
+        </p>
         <div class="role-hint">
           <n-tag size="small" :type="roleTagType">
             {{ roleTagText }}
           </n-tag>
-          <span v-if="isViewer">当前角色为只读，写入操作已自动禁用或折叠。</span>
+          <span v-if="isViewer">
+            当前为只读角色，写入类动作会自动禁用。
+          </span>
         </div>
       </div>
-      <div class="hero-actions">
-        <n-collapse :default-expanded-names="['quick-actions']">
-          <n-collapse-item title="快捷操作" name="quick-actions">
-            <n-space>
-              <n-input-number
-                :value="scanLimit"
-                :min="1"
-                :max="500"
-                @update:value="value => $emit('update:scanLimit', value)"
-              />
-              <div class="action-with-help">
-                <n-button type="primary" :loading="scanLoading" :disabled="!canOperate" @click="$emit('runScan')">
-                  扫描机会
-                </n-button>
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <span class="help-badge">!</span>
-                  </template>
-                  仅扫描当前数据库中的 open 商品并重新估价，不会主动去闲鱼抓新数据。
-                </n-tooltip>
-              </div>
-              <div class="action-with-help">
-                <n-button
-                  type="info"
-                  :loading="simulationTrainingLoading"
-                  :disabled="!canOperate"
-                  @click="$emit('runSimulationTraining')"
-                >
-                  模拟训练
-                </n-button>
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <span class="help-badge">!</span>
-                  </template>
-                  一键切换为 mock + dry-run，并跳过 Monitor 和扫描，只跑审批训练链路。
-                </n-tooltip>
-              </div>
-              <div v-if="canMaintain" class="action-with-help">
-                <n-button :loading="cookieRefreshLoading" @click="$emit('refreshCookie')">
-                  刷新 Cookie
-                </n-button>
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <span class="help-badge">!</span>
-                  </template>
-                  从本机浏览器重新提取闲鱼 Cookie，用于修复 401 或令牌过期。
-                </n-tooltip>
-              </div>
-              <n-select
-                :value="pricingMode"
-                :options="pricingModeOptions"
-                style="width: 160px"
-                @update:value="value => $emit('update:pricingMode', value)"
-              />
-              <div class="action-with-help">
-                <n-button :loading="batchPricingLoading" @click="$emit('previewBatchReprice')">
-                  批量预览定价
-                </n-button>
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <span class="help-badge">!</span>
-                  </template>
-                  按当前模式生成建议价，不写入数据库。
-                </n-tooltip>
-              </div>
-              <div v-if="canBatchApplyPricing" class="action-with-help">
-                <n-button
-                  type="warning"
-                  :loading="batchPricingLoading"
-                  :disabled="!canOperate"
-                  @click="$emit('applyBatchReprice')"
-                >
-                  批量应用定价
-                </n-button>
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <span class="help-badge">!</span>
-                  </template>
-                  将建议价写回进行中交易的目标卖价。
-                </n-tooltip>
-              </div>
-              <div class="action-with-help">
-                <n-button :loading="loading" @click="$emit('refresh')">
-                  刷新
-                </n-button>
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <span class="help-badge">!</span>
-                  </template>
-                  刷新页面数据与各服务状态，不触发交易动作。
-                </n-tooltip>
-              </div>
-            </n-space>
-          </n-collapse-item>
-        </n-collapse>
+
+      <div class="hero-actions hero-actions-panel">
+        <div class="hero-actions-label">主操作</div>
+        <n-space class="hero-actions-row" wrap>
+          <n-input-number
+            :value="scanLimit"
+            :min="1"
+            :max="500"
+            style="width: 140px"
+            @update:value="value => $emit('update:scanLimit', value)"
+          />
+
+          <n-button
+            type="primary"
+            :loading="scanLoading"
+            :disabled="!canOperate"
+            @click="$emit('runScan')"
+          >
+            扫描机会
+          </n-button>
+
+          <n-button
+            secondary
+            type="info"
+            :loading="simulationTrainingLoading"
+            :disabled="!canOperate"
+            @click="$emit('runSimulationTraining')"
+          >
+            模拟训练
+          </n-button>
+
+          <n-button
+            v-if="canMaintain"
+            :loading="cookieRefreshLoading"
+            @click="$emit('refreshCookie')"
+          >
+            刷新 Cookie
+          </n-button>
+
+          <n-select
+            :value="pricingMode"
+            :options="pricingModeOptions"
+            style="width: 160px"
+            @update:value="value => $emit('update:pricingMode', value)"
+          />
+
+          <n-button
+            :loading="batchPricingLoading"
+            @click="$emit('previewBatchReprice')"
+          >
+            预览批量定价
+          </n-button>
+
+          <n-button
+            v-if="canBatchApplyPricing"
+            type="warning"
+            :loading="batchPricingLoading"
+            :disabled="!canOperate"
+            @click="$emit('applyBatchReprice')"
+          >
+            应用批量定价
+          </n-button>
+
+          <n-button :loading="loading" @click="$emit('refresh')">
+            刷新总览
+          </n-button>
+        </n-space>
+        <div class="hero-actions-hint">
+          扫描上限即时生效，批量定价遵循当前模式。
+        </div>
       </div>
     </section>
 
     <section v-if="dataIntegrityAlert || guardAlert" class="health-strip">
-      <n-alert v-if="dataIntegrityAlert" type="warning" show-icon :bordered="false">
+      <n-alert
+        v-if="dataIntegrityAlert"
+        type="warning"
+        show-icon
+        :bordered="false"
+      >
         {{ dataIntegrityAlert }}
       </n-alert>
       <n-alert v-if="guardAlert" type="info" show-icon :bordered="false">
@@ -118,18 +103,18 @@
       </n-alert>
     </section>
 
-    <section class="stats">
+    <section class="stats stats-compact">
       <div class="stat-card">
-        <div class="label">待审核</div>
-        <div class="value">{{ metrics.pending_review_count }}</div>
+        <div class="label">待审核机会</div>
+        <div class="value">{{ metrics.pending_review_count || 0 }}</div>
       </div>
       <div class="stat-card">
         <div class="label">进行中交易</div>
-        <div class="value">{{ metrics.active_trades_count }}</div>
+        <div class="value">{{ metrics.active_trades_count || 0 }}</div>
       </div>
       <div class="stat-card">
-        <div class="label">已卖出</div>
-        <div class="value">{{ metrics.sold_count }}</div>
+        <div class="label">已卖出记录</div>
+        <div class="value">{{ metrics.sold_count || 0 }}</div>
       </div>
       <div class="stat-card warning">
         <div class="label">风控拦截</div>
