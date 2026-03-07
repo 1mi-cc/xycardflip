@@ -1,0 +1,13 @@
+Card Flip Assistant - First Start Guide
+
+1. Open .env in the same folder as CardFlipAssistant.exe.
+2. Change UI_AUTH_USERNAME and UI_AUTH_PASSWORD before first use.
+3. Keep API_HOST=127.0.0.1 and SQLITE_PATH=./data/trading.db for local desktop usage.
+4. If you do not use external services, keep GEMINI_API_KEY, RAGFLOW_API_KEY and SUPABASE_SERVICE_ROLE_KEY empty.
+5. Start the software with start_card_flip_app.bat.
+
+Default release credentials are placeholders only:
+- UI_AUTH_USERNAME=admin
+- UI_AUTH_PASSWORD=ChangeMe123
+
+Change them before sharing or using the software.
