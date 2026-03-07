@@ -1,0 +1,103 @@
+name: Build And Publish Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: npm ci
+
+      - name: Clean old local release artifacts
+        shell: pwsh
+        run: |
+          if (Test-Path release) {
+            Get-ChildItem release -Force | Where-Object {
+              $_.Name -like 'CardFlipAssistant_*' -or $_.Name -like 'CardFlipAssistant_Windows_*.zip'
+            } | Remove-Item -Recurse -Force
+          }
+
+      - name: Build Windows package
+        shell: cmd
+        run: build_software.bat
+
+      - name: Verify release safety
+        shell: pwsh
+        run: python backend/scripts/verify_release_safety.py
+
+      - name: Resolve package paths
+        id: package
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem release -Filter 'CardFlipAssistant_Windows_*.zip' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $zip) {
+            throw 'No packaged zip found in release directory.'
+          }
+
+          $folderName = [System.IO.Path]::GetFileNameWithoutExtension($zip.Name) -replace '^CardFlipAssistant_Windows_', 'CardFlipAssistant_'
+          $folder = Join-Path $zip.DirectoryName $folderName
+          if (-not (Test-Path $folder)) {
+            throw "Release folder not found: $folder"
+          }
+
+          "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+          "zip_name=$($zip.Name)" >> $env:GITHUB_OUTPUT
+          "folder_path=$folder" >> $env:GITHUB_OUTPUT
+          "folder_name=$folderName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-package
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.folder_path }}
+            release/start_card_flip_app.bat
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.package.outputs.zip_path }}
+          body: |
+            Automated Windows release built from `${{ github.sha }}`.
+
+            Included asset:
+            - `${{ steps.package.outputs.zip_name }}`
+
+            The packaged `.env` uses safe placeholders by default:
+            - `UI_AUTH_USERNAME=admin`
+            - `UI_AUTH_PASSWORD=ChangeMe123`
+
+            Update `.env` before first use.

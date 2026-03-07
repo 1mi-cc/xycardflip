@@ -165,6 +165,16 @@ start_uptime_kuma.cmd
 
 ---
 
+## GitHub Release Flow
+
+- Push a tag like `v2.1.4` to `xycardflip/main`.
+- GitHub Actions workflow `.github/workflows/release-windows.yml` builds the Windows package on `windows-latest`.
+- The workflow uploads the packaged zip as both a workflow artifact and a GitHub Release asset.
+- Release packages now ship with safe placeholder credentials only:
+  - `UI_AUTH_USERNAME=admin`
+  - `UI_AUTH_PASSWORD=ChangeMe123`
+- Before using or sharing the package, edit the packaged `.env`.
+
 ## 📖 使用指南
 
 ### 1. Token导入与管理
