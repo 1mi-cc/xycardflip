@@ -136,6 +136,10 @@ const requestAuth = async ({
   let lastError = null;
 
   for (const endpoint of endpoints) {
+    // Separate the network-level fetch from response processing so that a
+    // real server error (e.g. 401 "用户名或密码错误") is never silently
+    // replaced by a 404 returned from a fallback endpoint.
+    let response;
     try {
       const headers = { Accept: "application/json" };
       if (body !== null)
@@ -143,26 +147,36 @@ const requestAuth = async ({
       if (authToken)
         headers.Authorization = `Bearer ${authToken}`;
 
-      const response = await fetch(endpoint, {
+      response = await fetch(endpoint, {
         method,
         headers,
         credentials: "same-origin",
         body: body !== null ? JSON.stringify(body) : undefined,
       });
-
-      const payload = await response.json().catch(() => null);
-      if (response.ok)
-        return payload;
-
-      if (response.status === 404) {
-        lastError = new Error("接口不存在");
-        continue;
-      }
-
-      throw new Error(extractErrorMessage(payload, "请求失败"));
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("请求失败");
     }
+    catch {
+      // Network error – backend unreachable. Only record if no earlier real
+      // error has been captured, then try the next endpoint.
+      if (!lastError)
+        lastError = new Error("无法连接到服务器，请确认后端服务已启动");
+      continue;
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (response.ok)
+      return payload;
+
+    if (response.status === 404) {
+      // Endpoint not found on this host – try the next fallback URL, but
+      // do not overwrite a more specific error already recorded.
+      if (!lastError)
+        lastError = new Error("接口不存在");
+      continue;
+    }
+
+    // Any other HTTP error (4xx/5xx) means the endpoint exists and returned
+    // a real error. Surface it immediately without trying further endpoints.
+    throw new Error(extractErrorMessage(payload, "请求失败"));
   }
 
   throw lastError || new Error("服务暂时不可用");

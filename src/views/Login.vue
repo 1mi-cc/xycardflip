@@ -46,6 +46,9 @@
             <n-button secondary @click="router.push('/register')">注册普通用户</n-button>
             <n-button type="primary" :loading="authStore.isLoading" @click="handleLogin">登录</n-button>
           </div>
+          <p class="credentials-hint">
+            默认管理员账号：<code>operator</code>，密码：<code>admin123456</code>
+          </p>
         </n-form>
       </section>
     </div>
@@ -204,6 +207,22 @@ onMounted(async () => {
   width: 56px;
   height: 56px;
   border-radius: 16px;
+}
+
+.credentials-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #475569;
+    font-size: 11px;
+  }
 }
 
 .auth-actions {
