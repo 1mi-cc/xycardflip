@@ -29,7 +29,7 @@ class Logger {
     // 开发环境根据localStorage配置决定
     const saved = localStorage.getItem("ws_debug_level");
     if (saved) {
-      return parseInt(saved, 10);
+      return Number.parseInt(saved, 10);
     }
 
     return LOG_LEVELS.INFO; // 开发环境默认显示信息级别
@@ -92,7 +92,7 @@ class Logger {
   }
 
   wsDisconnect(tokenId, reason = "") {
-    this.info(`🔌 WebSocket断开: ${tokenId}${reason ? " - " + reason : ""}`);
+    this.info(`🔌 WebSocket断开: ${tokenId}${reason ? ` - ${reason}` : ""}`);
   }
 
   wsError(tokenId, error) {
@@ -100,13 +100,14 @@ class Logger {
   }
 
   wsMessage(tokenId, cmd, isReceived = false) {
-    if (cmd === "_sys/ack") return; // 过滤心跳消息
+    if (cmd === "_sys/ack")
+      return; // 过滤心跳消息
     const direction = isReceived ? "📨" : "📤";
     this.debug(`${direction} [${tokenId}] ${cmd}`);
   }
 
   wsStatus(tokenId, status, details = "") {
-    this.info(`📊 [${tokenId}] ${status}${details ? " - " + details : ""}`);
+    this.info(`📊 [${tokenId}] ${status}${details ? ` - ${details}` : ""}`);
   }
 
   // 连接管理专用日志
@@ -120,7 +121,8 @@ class Logger {
 
   // 游戏消息处理
   gameMessage(tokenId, cmd, hasBody = false) {
-    if (cmd === "_sys/ack") return;
+    if (cmd === "_sys/ack")
+      return;
     this.debug(`🎮 [${tokenId}] ${cmd}${hasBody ? " ✓" : " ✗"}`);
   }
 }

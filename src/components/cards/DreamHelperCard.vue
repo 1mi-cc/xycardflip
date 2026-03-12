@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="dream-helper" :statusClass="{ active: isRunning }">
+  <MyCard class="dream-helper" :status-class="{ active: isRunning }">
     <template #icon>
-      <img :src="iconPath" alt="梦境图标" />
+      <img alt="梦境图标" :src="iconPath">
     </template>
     <template #title>
       <h3>梦境助手</h3>
@@ -30,10 +30,10 @@
 
         <!-- 战斗模块 -->
         <div v-if="activeTab === 'battle'" class="tab-content">
-          <div class="team-info" v-if="teamHeroes.length > 0">
+          <div v-if="teamHeroes.length > 0" class="team-info">
             <div class="team-title">当前队伍</div>
             <div class="team-list">
-              <div class="hero-item" v-for="hero in teamHeroes" :key="hero.id">
+              <div v-for="hero in teamHeroes" :key="hero.id" class="hero-item">
                 <div
                   class="hero-name"
                   :style="{ borderLeftColor: getTypeColor(hero.type) }"
@@ -41,8 +41,8 @@
                   {{ hero.name }}
                 </div>
                 <a-button
-                  type="primary"
                   size="small"
+                  type="primary"
                   :class="{ 'stop-btn': continuousBattles[hero.id] }"
                   @click="toggleContinuousBattle(hero.id)"
                 >
@@ -52,15 +52,15 @@
             </div>
           </div>
           <div class="team-actions">
-            <a-button type="primary" size="small" @click="getDefaultTeam"
-              >获取队伍</a-button
-            >
-            <a-button type="primary" size="small" @click="selectDreamTeam"
-              >选择阵容</a-button
-            >
-            <a-button type="primary" size="small" @click="stopAllBattles"
-              >停止所有</a-button
-            >
+            <a-button size="small" type="primary" @click="getDefaultTeam">
+              获取队伍
+            </a-button>
+            <a-button size="small" type="primary" @click="selectDreamTeam">
+              选择阵容
+            </a-button>
+            <a-button size="small" type="primary" @click="stopAllBattles">
+              停止所有
+            </a-button>
           </div>
         </div>
 
@@ -69,28 +69,28 @@
           <div class="merchant-info">
             <div class="merchant-title">商品列表</div>
             <div class="merchant-actions">
-              <a-button type="primary" size="small" @click="refreshMerchantList"
-                >获取商品</a-button
-              >
-              <a-button type="primary" size="small" @click="buyAllGoldItems"
-                >一键购买金币商品</a-button
-              >
-              <a-button type="primary" size="small" @click="buyAllGoldFishItems"
-                >一键购买高级商人鱼竿</a-button
-              >
+              <a-button size="small" type="primary" @click="refreshMerchantList">
+                获取商品
+              </a-button>
+              <a-button size="small" type="primary" @click="buyAllGoldItems">
+                一键购买金币商品
+              </a-button>
+              <a-button size="small" type="primary" @click="buyAllGoldFishItems">
+                一键购买高级商人鱼竿
+              </a-button>
             </div>
           </div>
-          <div class="merchant-items" v-if="merchantDataLoaded">
+          <div v-if="merchantDataLoaded" class="merchant-items">
             <div
-              class="merchant-section"
               v-for="(items, merchantId) in merchantData"
               :key="merchantId"
+              class="merchant-section"
             >
               <div class="merchant-name">
                 {{ merchantConfig[merchantId].name }}
               </div>
               <div class="items-list">
-                <div class="item" v-for="(item, index) in items" :key="index">
+                <div v-for="(item, index) in items" :key="index" class="item">
                   <div
                     class="item-name"
                     :style="{ color: getItemColor(parseInt(merchantId), item) }"
@@ -106,11 +106,11 @@
     </template>
     <template #action>
       <a-button
-        type="primary"
-        :disabled="isRunning"
+        block
         secondary
         size="small"
-        block
+        type="primary"
+        :disabled="isRunning"
         @click="startDreamHelper"
       >
         {{ isRunning ? "运行中" : "启动梦境助手" }}
@@ -120,16 +120,18 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, watchEffect } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
 
 const iconPath = computed(
-  () => import.meta.env.BASE_URL + "174061875626614.png",
+  () => `${import.meta.env.BASE_URL}174061875626614.png`,
 );
 
 // 状态管理
@@ -251,8 +253,8 @@ function extractDefaultInfoFromResponse(response) {
     }
 
     const useTeamId = response.presetTeamInfo.useTeamId.toString();
-    const battleTeam =
-      response.presetTeamInfo.presetTeamInfo[useTeamId].teamInfo;
+    const battleTeam
+      = response.presetTeamInfo.presetTeamInfo[useTeamId].teamInfo;
     teamHeroes.value = [];
 
     for (let i = 0; i < 5; i++) {
@@ -364,7 +366,7 @@ async function selectDreamTeam() {
       tokenId,
       "dungeon_selecthero",
       {
-        battleTeam: battleTeam,
+        battleTeam,
       },
       15000,
     );
@@ -393,7 +395,7 @@ async function startSingleBattle(heroId) {
       tokenId,
       "fight_startdungeon",
       {
-        heroId: parseInt(heroId),
+        heroId: Number.parseInt(heroId),
       },
       15000,
     );
@@ -413,8 +415,8 @@ async function startSingleBattle(heroId) {
   } catch (error) {
     // 检查是否是2600080或2600050错误码
     if (
-      error.message.includes("2600080") ||
-      error.message.includes("2600050")
+      error.message.includes("2600080")
+      || error.message.includes("2600050")
     ) {
       return "stop"; // 返回特殊值表示需要停止
     }
@@ -553,8 +555,8 @@ async function buyItem(merchantId, index, pos) {
       "dungeon_buymerchant",
       {
         id: merchantId,
-        index: index,
-        pos: pos,
+        index,
+        pos,
       },
       15000,
     );
@@ -593,7 +595,8 @@ async function batchBuySelected() {
     const [aMerchant, aIndex, aPos] = a.split("-").map(Number);
     const [bMerchant, bIndex, bPos] = b.split("-").map(Number);
 
-    if (aMerchant !== bMerchant) return bMerchant - aMerchant;
+    if (aMerchant !== bMerchant)
+      return bMerchant - aMerchant;
     return bPos - aPos;
   });
 
@@ -644,7 +647,7 @@ async function buyAllGoldItems() {
   // 遍历所有商人的商品
   for (const merchantId in merchantData.value) {
     const items = merchantData.value[merchantId];
-    const numId = parseInt(merchantId);
+    const numId = Number.parseInt(merchantId);
 
     // 从后往前购买（pos从大到小）
     for (let pos = items.length - 1; pos >= 0; pos--) {

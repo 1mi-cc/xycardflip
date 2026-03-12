@@ -4,8 +4,8 @@
       <div class="page-header">
         <div class="header-content">
           <div class="header-top">
-            <img src="/icons/xiaoyugan.png" alt="XYZW" class="brand-logo" />
-            <ThemeToggle />
+            <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
+            <ThemeToggle></ThemeToggle>
           </div>
           <div class="header-kicker">Account Center</div>
           <h1>游戏 Token 管理</h1>
@@ -14,13 +14,13 @@
       </div>
 
       <n-modal
-        v-model:show="showImportForm"
         preset="card"
-        title="添加游戏 Token"
         style="width: min(720px, calc(100vw - 32px))"
+        title="添加游戏 Token"
+        v-model:show="showImportForm"
       >
         <div class="card-header">
-          <n-radio-group v-model:value="importMethod" class="import-method-tabs" size="small">
+          <n-radio-group class="import-method-tabs" size="small" v-model:value="importMethod">
             <n-radio-button value="manual">手动输入</n-radio-button>
             <n-radio-button value="url">URL 获取</n-radio-button>
             <n-radio-button value="bin">BIN 获取</n-radio-button>
@@ -31,17 +31,17 @@
             v-if="importMethod === 'manual'"
             @cancel="showImportForm = false"
             @ok="handleImportSuccess"
-          />
+          ></ManualTokenForm>
           <UrlTokenForm
             v-else-if="importMethod === 'url'"
             @cancel="showImportForm = false"
             @ok="handleImportSuccess"
-          />
+          ></UrlTokenForm>
           <BinTokenForm
             v-else
             @cancel="showImportForm = false"
             @ok="handleImportSuccess"
-          />
+          ></BinTokenForm>
         </div>
       </n-modal>
 
@@ -49,7 +49,7 @@
         <div class="section-header">
           <n-space align="center">
             <h2>我的 Token 列表（{{ tokenStore.gameTokens.length }} 个）</h2>
-            <n-radio-group v-model:value="viewMode" size="small">
+            <n-radio-group size="small" v-model:value="viewMode">
               <n-radio-button value="card">卡片</n-radio-button>
               <n-radio-button value="list">列表</n-radio-button>
             </n-radio-group>
@@ -57,14 +57,14 @@
           <div class="header-actions">
             <n-button v-if="tokenStore.selectedToken" type="success" @click="goToDashboard">
               <template #icon>
-                <n-icon><Home /></n-icon>
+                <n-icon><Home></Home></n-icon>
               </template>
               返回控制台
             </n-button>
 
             <n-button type="primary" @click="showImportForm = true">
               <template #icon>
-                <n-icon><Add /></n-icon>
+                <n-icon><Add></Add></n-icon>
               </template>
               添加 Token
             </n-button>
@@ -72,7 +72,7 @@
             <n-dropdown :options="bulkOptions" @select="handleBulkAction">
               <n-button>
                 <template #icon>
-                  <n-icon><Menu /></n-icon>
+                  <n-icon><Menu></Menu></n-icon>
                 </template>
                 批量操作
               </n-button>
@@ -84,13 +84,14 @@
           <n-card
             v-for="(token, index) in tokenStore.gameTokens"
             :key="token.id"
-            draggable="true"
             hoverable
-            :class="{ 'token-card': true, active: selectedTokenId === token.id }"
-            @dragstart="handleDragStart(index, $event)"
-            @dragover.prevent
-            @drop="handleDrop(index, $event)"
+            class="token-card"
+            draggable="true"
+            :class="{ active: selectedTokenId === token.id }"
             @click="selectToken(token)"
+            @dragover.prevent
+            @dragstart="handleDragStart(index, $event)"
+            @drop="handleDrop(index, $event)"
           >
             <template #header>
               <div class="token-card-head">
@@ -104,7 +105,7 @@
                 <n-dropdown :options="getTokenActions(token)" @select="key => handleTokenAction(key, token)">
                   <n-button text @click.stop>
                     <template #icon>
-                      <n-icon><EllipsisHorizontal /></n-icon>
+                      <n-icon><EllipsisHorizontal></EllipsisHorizontal></n-icon>
                     </template>
                   </n-button>
                 </n-dropdown>
@@ -136,7 +137,7 @@
             <div class="card-actions">
               <n-button secondary :loading="refreshingTokens.has(token.id)" @click.stop="refreshToken(token)">
                 <template #icon>
-                  <n-icon><Refresh /></n-icon>
+                  <n-icon><Refresh></Refresh></n-icon>
                 </template>
                 {{ token.sourceUrl ? "刷新" : "重新获取" }}
               </n-button>
@@ -146,7 +147,7 @@
                 @click.stop="startTaskManagement(token)"
               >
                 <template #icon>
-                  <n-icon><Home /></n-icon>
+                  <n-icon><Home></Home></n-icon>
                 </template>
                 开始任务管理
               </n-button>
@@ -158,14 +159,14 @@
           <n-card
             v-for="(token, index) in tokenStore.gameTokens"
             :key="token.id"
-            draggable="true"
             hoverable
             class="token-list-card"
+            draggable="true"
             :class="{ active: selectedTokenId === token.id }"
-            @dragstart="handleDragStart(index, $event)"
-            @dragover.prevent
-            @drop="handleDrop(index, $event)"
             @click="selectToken(token)"
+            @dragover.prevent
+            @dragstart="handleDragStart(index, $event)"
+            @drop="handleDrop(index, $event)"
           >
             <div class="token-list-row">
               <div class="token-list-main">
@@ -188,17 +189,17 @@
                   管理
                 </n-button>
                 <n-button
-                  size="small"
                   secondary
+                  size="small"
                   :loading="refreshingTokens.has(token.id)"
                   @click.stop="refreshToken(token)"
                 >
                   刷新
                 </n-button>
                 <n-dropdown :options="getTokenActions(token)" @select="key => handleTokenAction(key, token)">
-                  <n-button size="small" circle @click.stop>
+                  <n-button circle size="small" @click.stop>
                     <template #icon>
-                      <n-icon><EllipsisHorizontal /></n-icon>
+                      <n-icon><EllipsisHorizontal></EllipsisHorizontal></n-icon>
                     </template>
                   </n-button>
                 </n-dropdown>
@@ -217,19 +218,19 @@
       </div>
     </div>
 
-    <n-modal v-model:show="showEditModal" preset="card" title="编辑 Token" style="width: 520px">
-      <n-form ref="editFormRef" :model="editForm" :rules="editRules" label-placement="top">
+    <n-modal preset="card" style="width: 520px" title="编辑 Token" v-model:show="showEditModal">
+      <n-form ref="editFormRef" label-placement="top" :model="editForm" :rules="editRules">
         <n-form-item label="名称" path="name">
-          <n-input v-model:value="editForm.name" />
+          <n-input v-model:value="editForm.name"></n-input>
         </n-form-item>
         <n-form-item label="Token 字符串" path="token">
-          <n-input v-model:value="editForm.token" type="textarea" :rows="4" />
+          <n-input type="textarea" v-model:value="editForm.token" :rows="4"></n-input>
         </n-form-item>
         <n-form-item label="服务器">
-          <n-input v-model:value="editForm.server" />
+          <n-input v-model:value="editForm.server"></n-input>
         </n-form-item>
         <n-form-item label="WebSocket 地址">
-          <n-input v-model:value="editForm.wsUrl" />
+          <n-input v-model:value="editForm.wsUrl"></n-input>
         </n-form-item>
       </n-form>
 
@@ -244,23 +245,22 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
-import { useDialog, useMessage } from "naive-ui";
 import {
   Add,
-  Create,
   EllipsisHorizontal,
   Home,
   Menu,
   Refresh,
-  Star,
-  TrashBin,
 } from "@vicons/ionicons5";
+import { useDialog, useMessage } from "naive-ui";
+import { computed, onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
+
 import { selectedTokenId, useTokenStore } from "@/stores/tokenStore";
+
+import BinTokenForm from "./bin.vue";
 import ManualTokenForm from "./manual.vue";
 import UrlTokenForm from "./url.vue";
-import BinTokenForm from "./bin.vue";
 
 const props = defineProps({
   token: String,
@@ -314,17 +314,23 @@ const handleImportSuccess = () => {
 
 const statusType = (tokenId) => {
   const status = tokenStore.getWebSocketStatus(tokenId);
-  if (status === "connected") return "success";
-  if (status === "connecting") return "warning";
-  if (status === "error") return "error";
+  if (status === "connected")
+    return "success";
+  if (status === "connecting")
+    return "warning";
+  if (status === "error")
+    return "error";
   return "default";
 };
 
 const getConnectionStatusText = (tokenId) => {
   const status = tokenStore.getWebSocketStatus(tokenId);
-  if (status === "connected") return "已连接";
-  if (status === "connecting") return "连接中";
-  if (status === "error") return "连接异常";
+  if (status === "connected")
+    return "已连接";
+  if (status === "connecting")
+    return "连接中";
+  if (status === "error")
+    return "连接异常";
   return "未连接";
 };
 
@@ -334,7 +340,8 @@ const handleDragStart = (index, event) => {
 };
 
 const handleDrop = (dropIndex) => {
-  if (dragIndex.value === null || dragIndex.value === dropIndex) return;
+  if (dragIndex.value === null || dragIndex.value === dropIndex)
+    return;
   const tokens = [...tokenStore.gameTokens];
   const [moved] = tokens.splice(dragIndex.value, 1);
   tokens.splice(dropIndex, 0, moved);
@@ -344,13 +351,16 @@ const handleDrop = (dropIndex) => {
 };
 
 const maskToken = (token) => {
-  if (!token) return "";
-  if (token.length <= 12) return token;
+  if (!token)
+    return "";
+  if (token.length <= 12)
+    return token;
   return `${token.slice(0, 6)}...${token.slice(-6)}`;
 };
 
 const formatTime = (timestamp) => {
-  if (!timestamp) return "-";
+  if (!timestamp)
+    return "-";
   return new Date(timestamp).toLocaleString("zh-CN");
 };
 
@@ -466,7 +476,7 @@ const disconnectToken = (token) => {
   message.success(`${token.name} 已断开连接`);
 };
 
-const getTokenActions = token => [
+const getTokenActions = (token) => [
   { label: "选为当前账户", key: "select" },
   { label: "刷新 Token", key: "refresh" },
   { label: "编辑", key: "edit" },
@@ -519,9 +529,10 @@ const importTokenFile = () => {
   const input = document.createElement("input");
   input.type = "file";
   input.accept = ".json";
-  input.onchange = event => {
+  input.onchange = (event) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file)
+      return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -542,7 +553,7 @@ const importTokenFile = () => {
 };
 
 const refreshAllTokens = async () => {
-  const urlTokens = tokenStore.gameTokens.filter(token => token.sourceUrl);
+  const urlTokens = tokenStore.gameTokens.filter((token) => token.sourceUrl);
   if (!urlTokens.length) {
     message.warning("没有可自动刷新的 Token");
     return;
@@ -566,18 +577,22 @@ const clearAllTokens = () => {
 };
 
 const handleBulkAction = async (key) => {
-  if (key === "refreshAll") return refreshAllTokens();
-  if (key === "export") return exportTokens();
-  if (key === "import") return importTokenFile();
+  if (key === "refreshAll")
+    return refreshAllTokens();
+  if (key === "export")
+    return exportTokens();
+  if (key === "import")
+    return importTokenFile();
   if (key === "clean") {
     const count = tokenStore.cleanExpiredTokens();
     return message.success(`已清理 ${count} 个过期 Token`);
   }
   if (key === "disconnect") {
-    tokenStore.gameTokens.forEach(token => tokenStore.closeWebSocketConnection(token.id));
+    tokenStore.gameTokens.forEach((token) => tokenStore.closeWebSocketConnection(token.id));
     return message.success("已断开全部连接");
   }
-  if (key === "clear") return clearAllTokens();
+  if (key === "clear")
+    return clearAllTokens();
 };
 
 const handleUrlParams = async () => {

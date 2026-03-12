@@ -67,8 +67,7 @@ const requestSupport = async ({
         continue;
       }
       throw new Error(extractErrorMessage(payload, "请求失败"));
-    }
-    catch (error) {
+    } catch (error) {
       lastError = error instanceof Error ? error : new Error("请求失败");
     }
   }

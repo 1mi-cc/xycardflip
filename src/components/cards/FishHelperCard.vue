@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="helper" :statusClass="{ active: state.isRunning }">
+  <MyCard class="helper" :status-class="{ active: state.isRunning }">
     <template #icon>
-      <img :src="iconPath" alt="普通鱼竿图标" />
+      <img alt="普通鱼竿图标" :src="iconPath">
     </template>
     <template #title>
       <h3>钓鱼助手</h3>
@@ -12,8 +12,8 @@
     <template #default>
       <div class="container">
         <div class="list">
-          <div class="item" v-for="item in dataList" :key="item.type">
-            <img :src="item.img" :alt="item.type" />
+          <div v-for="item in dataList" :key="item.type" class="item">
+            <img :alt="item.type" :src="item.img">
             <div class="box-info">
               <div class="box-type">{{ item.type }}</div>
               <div class="box-count">数量：{{ item.count }}</div>
@@ -21,18 +21,18 @@
           </div>
         </div>
         <div class="selects">
-          <n-select v-model:value="type" :options="typeOptions" />
-          <n-select v-model:value="number" :options="numberOptions" />
+          <n-select v-model:value="type" :options="typeOptions"></n-select>
+          <n-select v-model:value="number" :options="numberOptions"></n-select>
         </div>
       </div>
     </template>
     <template #action>
       <a-button
-        type="primary"
-        :disabled="state.isRunning"
+        block
         secondary
         size="small"
-        block
+        type="primary"
+        :disabled="state.isRunning"
         @click="handleHelper"
       >
         {{ state.isRunning ? "运行中" : "开始钓鱼" }}
@@ -42,16 +42,18 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, watchEffect } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
 
 const iconPath = computed(() => {
-  return import.meta.env.BASE_URL + "fish/hjyg.png";
+  return `${import.meta.env.BASE_URL}fish/hjyg.png`;
 });
 
 const roleInfo = computed(() => tokenStore.gameData?.roleInfo || null);
@@ -128,7 +130,6 @@ const handleHelper = async () => {
     tokenStore.sendMessage(tokenId, "activity_get");
     message.success("钓鱼完毕");
     state.value.isRunning = false;
-    return;
   }
 };
 </script>

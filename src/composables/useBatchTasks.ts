@@ -1,20 +1,22 @@
-import { reactive, ref, type Ref } from "vue";
+import { reactive, ref } from "vue";
+
+import type { Ref } from "vue";
 
 type RunType = "daily" | "cron";
 
-type LogEntry = {
+interface LogEntry {
   time: string;
   message: string;
   type: string;
-};
+}
 
-type TokenItem = {
+interface TokenItem {
   id: string;
   name?: string;
   token?: string;
-};
+}
 
-type ScheduledTask = {
+interface ScheduledTask {
   id: string;
   name: string;
   runType: RunType;
@@ -24,9 +26,9 @@ type ScheduledTask = {
   selectedTasks: string[];
   enabled: boolean;
   connectedTokens?: string[];
-};
+}
 
-type TaskFormState = {
+interface TaskFormState {
   name: string;
   runType: RunType;
   runTime: Date | string | number | undefined | null;
@@ -34,26 +36,26 @@ type TaskFormState = {
   selectedTokens: string[];
   selectedTasks: string[];
   enabled: boolean;
-};
+}
 
-type TaskOption = {
+interface TaskOption {
   label: string;
   value: string;
-};
+}
 
-type MessageApi = {
+interface MessageApi {
   warning: (msg: string) => void;
   success: (msg: string) => void;
-};
+}
 
-type UseBatchTasksOptions = {
+interface UseBatchTasksOptions {
   tokens: Ref<TokenItem[]>;
   tokenStore: any;
   message: MessageApi;
   addLog: (entry: LogEntry) => void;
   resolveTaskFunction: (taskName: string) => unknown;
   storageKey?: string;
-};
+}
 
 const DEFAULT_STORAGE_KEY = "scheduledTasks";
 
@@ -109,7 +111,8 @@ function resetTaskForm(taskForm: TaskFormState): void {
 }
 
 function validateCronExpression(expression: string): { valid: boolean; message: string } {
-  if (!expression) return { valid: false, message: "Cron表达式不能为空" };
+  if (!expression)
+    return { valid: false, message: "Cron表达式不能为空" };
 
   const cronParts = expression.split(" ").filter(Boolean);
   if (cronParts.length !== 5) {
@@ -120,13 +123,13 @@ function validateCronExpression(expression: string): { valid: boolean; message: 
 
   const validateCronField = (field: string, min: number, max: number, fieldName: string) => {
     const cronFieldRegex = new RegExp(
-      "^(?:\\*|\\*/\\d+|[0-9]+/\\d+|(?:[0-9]+-?)*[0-9]+(?:,[0-9]+-?)*[0-9]+(?:/\\d+)?)$",
+      "^(?:\\*|\\*/\\d+|\\d+/\\d+|(?:\\d+-?)*(?:\\d(?:,\\d+-?)+\\d+|\\d{2})(?:/\\d+)?)$",
     );
     if (!cronFieldRegex.test(field)) {
       return { valid: false, message: `${fieldName}字段格式错误` };
     }
     if (/^\d+$/.test(field)) {
-      const num = parseInt(field, 10);
+      const num = Number.parseInt(field, 10);
       if (num < min || num > max) {
         return { valid: false, message: `${fieldName}字段必须在${min}-${max}之间` };
       }
@@ -135,19 +138,24 @@ function validateCronExpression(expression: string): { valid: boolean; message: 
   };
 
   const minuteValidation = validateCronField(minute, 0, 59, "分钟");
-  if (!minuteValidation.valid) return minuteValidation;
+  if (!minuteValidation.valid)
+    return minuteValidation;
 
   const hourValidation = validateCronField(hour, 0, 23, "小时");
-  if (!hourValidation.valid) return hourValidation;
+  if (!hourValidation.valid)
+    return hourValidation;
 
   const dayOfMonthValidation = validateCronField(dayOfMonth, 1, 31, "日期");
-  if (!dayOfMonthValidation.valid) return dayOfMonthValidation;
+  if (!dayOfMonthValidation.valid)
+    return dayOfMonthValidation;
 
   const monthValidation = validateCronField(month, 1, 12, "月份");
-  if (!monthValidation.valid) return monthValidation;
+  if (!monthValidation.valid)
+    return monthValidation;
 
   const dayOfWeekValidation = validateCronField(dayOfWeek, 0, 7, "星期");
-  if (!dayOfWeekValidation.valid) return dayOfWeekValidation;
+  if (!dayOfWeekValidation.valid)
+    return dayOfWeekValidation;
 
   return { valid: true, message: "Cron表达式格式正确" };
 }
@@ -329,7 +337,8 @@ export function useBatchTasks(options: UseBatchTasksOptions) {
 
   const deleteTask = (taskId: string) => {
     const task = scheduledTasks.value.find((t) => t.id === taskId);
-    if (!task) return;
+    if (!task)
+      return;
     scheduledTasks.value = scheduledTasks.value.filter((t) => t.id !== taskId);
     saveScheduledTasks();
     addLog({
@@ -342,7 +351,8 @@ export function useBatchTasks(options: UseBatchTasksOptions) {
 
   const toggleTaskEnabled = (taskId: string, enabled: boolean) => {
     const task = scheduledTasks.value.find((t) => t.id === taskId);
-    if (!task) return;
+    if (!task)
+      return;
     task.enabled = enabled;
     saveScheduledTasks();
     addLog({
@@ -384,7 +394,8 @@ export function useBatchTasks(options: UseBatchTasksOptions) {
   ): Promise<boolean> => {
     for (let i = 0; i < maxRetries; i += 1) {
       const status = tokenStore?.getWebSocketStatus?.(tokenId);
-      if (status === "connected") return true;
+      if (status === "connected")
+        return true;
 
       const tokenList = asTokenList(tokenStore, tokens);
       const tokenName = tokenList.find((t) => t.id === tokenId)?.name || tokenId;

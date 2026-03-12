@@ -36,7 +36,8 @@ export async function loadQuestionsData() {
  * @returns {boolean} - 是否匹配
  */
 export function matchQuestion(questionFromDB, actualQuestion, threshold = 1) {
-  if (!questionFromDB || !actualQuestion) return false;
+  if (!questionFromDB || !actualQuestion)
+    return false;
 
   // 简单的包含匹配
   if (threshold === 1) {
@@ -67,7 +68,8 @@ export async function findAnswer(question) {
     // 遍历所有题目寻找匹配
     for (let i = 0; i < questions.length; i++) {
       const item = questions[i];
-      if (!item.name || !item.value) continue;
+      if (!item.name || !item.value)
+        continue;
 
       if (matchQuestion(item.name, question, 1)) {
         // 降噪

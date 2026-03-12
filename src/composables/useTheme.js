@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 
 // 全局响应式主题状态
 const isDark = ref(false);
@@ -6,8 +6,8 @@ const isDark = ref(false);
 // 检查当前主题状态
 const checkCurrentTheme = () => {
   return (
-    document.documentElement.classList.contains("dark") ||
-    document.documentElement.getAttribute("data-theme") === "dark"
+    document.documentElement.classList.contains("dark")
+    || document.documentElement.getAttribute("data-theme") === "dark"
   );
 };
 

@@ -1,7 +1,8 @@
-import { gameLogger } from "@/utils/logger";
-import type { EVM, Session } from ".";
-import { findAnswer } from "@/utils/studyQuestionsFromJSON";
 import { isInCurrentWeek } from "@/utils/base";
+import { gameLogger } from "@/utils/logger";
+import { findAnswer } from "@/utils/studyQuestionsFromJSON";
+
+import type { EVM, Session } from ".";
 
 export const StudyPlugin = ({ onSome, $emit }: EVM) => {
   onSome(
@@ -90,8 +91,8 @@ export const StudyPlugin = ({ onSome, $emit }: EVM) => {
     const { body, gameData } = data;
     const maxCorrectNum = body.role.study.maxCorrectNum;
     const beginTime = body.role.study.beginTime;
-    const isStudyCompleted =
-      maxCorrectNum >= 10 && isInCurrentWeek(beginTime * 1000);
+    const isStudyCompleted
+      = maxCorrectNum >= 10 && isInCurrentWeek(beginTime * 1000);
 
     // 更新答题完成状态
     if (!gameData.value.studyStatus) {
@@ -115,7 +116,7 @@ export const StudyPlugin = ({ onSome, $emit }: EVM) => {
     for (let rewardId = 1; rewardId <= 10; rewardId++) {
       try {
         client?.send("study_claimreward", {
-          rewardId: rewardId,
+          rewardId,
         });
         await new Promise((resolve) => setTimeout(resolve, 200));
         gameLogger.verbose(`已发送奖励领取请求: rewardId=${rewardId}`);

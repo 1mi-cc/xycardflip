@@ -22,14 +22,15 @@
         <div class="current">
           可行方案:
           <a-button
-            type="primary"
             size="small"
             style="margin-left: 8px"
+            type="primary"
             @click="showCombosModal = true"
-            >查看所有可行方案</a-button
           >
+            查看所有可行方案
+          </a-button>
         </div>
-        <div class="current" v-if="feasibleCombos.length === 0">
+        <div v-if="feasibleCombos.length === 0" class="current">
           暂无可行组合或已满足目标
         </div>
       </div>
@@ -37,18 +38,19 @@
     <div class="setting-item">
       <span class="label">使用数量:</span>
       <n-input-number
+        size="small"
         v-model:value="Activitynumber"
         :min="1"
         :step="1"
-        size="small"
-      />
+      ></n-input-number>
       <a-button
-        type="primary"
         size="small"
+        type="primary"
         :disabled="state.isRunning"
         @click="OpenActivityItem"
-        >打开普通道具</a-button
       >
+        打开普通道具
+      </a-button>
     </div>
 
     <div class="card-content">
@@ -64,31 +66,31 @@
             </span>
           </div>
           <n-progress
+            rail-color="rgba(0, 0, 0, 0.06)"
             type="line"
-            :percentage="item.percentage"
             :color="item.isCompleted ? '#52c41a' : '#1890ff'"
-            :rail-color="'rgba(0, 0, 0, 0.06)'"
             :height="8"
+            :percentage="item.percentage"
             :show-indicator="false"
-          />
+          ></n-progress>
           <div class="item-footer">
-            <span class="next-reward" v-if="!item.isCompleted">
+            <span v-if="!item.isCompleted" class="next-reward">
               下一档: {{ item.nextTarget }} (还需
               {{ item.nextTarget - item.current }})
             </span>
-            <span class="completed-text" v-else> 已完成所有档位 </span>
-            <span class="obtained-items" v-if="item.obtainedItems > 0">
+            <span v-else class="completed-text"> 已完成所有档位 </span>
+            <span v-if="item.obtainedItems > 0" class="obtained-items">
               已获得道具: {{ item.obtainedItems }}
             </span>
           </div>
         </div>
       </div>
     </div>
-    <!--显示可行方案-->
+    <!-- 显示可行方案 -->
     <a-modal
-      v-model:visible="showCombosModal"
-      width="900px"
       height="600px"
+      width="900px"
+      v-model:visible="showCombosModal"
       :footer="false"
     >
       <template #title>
@@ -108,7 +110,7 @@
             <ol>
               <li
                 v-for="step in combo.combo"
-                :key="step.id + '-' + step.threshold"
+                :key="`${step.id}-${step.threshold}`"
               >
                 {{ step.name }} -> 达到 {{ step.threshold }} (可得
                 {{ step.delta }} 普通道具, 还需消耗 {{ step.cost }})
@@ -127,8 +129,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, watchEffect } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
 
 const tokenStore = useTokenStore();
@@ -418,11 +421,13 @@ const commonActivityInfo = computed(() => {
 
 const hasActivityData = computed(() => {
   console.log("🚀 ~ commonActivityInfo.value:", commonActivityInfo.value);
-  if (!commonActivityInfo.value) return false;
+  if (!commonActivityInfo.value)
+    return false;
 
   // 查找包含有效任务ID (1-5) 的活动
   return Object.values(commonActivityInfo.value).some((activity) => {
-    if (!activity?.task) return false;
+    if (!activity?.task)
+      return false;
     return Object.keys(activity.task).some((key) => {
       const id = Number(key);
       return id >= 1 && id <= 5;
@@ -449,12 +454,14 @@ const OpenActivityItem = async () => {
 };
 
 const progressList = computed(() => {
-  if (!commonActivityInfo.value) return [];
+  if (!commonActivityInfo.value)
+    return [];
 
   // 查找包含有效任务ID (1-5) 的活动
   const activityData = Object.values(commonActivityInfo.value).find(
     (activity) => {
-      if (!activity?.task) return false;
+      if (!activity?.task)
+        return false;
       return Object.keys(activity.task).some((key) => {
         const id = Number(key);
         return id >= 1 && id <= 5;
@@ -462,7 +469,8 @@ const progressList = computed(() => {
     },
   );
 
-  if (!activityData) return [];
+  if (!activityData)
+    return [];
 
   const tasks = activityData.task || {};
 
@@ -471,7 +479,8 @@ const progressList = computed(() => {
   // 然后按照 rewardConfigs[id] 的逐轮奖励累加前 N 轮的奖励。
   const calcObtainedForTask = (id, consumed) => {
     const rewardCfg = rewardConfigs[id];
-    if (!rewardCfg || !rewardCfg.length || !consumed || consumed <= 0) return 0;
+    if (!rewardCfg || !rewardCfg.length || !consumed || consumed <= 0)
+      return 0;
 
     const missionCfg = missionTypes[id] || [];
 
@@ -480,7 +489,8 @@ const progressList = computed(() => {
     let completedRounds = 0;
     for (let i = 0; i < missionCfg.length; i++) {
       const threshold = missionCfg[i]?.num || 0;
-      if (consumed >= threshold) completedRounds++;
+      if (consumed >= threshold)
+        completedRounds++;
       else break;
     }
 
@@ -489,7 +499,8 @@ const progressList = computed(() => {
     const lastVal = rewardCfg[len - 1]?.num || 0;
     let total = 0;
     for (let i = 0; i < completedRounds; i++) {
-      if (i < len) total += rewardCfg[i]?.num || 0;
+      if (i < len)
+        total += rewardCfg[i]?.num || 0;
       else total += lastVal;
     }
 
@@ -630,7 +641,8 @@ const feasibleCombos = computed(() => {
   let count = 0;
 
   const recurse = (idx, chosen, sumDelta, sumCost) => {
-    if (count > MAX_COMBOS) return;
+    if (count > MAX_COMBOS)
+      return;
     if (idx === m) {
       if (sumDelta >= target) {
         // chosen is array of option objects
@@ -652,7 +664,8 @@ const feasibleCombos = computed(() => {
       chosen.push(opt);
       recurse(idx + 1, chosen, sumDelta + opt.delta, sumCost + opt.cost);
       chosen.pop();
-      if (count > MAX_COMBOS) return;
+      if (count > MAX_COMBOS)
+        return;
     }
   };
 

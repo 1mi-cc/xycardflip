@@ -1,40 +1,40 @@
 <template>
   <n-form
     ref="formRef"
-    :model="form"
-    :rules="rules"
     label-placement="top"
     size="large"
+    :model="form"
+    :rules="rules"
   >
     <n-form-item label="账户名称" path="name">
       <n-input
-        v-model:value="form.name"
-        placeholder="例如：主号战士"
         clearable
-      />
+        placeholder="例如：主号战士"
+        v-model:value="form.name"
+      ></n-input>
     </n-form-item>
 
     <n-form-item label="Token 字符串" path="token">
       <n-input
-        v-model:value="form.token"
-        type="textarea"
-        :rows="4"
-        placeholder="粘贴 Base64 Token 或接口返回的 token 字符串"
         clearable
-      />
+        placeholder="粘贴 Base64 Token 或接口返回的 token 字符串"
+        type="textarea"
+        v-model:value="form.token"
+        :rows="4"
+      ></n-input>
     </n-form-item>
 
     <div class="optional-fields">
       <n-form-item label="服务器">
-        <n-input v-model:value="form.server" placeholder="可选" />
+        <n-input placeholder="可选" v-model:value="form.server"></n-input>
       </n-form-item>
       <n-form-item label="WebSocket 地址">
-        <n-input v-model:value="form.wsUrl" placeholder="留空则使用默认地址" />
+        <n-input placeholder="留空则使用默认地址" v-model:value="form.wsUrl"></n-input>
       </n-form-item>
     </div>
 
     <div class="form-actions">
-      <n-button type="primary" block :loading="submitting" @click="handleSubmit">
+      <n-button block type="primary" :loading="submitting" @click="handleSubmit">
         添加 Token
       </n-button>
       <n-button v-if="tokenStore.hasTokens" block @click="$emit('cancel')">
@@ -45,8 +45,9 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
 import { useMessage } from "naive-ui";
+import { reactive, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
 
 const emit = defineEmits(["cancel", "ok"]);

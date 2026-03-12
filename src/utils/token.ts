@@ -1,5 +1,7 @@
 import axios from "axios";
+
 import { g_utils } from "@/utils/bonProtocol";
+
 export const transformToken = async (arrayBuffer: ArrayBuffer) => {
   // 如果是data URL格式，提取base64部分
   const res = await axios.post(
@@ -11,7 +13,7 @@ export const transformToken = async (arrayBuffer: ArrayBuffer) => {
       },
       headers: {
         "Content-Type": "application/octet-stream",
-        referrerPolicy: "no-referrer",
+        "referrerPolicy": "no-referrer",
       },
       responseType: "arraybuffer",
     },

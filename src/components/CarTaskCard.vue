@@ -2,7 +2,7 @@
   <!-- 俱乐部赛车 -->
   <div class="status-card legion-match">
     <div class="card-header">
-      <img src="/Car.png" alt="赛车" class="status-icon" />
+      <img alt="赛车" class="status-icon" src="/Car.png">
       <div class="status-info">
         <h3>俱乐部赛车</h3>
       </div>
@@ -79,9 +79,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
-import { g_utils } from "@/utils/bonProtocol.js";
 
 // 车辆数据处理工具函数
 // 根据color值返回颜色名称
@@ -143,7 +143,8 @@ const getItemName = (itemId) => {
 // 解析车辆奖励列表，返回格式化的奖励信息
 const parseCarRewards = (rewards) => {
   const rewardInfo = [];
-  if (!rewards || !Array.isArray(rewards)) return rewardInfo;
+  if (!rewards || !Array.isArray(rewards))
+    return rewardInfo;
 
   for (const reward of rewards) {
     const rewardType = reward.type || 0;
@@ -180,16 +181,18 @@ const isBigPrize = (rewards) => {
     { type: 3, itemId: 1001, value: 12 }, // 12个招募令
   ];
 
-  if (!rewards || !Array.isArray(rewards)) return false;
+  if (!rewards || !Array.isArray(rewards))
+    return false;
 
   for (const prize of bigPrizes) {
     const found = rewards.find(
       (reward) =>
-        reward.type === prize.type &&
-        reward.itemId === prize.itemId &&
-        reward.value >= prize.value,
+        reward.type === prize.type
+        && reward.itemId === prize.itemId
+        && reward.value >= prize.value,
     );
-    if (found) return true;
+    if (found)
+      return true;
   }
 
   return false;
@@ -232,7 +235,7 @@ const refreshCar = async (carId) => {
   if (status === "connected") {
     try {
       // 构建刷新车辆命令参数
-      const params = { carId: carId };
+      const params = { carId };
       // 发送刷新车辆命令
       const result = await tokenStore.sendMessageWithPromise(
         tokenId,
@@ -260,7 +263,7 @@ const claimCar = async (carId) => {
   if (status === "connected") {
     try {
       // 构建收车命令参数
-      const params = { carId: carId };
+      const params = { carId };
       // 发送收车命令
       const result = await tokenStore.sendMessageWithPromise(
         tokenId,
@@ -291,7 +294,7 @@ const sendCar = async (carId) => {
     try {
       // 构建发车命令参数
       const params = {
-        carId: carId,
+        carId,
         helperId: 0, // 默认助战ID为0
         text: "", // 默认发车文本
       };
@@ -364,7 +367,7 @@ const getCarList = async () => {
         "car_getrolecar",
         params,
       );
-      //获取车辆刷新票数量
+      // 获取车辆刷新票数量
       const result1 = await tokenStore.sendMessageWithPromise(
         tokenId,
         "role_getroleinfo",
@@ -394,12 +397,12 @@ const getCarList = async () => {
             // 构建车辆对象
             const car = {
               id: carId,
-              slot: slot,
-              color: color,
+              slot,
+              color,
               color_name: colorName,
-              sendAt: sendAt,
-              claimAt: claimAt,
-              rewards: rewards,
+              sendAt,
+              claimAt,
+              rewards,
               // 添加其他可能需要的属性
               raided: carInfo.raided || 0,
               // 根据Python逻辑添加状态判断
@@ -452,7 +455,8 @@ watch(
 
 // 计算奖励中包含的赛车刷新券数量
 const countRacingRefreshTickets = (rewards) => {
-  if (!rewards || !Array.isArray(rewards)) return 0;
+  if (!rewards || !Array.isArray(rewards))
+    return 0;
 
   let count = 0;
   for (const reward of rewards) {
@@ -474,16 +478,16 @@ const shouldSendCar = (carInfo, refreshTickets) => {
   // 如果刷新券充足（>=6），寻找神话以上|赛车刷新券>=4|大奖车
   if (refreshTickets >= 6) {
     return (
-      color >= 5 || // 神话以上
-      racingTicketsCount >= 4 || // 赛车刷新券>=4
-      isBigPrize(rewards)
+      color >= 5 // 神话以上
+      || racingTicketsCount >= 4 // 赛车刷新券>=4
+      || isBigPrize(rewards)
     ); // 大奖车
   } else {
     // 刷新券不足，寻找传说以上|赛车刷新券>=2|大奖车
     return (
-      color >= 4 || // 传说以上
-      racingTicketsCount >= 2 || // 赛车刷新券>=2
-      isBigPrize(rewards)
+      color >= 4 // 传说以上
+      || racingTicketsCount >= 2 // 赛车刷新券>=2
+      || isBigPrize(rewards)
     ); // 大奖车
   }
 };
@@ -629,7 +633,8 @@ const smartSendCar = async () => {
 
 // 监听WebSocket状态变化
 const wsStatus = computed(() => {
-  if (!tokenStore.selectedToken) return "disconnected";
+  if (!tokenStore.selectedToken)
+    return "disconnected";
   return tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
 });
 

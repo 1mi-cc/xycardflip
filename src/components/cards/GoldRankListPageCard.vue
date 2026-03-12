@@ -2,17 +2,17 @@
   <div>
     <div class="status-card club-warrank">
       <div class="card-header">
-        <img src="/icons/legionCup.png" alt="队伍图标" class="status-icon" />
+        <img alt="队伍图标" class="status-icon" src="/icons/legionCup.png">
         <div class="status-info">
           <h3>黄金积分俱乐部总览</h3>
         </div>
       </div>
       <div class="inline-container">
         <n-radio-group
-          v-model:value="selectedGroup"
+          class="radio-group"
           name="group-radiogroup"
           size="small"
-          class="radio-group"
+          v-model:value="selectedGroup"
         >
           <n-radio-button value="gold1">1-100</n-radio-button>
           <n-radio-button value="gold2">101-200</n-radio-button>
@@ -22,19 +22,19 @@
         </n-radio-group>
         <n-button size="small" :disabled="loading1" @click="topranklistRefresh">
           <template #icon>
-            <n-icon><Refresh /></n-icon> </template
-          >查询</n-button
-        >
+            <n-icon><Refresh></Refresh></n-icon>
+          </template>查询
+        </n-button>
         <n-button
-          type="primary"
           size="small"
+          type="primary"
           :disabled="!topranklist || loading1"
           @click="handleExport1"
         >
           <template #icon>
-            <n-icon><Copy /></n-icon> </template
-          >导出</n-button
-        >
+            <n-icon><Copy></Copy></n-icon>
+          </template>导出
+        </n-button>
       </div>
 
       <div class="battle-records-content">
@@ -54,59 +54,35 @@
           >
             <div class="member-header">
               <div class="member-info">
-                <span class="stat-inline Sscore"
-                  >排名 {{ memberData.rank }}</span
-                >
+                <span class="stat-inline Sscore">排名 {{ memberData.rank }}</span>
               </div>
               <div class="member-stats-inline">
-                <span class="stat-inline win"
-                  >区服 {{ memberData.ServerId }}</span
-                >
-                <span class="stat-inline loss"
-                  >俱乐部名 {{ memberData.Clubname }}</span
-                >
-                <span class="stat-inline Resurrectio"
-                  >黄金积分 {{ memberData.score }}</span
-                >
-                <span class="stat-inline rednumber"
-                  >总红淬 {{ memberData.redQuench }}红</span
-                >
-                <span class="stat-inline siege"
-                  >战力 {{ memberData.power }}</span
-                >
-                <span class="stat-inline tipsgg"
-                  >玩家名称 {{ memberData.name1 }}</span
-                >
-                <span class="stat-inline Sscore"
-                  >玩家ID {{ memberData.roleID1 }}</span
-                >
-                <span class="stat-inline tipsgg"
-                  >玩家名称 {{ memberData.name2 }}</span
-                >
-                <span class="stat-inline Sscore"
-                  >玩家ID {{ memberData.roleID2 }}</span
-                >
-                <span class="stat-inline tipsgg"
-                  >玩家名称 {{ memberData.name3 }}</span
-                >
-                <span class="stat-inline Sscore"
-                  >玩家ID {{ memberData.roleID3 }}</span
-                >
+                <span class="stat-inline win">区服 {{ memberData.ServerId }}</span>
+                <span class="stat-inline loss">俱乐部名 {{ memberData.Clubname }}</span>
+                <span class="stat-inline Resurrectio">黄金积分 {{ memberData.score }}</span>
+                <span class="stat-inline rednumber">总红淬 {{ memberData.redQuench }}红</span>
+                <span class="stat-inline siege">战力 {{ memberData.power }}</span>
+                <span class="stat-inline tipsgg">玩家名称 {{ memberData.name1 }}</span>
+                <span class="stat-inline Sscore">玩家ID {{ memberData.roleID1 }}</span>
+                <span class="stat-inline tipsgg">玩家名称 {{ memberData.name2 }}</span>
+                <span class="stat-inline Sscore">玩家ID {{ memberData.roleID2 }}</span>
+                <span class="stat-inline tipsgg">玩家名称 {{ memberData.name3 }}</span>
+                <span class="stat-inline Sscore">玩家ID {{ memberData.roleID3 }}</span>
               </div>
             </div>
           </div>
           <!-- 分页控件 -->
-          <div class="pagination-container" v-if="totalPages > 1">
-            <n-pagination
+          <div v-if="totalPages > 1" class="pagination-container">
+            <NPagination
+              show-quick-jumper
+              show-size-changer
               class="pagination-item"
               v-model:page="currentPage"
               :page-count="totalPages"
               :page-size="pageSize"
-              show-quick-jumper
-              show-size-changer
               :page-sizes="[10, 20, 50, 100]"
               @update:page-size="handlePageSizeChange"
-            />
+            ></NPagination>
           </div>
         </div>
       </div>
@@ -115,30 +91,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
-import { useMessage, NDatePicker, NPagination } from "naive-ui";
+import {
+  Copy,
+  Refresh,
+} from "@vicons/ionicons5";
+import { NPagination, useMessage } from "naive-ui";
+import { computed, onMounted, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
 import {
-  Trophy,
-  Refresh,
-  Copy,
-  ChevronDown,
-  ChevronUp,
-  DocumentText,
-} from "@vicons/ionicons5";
-import {
-  getLastSaturday,
-  formatTimestamp,
-  formatTimestamp1,
-  parseBattleResult,
-  parseAttackType,
-  formatBattleRecordsForExport,
-  copyToClipboard,
-} from "@/utils/clubBattleUtils";
-import {
-  gettoday,
   formatWarrankRecordsForExport,
-  allianceincludes,
+  gettoday,
 } from "@/utils/goldWarrankUtils";
 
 const props = defineProps({
@@ -169,7 +132,7 @@ const roleIdinput = ref("");
 const queryDate = ref("");
 const selectedGroup = ref("");
 const teamArray = ref(null);
-let player_date = { name: "", power: "" };
+const player_date = { name: "", power: "" };
 
 // 分页状态
 const currentPage = ref(1);
@@ -177,13 +140,15 @@ const pageSize = ref(20); // 每页20条，共5页
 
 // 计算总页数
 const totalPages = computed(() => {
-  if (!topranklist.value) return 0;
+  if (!topranklist.value)
+    return 0;
   return Math.ceil(Object.keys(topranklist.value).length / pageSize.value);
 });
 
 // 获取当前页的数据
 const currentPageData = computed(() => {
-  if (!topranklist.value) return {};
+  if (!topranklist.value)
+    return {};
 
   const startIndex = (currentPage.value - 1) * pageSize.value;
   const endIndex = startIndex + pageSize.value;
@@ -193,12 +158,13 @@ const currentPageData = computed(() => {
 });
 // 格式化战力
 const formatPower = (power) => {
-  if (!power) return "0";
+  if (!power)
+    return "0";
   if (power >= 100000000) {
-    return (power / 100000000).toFixed(2) + "亿";
+    return `${(power / 100000000).toFixed(2)}亿`;
   }
   if (power >= 10000) {
-    return (power / 10000).toFixed(2) + "万";
+    return `${(power / 10000).toFixed(2)}万`;
   }
   return power.toString();
 };
@@ -304,7 +270,7 @@ const fetchtopranklist = async () => {
           roleIdCounts.push(ClubData.roleId);
           nameCounts.push(ClubData.name);
           if (ClubData.custom?.red_quench_cnt !== undefined) {
-            redQuenchCounts.push(ClubData.custom.red_quench_cnt + "红");
+            redQuenchCounts.push(`${ClubData.custom.red_quench_cnt}红`);
           }
         }
       }

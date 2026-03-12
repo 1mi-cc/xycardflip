@@ -1,10 +1,10 @@
 <template>
-  <MyCard class="hang-up" :statusClass="{ active: state.isRunning }">
+  <MyCard class="hang-up" :status-class="{ active: state.isRunning }">
     <template #icon>
       <img
-        src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
         alt="宝库图标"
-      />
+        src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
+      >
     </template>
     <template #title>
       <h3>咸王功能</h3>
@@ -14,21 +14,24 @@
     </template>
     <template #action>
       <a-button
-        type="primary"
+        block
         secondary
         size="small"
-        block
+        type="primary"
         @click="extendbosstower"
-        >宝库战斗</a-button
       >
+        宝库战斗
+      </a-button>
     </template>
   </MyCard>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -49,11 +52,12 @@ const state = ref({
 });
 
 const extendbosstower = async () => {
-  if (!tokenStore.selectedToken) return message.warning("请先选择Token");
+  if (!tokenStore.selectedToken)
+    return message.warning("请先选择Token");
   const tokenId = tokenStore.selectedToken.id;
   state.value.isRunning = true;
   if (dayOfWeek != 1 && dayOfWeek != 2) {
-    if (currentTower === 1 || currentTower === 2 || currentTower === 3) {
+    if (currentTower.value === 1 || currentTower.value === 2 || currentTower.value === 3) {
       try {
         state.value.isExtending = true;
         message.info("正在战斗...");
@@ -71,9 +75,9 @@ const extendbosstower = async () => {
         );
         message.success("战斗已完成，请上线手动领取奖励");
       } catch (e) {
-        message.error("战斗失败: " + (e?.message || "未知错误"));
+        message.error(`战斗失败: ${e?.message || "未知错误"}`);
       }
-    } else if (currentTower === 4 || currentTower === 5) {
+    } else if (currentTower.value === 4 || currentTower.value === 5) {
       try {
         state.value.isExtending = true;
         message.info("正在战斗...");
@@ -88,7 +92,7 @@ const extendbosstower = async () => {
         );
         message.success("战斗已完成");
       } catch (e) {
-        message.error("战斗失败: " + (e?.message || "未知错误"));
+        message.error(`战斗失败: ${e?.message || "未知错误"}`);
       }
     } else {
       message.error("当前层数暂不支持");

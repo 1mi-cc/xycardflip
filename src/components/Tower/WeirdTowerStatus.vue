@@ -2,16 +2,16 @@
   <div class="status-card tower-status weird-tower">
     <div class="card-header">
       <img
-        src="/icons/1733492491706152.png"
         alt="怪异塔图标"
         class="status-icon"
-      />
+        src="/icons/1733492491706152.png"
+      >
       <div class="status-info">
         <h3>怪异塔</h3>
         <p>一个不小心就过了</p>
       </div>
       <div class="energy-display">
-        <img src="/icons/xiaoyugan.png" alt="小鱼干" class="energy-icon" />
+        <img alt="小鱼干" class="energy-icon" src="/icons/xiaoyugan.png">
         <span class="energy-count">{{ towerEnergy }}</span>
       </div>
     </div>
@@ -25,8 +25,8 @@
 
     <div class="card-actions">
       <button
+        class="climb-button"
         :class="[
-          'climb-button',
           {
             active: canClimb,
             disabled: !canClimb,
@@ -45,7 +45,12 @@
 </template>
 
 <script setup>
+import { useMessage } from "naive-ui";
 // 停止批量爬塔操作
+import { computed, onMounted, ref, watch } from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
+
 let stopFlag = false;
 
 const stopClimbing = () => {
@@ -57,9 +62,6 @@ const stopClimbing = () => {
   isClimbing.value = false;
   message.info("已手动停止批量爬塔");
 };
-import { computed, onMounted, ref, watch } from "vue";
-import { useTokenStore } from "@/stores/tokenStore";
-import { useMessage } from "naive-ui";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -71,17 +73,17 @@ const lastClimbResult = ref(null); // 最后一次爬塔结果
 
 // 计算属性 - 从gameData中获取塔相关信息
 const evoTowerInfo = computed(() => {
-  const data = tokenStore.gameData?.evoTowerInfo || null
-  return data
-})
+  const data = tokenStore.gameData?.evoTowerInfo || null;
+  return data;
+});
 
 const weirdTowerData = computed(() => {
-  return evoTowerInfo.value?.evoTower || null
-})
+  return evoTowerInfo.value?.evoTower || null;
+});
 
 const currentTowerId = computed(() => {
-  return weirdTowerData.value?.towerId || 0
-})
+  return weirdTowerData.value?.towerId || 0;
+});
 
 const displayFloor = computed(() => {
   const towerId = currentTowerId.value;
@@ -109,26 +111,27 @@ const canClimb = computed(() => {
 
 const getCurrentActivityWeek = computed(() => {
   const now = new Date();
-  const start = new Date('2025-12-12T12:00:00'); // 起始时间：黑市周开始
+  const start = new Date("2025-12-12T12:00:00"); // 起始时间：黑市周开始
   const weekDuration = 7 * 24 * 60 * 60 * 1000; // 一周毫秒数
   const cycleDuration = 3 * weekDuration; // 三周期毫秒数
-  
+
   const elapsed = now - start;
-  if (elapsed < 0) return null; // 活动开始前
-  
+  if (elapsed < 0)
+    return null; // 活动开始前
+
   const cyclePosition = elapsed % cycleDuration;
-  
+
   if (cyclePosition < weekDuration) {
-    return '黑市周';
+    return "黑市周";
   } else if (cyclePosition < 2 * weekDuration) {
-    return '招募周';
+    return "招募周";
   } else {
-    return '宝箱周';
+    return "宝箱周";
   }
 });
 
 const isWeirdTowerActivityOpen = computed(() => {
-  return getCurrentActivityWeek.value === '黑市周';
+  return getCurrentActivityWeek.value === "黑市周";
 });
 
 // 方法
@@ -137,12 +140,12 @@ const startTowerClimb = async () => {
     message.warning("请先选择Token");
     return;
   }
-  
+
   if (!isWeirdTowerActivityOpen.value) {
     message.warning("怪异塔活动未开始或已结束");
     return;
   }
-  
+
   if (!canClimb.value) {
     message.warning("体力不足或正在爬塔中");
     return;
@@ -157,7 +160,7 @@ const startTowerClimb = async () => {
   isClimbing.value = true;
   stopFlag = false;
   let climbCount = 0;
-  let maxClimb = 100; // 最多批量次数，防止死循环
+  const maxClimb = 100; // 最多批量次数，防止死循环
   // 设置超时保护，60秒后自动重置状态
   climbTimeout.value = setTimeout(() => {
     isClimbing.value = false;
@@ -169,12 +172,14 @@ const startTowerClimb = async () => {
   try {
     const tokenId = tokenStore.selectedToken.id;
     for (let i = 0; i < maxClimb; i++) {
-      if (stopFlag) break;
+      if (stopFlag)
+        break;
 
       // 检查当前能量
       await getTowerInfo();
       const currentEnergy = towerEnergy.value;
-      if (currentEnergy <= 0) break;
+      if (currentEnergy <= 0)
+        break;
 
       // 准备战斗
       await tokenStore.sendMessageWithPromise(
@@ -205,10 +210,10 @@ const startTowerClimb = async () => {
       const towerId = currentTowerId.value;
       const floor = (towerId % 10) + 1;
       if (
-        fightResult &&
-        fightResult.winList &&
-        fightResult.winList[0] === true &&
-        floor === 1
+        fightResult
+        && fightResult.winList
+        && fightResult.winList[0] === true
+        && floor === 1
       ) {
         // 领取通关奖励
         await tokenStore.sendMessageWithPromise(
@@ -225,28 +230,28 @@ const startTowerClimb = async () => {
     // 获取免费道具数量
     const freeEnergyResult = await tokenStore.sendMessageWithPromise(
       tokenId,
-      'mergebox_getinfo',
+      "mergebox_getinfo",
       {
-        actType: 1
+        actType: 1,
       },
-      5000
+      5000,
     );
     if (freeEnergyResult && freeEnergyResult.mergeBox.freeEnergy > 0) {
       // 领取免费道具
       await tokenStore.sendMessageWithPromise(
         tokenId,
-        'mergebox_claimfreeenergy',
+        "mergebox_claimfreeenergy",
         {
-          actType: 1
+          actType: 1,
         },
-        5000
+        5000,
       );
       message.success(`成功领取免费道具${freeEnergyResult.mergeBox.freeEnergy}个！`);
     }
     await new Promise((res) => setTimeout(res, 500));
     message.success(`已自动爬塔${climbCount}次，体力已耗尽或达到上限。`);
   } catch (error) {
-    message.error("批量爬塔失败: " + (error.message || "未知错误"));
+    message.error(`批量爬塔失败: ${error.message || "未知错误"}`);
   }
 
   // 清除超时并重置状态
@@ -286,7 +291,8 @@ const getTowerInfo = async () => {
 
 // 监听WebSocket连接状态变化
 const wsStatus = computed(() => {
-  if (!tokenStore.selectedToken) return "disconnected";
+  if (!tokenStore.selectedToken)
+    return "disconnected";
   return tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
 });
 

@@ -22,25 +22,25 @@
 
       <section class="auth-card">
         <div class="auth-head">
-          <img src="/icons/xiaoyugan.png" alt="XYZW" class="brand-logo" />
+          <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
           <div>
             <h2>登录</h2>
             <p>输入账号密码后进入对应页面。</p>
           </div>
         </div>
 
-        <n-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-placement="top">
+        <n-form ref="loginFormRef" label-placement="top" :model="loginForm" :rules="loginRules">
           <n-form-item label="用户名" path="username">
-            <n-input v-model:value="loginForm.username" placeholder="管理员或用户账号" />
+            <n-input placeholder="管理员或用户账号" v-model:value="loginForm.username"></n-input>
           </n-form-item>
           <n-form-item label="密码" path="password">
             <n-input
-              v-model:value="loginForm.password"
-              type="password"
               placeholder="输入密码"
               show-password-on="click"
+              type="password"
+              v-model:value="loginForm.password"
               @keydown.enter="handleLogin"
-            />
+            ></n-input>
           </n-form-item>
           <div class="auth-actions">
             <n-button secondary @click="router.push('/register')">注册普通用户</n-button>
@@ -53,9 +53,10 @@
 </template>
 
 <script setup>
+import { useMessage } from "naive-ui";
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useMessage } from "naive-ui";
+
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
@@ -95,8 +96,7 @@ const handleLogin = async () => {
     message.success("登录成功");
     const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
     router.push(redirect || authStore.getDefaultHomeRoute());
-  }
-  catch {
+  } catch {
     // form validation handles field errors
   }
 };

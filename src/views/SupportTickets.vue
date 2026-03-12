@@ -9,14 +9,14 @@
         </p>
       </div>
       <div class="portal-actions">
-        <n-button type="primary" @click="showCreateModal = true">提交新工单</n-button>
-        <n-button secondary @click="logoutAndBack">退出登录</n-button>
+        <NButton type="primary" @click="showCreateModal = true">提交新工单</NButton>
+        <NButton secondary @click="logoutAndBack">退出登录</NButton>
       </div>
     </section>
 
     <div class="support-content">
       <section class="stats-grid">
-        <n-card v-for="card in summaryCards" :key="card.key" size="small" class="stat-card">
+        <n-card v-for="card in summaryCards" :key="card.key" class="stat-card" size="small">
           <div class="stat-label">{{ card.label }}</div>
           <div class="stat-value">{{ card.value }}</div>
           <div class="stat-help">{{ card.help }}</div>
@@ -30,73 +30,73 @@
             <p>{{ canManage ? "查看全部工单、回复用户、调整状态。" : "查看自己提交的问题和管理员回复。" }}</p>
           </div>
           <div class="toolbar-actions">
-            <n-button v-if="canCreate" type="primary" @click="showCreateModal = true">新建工单</n-button>
-            <n-button @click="loadTickets">刷新列表</n-button>
+            <NButton v-if="canCreate" type="primary" @click="showCreateModal = true">新建工单</NButton>
+            <NButton @click="loadTickets">刷新列表</NButton>
           </div>
         </div>
 
         <div class="filter-grid">
-          <n-select v-model:value="filters.status" :options="statusOptions" clearable placeholder="按状态筛选" />
-          <n-select v-model:value="filters.category" :options="categoryOptions" clearable placeholder="按分类筛选" />
-          <n-input v-model:value="filters.keyword" clearable placeholder="搜索工单号、标题或描述" />
-          <n-button secondary @click="loadTickets">应用筛选</n-button>
+          <n-select clearable placeholder="按状态筛选" v-model:value="filters.status" :options="statusOptions"></n-select>
+          <n-select clearable placeholder="按分类筛选" v-model:value="filters.category" :options="categoryOptions"></n-select>
+          <n-input clearable placeholder="搜索工单号、标题或描述" v-model:value="filters.keyword"></n-input>
+          <NButton secondary @click="loadTickets">应用筛选</NButton>
         </div>
       </n-card>
 
       <n-card class="table-card" size="small">
         <n-data-table
           remote
-          :loading="loading"
+          :bordered="false"
           :columns="columns"
           :data="tickets"
+          :loading="loading"
           :pagination="false"
-          :bordered="false"
-        />
-        <n-empty v-if="!loading && !tickets.length" description="当前没有工单记录" class="empty-state" />
+        ></n-data-table>
+        <n-empty v-if="!loading && !tickets.length" class="empty-state" description="当前没有工单记录"></n-empty>
       </n-card>
     </div>
 
-    <n-modal v-model:show="showCreateModal" preset="card" title="提交新工单" class="ticket-modal">
+    <n-modal class="ticket-modal" preset="card" title="提交新工单" v-model:show="showCreateModal">
       <n-form label-placement="top">
         <n-form-item label="问题标题">
-          <n-input v-model:value="createForm.title" maxlength="80" placeholder="例如：模拟盘打开后一直转圈" />
+          <n-input maxlength="80" placeholder="例如：模拟盘打开后一直转圈" v-model:value="createForm.title"></n-input>
         </n-form-item>
         <div class="modal-grid">
           <n-form-item label="问题分类">
-            <n-select v-model:value="createForm.category" :options="categoryOptions" />
+            <n-select v-model:value="createForm.category" :options="categoryOptions"></n-select>
           </n-form-item>
           <n-form-item label="紧急程度">
-            <n-select v-model:value="createForm.priority" :options="priorityOptions" />
+            <n-select v-model:value="createForm.priority" :options="priorityOptions"></n-select>
           </n-form-item>
         </div>
         <n-form-item label="详细描述">
           <n-input
-            v-model:value="createForm.description"
-            type="textarea"
-            :autosize="{ minRows: 5, maxRows: 8 }"
             placeholder="请尽量写清楚：你做了什么、哪里报错、能否复现。"
-          />
+            type="textarea"
+            v-model:value="createForm.description"
+            :autosize="{ minRows: 5, maxRows: 8 }"
+          ></n-input>
         </n-form-item>
         <div class="modal-actions">
-          <n-button @click="showCreateModal = false">取消</n-button>
-          <n-button type="primary" :loading="submittingCreate" @click="submitCreate">提交工单</n-button>
+          <NButton @click="showCreateModal = false">取消</NButton>
+          <NButton type="primary" :loading="submittingCreate" @click="submitCreate">提交工单</NButton>
         </div>
       </n-form>
     </n-modal>
 
-    <n-drawer v-model:show="showDetailDrawer" :width="760" placement="right">
+    <n-drawer placement="right" v-model:show="showDetailDrawer" :width="760">
       <n-drawer-content :title="selectedTicket?.ticketNo || '工单详情'">
         <template v-if="selectedTicket">
-          <n-card size="small" class="detail-card">
+          <n-card class="detail-card" size="small">
             <div class="detail-head">
               <div>
                 <h3>{{ selectedTicket.title }}</h3>
                 <p>{{ selectedTicket.description }}</p>
               </div>
               <div class="detail-tags">
-                <n-tag :type="statusTagType(selectedTicket.status)">{{ statusLabel(selectedTicket.status) }}</n-tag>
-                <n-tag :type="priorityTagType(selectedTicket.priority)">{{ priorityLabel(selectedTicket.priority) }}</n-tag>
-                <n-tag>{{ categoryLabel(selectedTicket.category) }}</n-tag>
+                <NTag :type="statusTagType(selectedTicket.status)">{{ statusLabel(selectedTicket.status) }}</NTag>
+                <NTag :type="priorityTagType(selectedTicket.priority)">{{ priorityLabel(selectedTicket.priority) }}</NTag>
+                <NTag>{{ categoryLabel(selectedTicket.category) }}</NTag>
               </div>
             </div>
             <div class="detail-meta">
@@ -106,16 +106,16 @@
             </div>
           </n-card>
 
-          <n-card v-if="canManage" size="small" class="detail-card">
+          <n-card v-if="canManage" class="detail-card" size="small">
             <div class="admin-grid">
-              <n-select v-model:value="manageForm.status" :options="statusOptions" />
-              <n-select v-model:value="manageForm.priority" :options="priorityOptions" />
-              <n-input v-model:value="manageForm.adminAssignee" placeholder="处理人，例如：admin" />
-              <n-button type="primary" :loading="savingTicket" @click="submitUpdate">保存处理状态</n-button>
+              <n-select v-model:value="manageForm.status" :options="statusOptions"></n-select>
+              <n-select v-model:value="manageForm.priority" :options="priorityOptions"></n-select>
+              <n-input placeholder="处理人，例如：admin" v-model:value="manageForm.adminAssignee"></n-input>
+              <NButton type="primary" :loading="savingTicket" @click="submitUpdate">保存处理状态</NButton>
             </div>
           </n-card>
 
-          <n-card size="small" class="detail-card">
+          <n-card class="detail-card" size="small">
             <template #header>沟通记录</template>
             <div class="message-list">
               <div v-for="item in ticketMessages" :key="item.id" class="message-item" :class="item.authorRole">
@@ -123,30 +123,30 @@
                   <strong>{{ item.authorName }}</strong>
                   <span>{{ item.authorRole === "admin" ? "管理员" : "用户" }}</span>
                   <span>{{ formatDateTime(item.createdAt) }}</span>
-                  <n-tag v-if="item.internalOnly" size="small" type="warning">内部备注</n-tag>
+                  <NTag v-if="item.internalOnly" size="small" type="warning">内部备注</NTag>
                 </div>
                 <div class="message-body">{{ item.message }}</div>
               </div>
             </div>
           </n-card>
 
-          <n-card size="small" class="detail-card">
+          <n-card class="detail-card" size="small">
             <template #header>{{ canManage ? "回复或补充说明" : "继续补充问题" }}</template>
             <n-form label-placement="top">
               <n-form-item label="回复内容">
                 <n-input
-                  v-model:value="replyForm.message"
-                  type="textarea"
-                  :autosize="{ minRows: 4, maxRows: 7 }"
                   placeholder="输入你要发送给对方的说明。"
-                />
+                  type="textarea"
+                  v-model:value="replyForm.message"
+                  :autosize="{ minRows: 4, maxRows: 7 }"
+                ></n-input>
               </n-form-item>
               <n-checkbox v-if="canManage" v-model:checked="replyForm.internalOnly">
                 仅管理员可见（内部备注）
               </n-checkbox>
               <div class="modal-actions">
-                <n-button @click="showDetailDrawer = false">关闭</n-button>
-                <n-button type="primary" :loading="sendingReply" @click="submitReply">发送回复</n-button>
+                <NButton @click="showDetailDrawer = false">关闭</NButton>
+                <NButton type="primary" :loading="sendingReply" @click="submitReply">发送回复</NButton>
               </div>
             </n-form>
           </n-card>
@@ -157,10 +157,10 @@
 </template>
 
 <script setup>
-import { computed, h, onMounted, reactive, ref } from "vue";
 import { NButton, NTag, useMessage } from "naive-ui";
+import { computed, h, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useAuthStore } from "@/stores/auth";
+
 import {
   createSupportTicket,
   getSupportTicketDetail,
@@ -168,6 +168,7 @@ import {
   replySupportTicket,
   updateSupportTicket,
 } from "@/api/support";
+import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
@@ -265,9 +266,9 @@ const summaryCards = computed(() => [
   },
 ]);
 
-const statusLabel = value => statusOptions.find(item => item.value === value)?.label || value || "-";
-const priorityLabel = value => priorityOptions.find(item => item.value === value)?.label || value || "-";
-const categoryLabel = value => categoryOptions.find(item => item.value === value)?.label || value || "-";
+const statusLabel = (value) => statusOptions.find((item) => item.value === value)?.label || value || "-";
+const priorityLabel = (value) => priorityOptions.find((item) => item.value === value)?.label || value || "-";
+const categoryLabel = (value) => categoryOptions.find((item) => item.value === value)?.label || value || "-";
 
 const statusTagType = (status) => {
   if (status === "resolved" || status === "closed")
@@ -309,8 +310,7 @@ const openDetail = async (row) => {
     replyForm.message = "";
     replyForm.internalOnly = false;
     showDetailDrawer.value = true;
-  }
-  catch (error) {
+  } catch (error) {
     message.error(error instanceof Error ? error.message : "工单详情加载失败");
   }
 };
@@ -323,19 +323,19 @@ const columns = computed(() => {
       title: "状态",
       key: "status",
       width: 120,
-      render: row => h(NTag, { type: statusTagType(row.status) }, { default: () => statusLabel(row.status) }),
+      render: (row) => h(NTag, { type: statusTagType(row.status) }, { default: () => statusLabel(row.status) }),
     },
     {
       title: "紧急程度",
       key: "priority",
       width: 100,
-      render: row => h(NTag, { type: priorityTagType(row.priority) }, { default: () => priorityLabel(row.priority) }),
+      render: (row) => h(NTag, { type: priorityTagType(row.priority) }, { default: () => priorityLabel(row.priority) }),
     },
     {
       title: "分类",
       key: "category",
       width: 120,
-      render: row => categoryLabel(row.category),
+      render: (row) => categoryLabel(row.category),
     },
   ];
 
@@ -344,7 +344,7 @@ const columns = computed(() => {
       title: "提交人",
       key: "reporter",
       width: 140,
-      render: row => row.reporter?.nickname || row.reporter?.username || "-",
+      render: (row) => row.reporter?.nickname || row.reporter?.username || "-",
     });
   }
 
@@ -353,13 +353,13 @@ const columns = computed(() => {
       title: "最近更新",
       key: "updatedAt",
       width: 170,
-      render: row => formatDateTime(row.updatedAt),
+      render: (row) => formatDateTime(row.updatedAt),
     },
     {
       title: "操作",
       key: "actions",
       width: 120,
-      render: row =>
+      render: (row) =>
         h(
           NButton,
           {
@@ -388,11 +388,9 @@ const loadTickets = async () => {
     });
     tickets.value = data.items || [];
     stats.value = data.stats || { total: 0, active: 0, resolved: 0, closed: 0 };
-  }
-  catch (error) {
+  } catch (error) {
     message.error(error instanceof Error ? error.message : "工单列表加载失败");
-  }
-  finally {
+  } finally {
     loading.value = false;
   }
 };
@@ -418,11 +416,9 @@ const submitCreate = async () => {
     showCreateModal.value = false;
     resetCreateForm();
     await loadTickets();
-  }
-  catch (error) {
+  } catch (error) {
     message.error(error instanceof Error ? error.message : "提交工单失败");
-  }
-  finally {
+  } finally {
     submittingCreate.value = false;
   }
 };
@@ -446,11 +442,9 @@ const submitReply = async () => {
     replyForm.internalOnly = false;
     message.success("回复已发送");
     await loadTickets();
-  }
-  catch (error) {
+  } catch (error) {
     message.error(error instanceof Error ? error.message : "发送回复失败");
-  }
-  finally {
+  } finally {
     sendingReply.value = false;
   }
 };
@@ -473,11 +467,9 @@ const submitUpdate = async () => {
     ticketMessages.value = data.messages || [];
     message.success("工单状态已更新");
     await loadTickets();
-  }
-  catch (error) {
+  } catch (error) {
     message.error(error instanceof Error ? error.message : "保存失败");
-  }
-  finally {
+  } finally {
     savingTicket.value = false;
   }
 };

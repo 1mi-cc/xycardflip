@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
+
 import { useLocalTokenStore } from "./localTokenManager";
 
 const AUTH_ENDPOINTS = {
@@ -21,8 +22,8 @@ const toStringArray = (value) => {
   if (!Array.isArray(value))
     return [];
   return value
-    .filter(item => typeof item === "string")
-    .map(item => item.trim())
+    .filter((item) => typeof item === "string")
+    .map((item) => item.trim())
     .filter(Boolean);
 };
 
@@ -87,8 +88,8 @@ const normalizeRoleKeys = (profile, payload) => {
     ...(Array.isArray(payload?.roles) ? payload.roles : []),
   ];
   const fromRoleObjects = roleObjects
-    .filter(role => role && typeof role === "object")
-    .flatMap(role => toStringArray([role.key, role.name]));
+    .filter((role) => role && typeof role === "object")
+    .flatMap((role) => toStringArray([role.key, role.name]));
 
   return uniqueStrings(fromRoleObjects);
 };
@@ -106,7 +107,7 @@ const normalizeUserPayload = (payload) => {
   ]);
   const roles = Array.isArray(profile?.roles) && profile.roles.length
     ? profile.roles
-    : roleKeys.map(role => ({
+    : roleKeys.map((role) => ({
         key: role,
         name: role,
         permissions,
@@ -159,8 +160,7 @@ const requestAuth = async ({
       }
 
       throw new Error(extractErrorMessage(payload, "请求失败"));
-    }
-    catch (error) {
+    } catch (error) {
       lastError = error instanceof Error ? error : new Error("请求失败");
     }
   }
@@ -247,14 +247,12 @@ export const useAuthStore = defineStore("auth", () => {
       applyAuthPayload(payload);
       initialized.value = true;
       return { success: true };
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : "登录失败",
       };
-    }
-    finally {
+    } finally {
       isLoading.value = false;
     }
   };
@@ -268,14 +266,12 @@ export const useAuthStore = defineStore("auth", () => {
         body: userInfoData || {},
       });
       return { success: true, message: "注册成功，请登录" };
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : "注册失败",
       };
-    }
-    finally {
+    } finally {
       isLoading.value = false;
     }
   };
@@ -290,8 +286,7 @@ export const useAuthStore = defineStore("auth", () => {
           authToken: tokenSnapshot,
         });
       }
-    }
-    catch {
+    } catch {
       // ignore logout transport errors
     }
     user.value = null;
@@ -315,8 +310,7 @@ export const useAuthStore = defineStore("auth", () => {
       applyAuthPayload(payload, token.value);
       initialized.value = true;
       return true;
-    }
-    catch {
+    } catch {
       user.value = null;
       token.value = "";
       clearPersistedAuthState();
@@ -333,8 +327,7 @@ export const useAuthStore = defineStore("auth", () => {
     if (savedUser && !user.value) {
       try {
         user.value = normalizeUserPayload(JSON.parse(savedUser));
-      }
-      catch {
+      } catch {
         user.value = null;
       }
     }
@@ -358,8 +351,7 @@ export const useAuthStore = defineStore("auth", () => {
       });
       applyAuthPayload(payload, token.value);
       return true;
-    }
-    catch {
+    } catch {
       return false;
     }
   };

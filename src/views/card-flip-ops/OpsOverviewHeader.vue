@@ -19,19 +19,19 @@
 
       <div class="hero-actions hero-actions-panel">
         <div class="hero-actions-label">主操作</div>
-        <n-space class="hero-actions-row" wrap>
+        <n-space wrap class="hero-actions-row">
           <n-input-number
-            :value="scanLimit"
-            :min="1"
-            :max="500"
             style="width: 140px"
+            :max="500"
+            :min="1"
+            :value="scanLimit"
             @update:value="value => $emit('update:scanLimit', value)"
-          />
+          ></n-input-number>
 
           <n-button
             type="primary"
-            :loading="scanLoading"
             :disabled="!canOperate"
+            :loading="scanLoading"
             @click="$emit('runScan')"
           >
             扫描机会
@@ -40,8 +40,8 @@
           <n-button
             secondary
             type="info"
-            :loading="simulationTrainingLoading"
             :disabled="!canOperate"
+            :loading="simulationTrainingLoading"
             @click="$emit('runSimulationTraining')"
           >
             模拟训练
@@ -56,11 +56,11 @@
           </n-button>
 
           <n-select
-            :value="pricingMode"
-            :options="pricingModeOptions"
             style="width: 160px"
+            :options="pricingModeOptions"
+            :value="pricingMode"
             @update:value="value => $emit('update:pricingMode', value)"
-          />
+          ></n-select>
 
           <n-button
             :loading="batchPricingLoading"
@@ -72,8 +72,8 @@
           <n-button
             v-if="canBatchApplyPricing"
             type="warning"
-            :loading="batchPricingLoading"
             :disabled="!canOperate"
+            :loading="batchPricingLoading"
             @click="$emit('applyBatchReprice')"
           >
             应用批量定价
@@ -92,13 +92,13 @@
     <section v-if="dataIntegrityAlert || guardAlert" class="health-strip">
       <n-alert
         v-if="dataIntegrityAlert"
-        type="warning"
         show-icon
+        type="warning"
         :bordered="false"
       >
         {{ dataIntegrityAlert }}
       </n-alert>
-      <n-alert v-if="guardAlert" type="info" show-icon :bordered="false">
+      <n-alert v-if="guardAlert" show-icon type="info" :bordered="false">
         {{ guardAlert }}
       </n-alert>
     </section>

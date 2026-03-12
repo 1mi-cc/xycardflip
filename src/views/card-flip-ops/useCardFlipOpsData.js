@@ -39,7 +39,8 @@ export function useCardFlipOpsData() {
 
     for (const key of ["detail", "message", "reason", "error", "msg"]) {
       const text = normalizeText(value[key]);
-      if (text) return text;
+      if (text)
+        return text;
     }
 
     const pairs = Object.entries(value)
@@ -52,9 +53,9 @@ export function useCardFlipOpsData() {
   };
 
   const getErrorMessage = (error, fallback = "请求失败，请稍后重试") =>
-    normalizeText(error?.payload) ||
-    normalizeText(error?.message) ||
-    fallback;
+    normalizeText(error?.payload)
+    || normalizeText(error?.message)
+    || fallback;
 
   return {
     nextRequestId,

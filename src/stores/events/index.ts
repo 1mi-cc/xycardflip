@@ -1,9 +1,11 @@
-import { gameLogger } from "@/utils/logger";
-import { XyzwWebSocketClient } from "@/utils/xyzwWebSocket.js";
+import { useLocalStorage } from "@vueuse/core";
 import { EventEmitter } from "event-emitter3";
 
+import { gameLogger } from "@/utils/logger";
+
 import { StudyPlugin } from "./study.js";
-import { useLocalStorage } from "@vueuse/core";
+
+import type { XyzwWebSocketClient } from "@/utils/xyzwWebSocket.js";
 
 const chatMsgList = useLocalStorage<any>("xyzw_chat_msg_list", []);
 
@@ -127,17 +129,17 @@ onSome(["bosstower_getinforesp", "bosstower_getinfo"], (data: Session) => {
   data.gameData.value.lastUpdated = new Date().toISOString();
 });
 
-onSome(['evotowerinforesp', 'evotower_getinforesp', 'evotower_getinfo'], (data: Session) => {
+onSome(["evotowerinforesp", "evotower_getinforesp", "evotower_getinfo"], (data: Session) => {
   gameLogger.verbose(`收到怪异塔信息事件: ${data.tokenId}`, data);
   const { body } = data;
-  console.log("🚀 ~ body:", body)
+  console.log("🚀 ~ body:", body);
   if (!body) {
-    gameLogger.debug('怪异塔响应为空');
+    gameLogger.debug("怪异塔响应为空");
     return;
   }
 
   data.gameData.value.evoTowerInfo = body;
-  data.gameData.value.lastUpdated = new Date().toISOString()
+  data.gameData.value.lastUpdated = new Date().toISOString();
 });
 
 onSome(
@@ -203,7 +205,6 @@ onSome(["tower_getinfo", "tower_getinforesp"], (data: Session) => {
   }
   if (!body) {
     gameLogger.warn("爬塔战斗开始响应为空");
-    return;
   }
 });
 

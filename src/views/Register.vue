@@ -2,36 +2,36 @@
   <div class="register-page">
     <div class="register-card">
       <div class="register-head">
-        <img src="/icons/xiaoyugan.png" alt="XYZW" class="brand-logo" />
+        <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
         <div>
           <p class="eyebrow">普通用户注册</p>
           <h1>创建账号后，你可以提交工单并持续跟踪问题处理进度。</h1>
         </div>
       </div>
 
-      <n-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-placement="top">
+      <n-form ref="registerFormRef" label-placement="top" :model="registerForm" :rules="registerRules">
         <div class="form-grid">
           <n-form-item label="用户名" path="username">
-            <n-input v-model:value="registerForm.username" placeholder="3-32 位字母、数字或 ._@-" />
+            <n-input placeholder="3-32 位字母、数字或 ._@-" v-model:value="registerForm.username"></n-input>
           </n-form-item>
           <n-form-item label="昵称" path="nickname">
-            <n-input v-model:value="registerForm.nickname" placeholder="用于工单显示" />
+            <n-input placeholder="用于工单显示" v-model:value="registerForm.nickname"></n-input>
           </n-form-item>
         </div>
         <n-form-item label="邮箱" path="email">
-          <n-input v-model:value="registerForm.email" placeholder="可选，但建议填写，便于管理员识别" />
+          <n-input placeholder="可选，但建议填写，便于管理员识别" v-model:value="registerForm.email"></n-input>
         </n-form-item>
         <div class="form-grid">
           <n-form-item label="密码" path="password">
-            <n-input v-model:value="registerForm.password" type="password" show-password-on="click" />
+            <n-input show-password-on="click" type="password" v-model:value="registerForm.password"></n-input>
           </n-form-item>
           <n-form-item label="确认密码" path="confirmPassword">
             <n-input
-              v-model:value="registerForm.confirmPassword"
-              type="password"
               show-password-on="click"
+              type="password"
+              v-model:value="registerForm.confirmPassword"
               @keydown.enter="handleRegister"
-            />
+            ></n-input>
           </n-form-item>
         </div>
         <div class="form-actions">
@@ -44,9 +44,10 @@
 </template>
 
 <script setup>
+import { useMessage } from "naive-ui";
 import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { useMessage } from "naive-ui";
+
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
@@ -98,8 +99,7 @@ const handleRegister = async () => {
     }
     message.success("注册成功，请登录");
     router.push("/login");
-  }
-  catch {
+  } catch {
     // field validation handles errors
   }
 };

@@ -23,7 +23,7 @@ const stringifyCardFlipError = (value) => {
   }
   if (Array.isArray(value)) {
     return value
-      .map(item => stringifyCardFlipError(item))
+      .map((item) => stringifyCardFlipError(item))
       .filter(Boolean)
       .join("；");
   }

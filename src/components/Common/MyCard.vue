@@ -8,7 +8,7 @@
         <slot name="title"></slot>
       </div>
       <div class="status-badge" :class="statusClass">
-        <div class="status-dot" />
+        <div class="status-dot"></div>
         <slot name="badge"></slot>
       </div>
       <slot name="extra"></slot>
@@ -21,6 +21,7 @@
     </div>
   </div>
 </template>
+
 <script setup lang="ts">
 declare type StatusKey = "active" | "weekly" | "energy" | "completed";
 

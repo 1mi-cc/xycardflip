@@ -8,24 +8,24 @@
 
       <h2>基本信息</h2>
       <a-card>
-        <a-form :model="userInfo" label-placement="left" label-width="80px">
+        <a-form label-placement="left" label-width="80px" :model="userInfo">
           <a-form-item label="用户名">
-            <a-input v-model:value="userInfo.username" readonly />
+            <a-input readonly v-model:value="userInfo.username"></a-input>
           </a-form-item>
           <a-form-item label="邮箱">
-            <a-input v-model:value="userInfo.email" />
+            <a-input v-model:value="userInfo.email"></a-input>
           </a-form-item>
           <a-form-item label="昵称">
             <a-input
-              v-model:value="userInfo.nickname"
               placeholder="请输入昵称"
-            />
+              v-model:value="userInfo.nickname"
+            ></a-input>
           </a-form-item>
           <a-form-item label="手机">
             <a-input
-              v-model:value="userInfo.phone"
               placeholder="请输入手机号"
-            />
+              v-model:value="userInfo.phone"
+            ></a-input>
           </a-form-item>
         </a-form>
 
@@ -37,31 +37,31 @@
       <h2>密码修改</h2>
       <a-card>
         <a-form
-          :model="passwordForm"
           ref="passwordFormRef"
           label-placement="left"
           label-width="100px"
+          :model="passwordForm"
         >
           <a-form-item label="当前密码" prop="currentPassword">
             <a-input
-              v-model:value="passwordForm.currentPassword"
-              type="password"
               placeholder="请输入当前密码"
-            />
+              type="password"
+              v-model:value="passwordForm.currentPassword"
+            ></a-input>
           </a-form-item>
           <a-form-item label="新密码" prop="newPassword">
             <a-input
-              v-model:value="passwordForm.newPassword"
-              type="password"
               placeholder="请输入新密码"
-            />
+              type="password"
+              v-model:value="passwordForm.newPassword"
+            ></a-input>
           </a-form-item>
           <a-form-item label="确认新密码" prop="confirmPassword">
             <a-input
-              v-model:value="passwordForm.confirmPassword"
-              type="password"
               placeholder="请再次输入新密码"
-            />
+              type="password"
+              v-model:value="passwordForm.confirmPassword"
+            ></a-input>
           </a-form-item>
         </a-form>
         <template #actions>
@@ -77,29 +77,29 @@
               v-model:value="preferences.theme"
               :options="themeOptions"
               @update:value="updateTheme"
-            />
+            ></n-select>
             <template #extra> 选择您喜欢的界面主题 </template>
           </a-form-item>
           <a-form-item label="语言设置">
             <n-select
               v-model:value="preferences.language"
               :options="languageOptions"
-            />
+            ></n-select>
             <template #extra> 选择界面显示语言 </template>
           </a-form-item>
           <a-form-item label="通知设置">
-            <n-switch v-model:value="preferences.notifications" />
+            <n-switch v-model:value="preferences.notifications"></n-switch>
             <template #extra> 接收任务完成通知 </template>
           </a-form-item>
           <a-form-item label="自动执行">
-            <n-switch v-model:value="preferences.autoExecute" />
+            <n-switch v-model:value="preferences.autoExecute"></n-switch>
             <template #extra> 默认开启任务自动执行 </template>
           </a-form-item>
         </a-form>
       </a-card>
 
       <h2>Token管理</h2>
-      <TokenManager />
+      <TokenManager></TokenManager>
 
       <h2>账户安全</h2>
       <a-card>
@@ -142,9 +142,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from "vue";
+import { useDialog, useMessage } from "naive-ui";
+import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { useMessage, useDialog } from "naive-ui";
+
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
@@ -219,7 +220,8 @@ const saveProfile = async () => {
 };
 
 const changePassword = async () => {
-  if (!passwordFormRef.value) return;
+  if (!passwordFormRef.value)
+    return;
 
   try {
     await passwordFormRef.value.validate();
@@ -250,9 +252,9 @@ const updateTheme = (theme) => {
   } else if (theme === "light") {
     document.documentElement.removeAttribute("data-theme");
   } else {
-    const prefersDark =
-      window.matchMedia &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const prefersDark
+      = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (prefersDark)
       document.documentElement.setAttribute("data-theme", "dark");
     else document.documentElement.removeAttribute("data-theme");

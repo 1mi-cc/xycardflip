@@ -31,7 +31,7 @@ const selectedToken = computed(() =>
 // Token管理
 const addToken = (tokenData: RoleToken) => {
   const newToken = {
-    id: "token_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+    id: `token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     name: tokenData.name,
     token: tokenData.token, // 保存原始Base64 token
     wsUrl: tokenData.wsUrl || null, // 可选的自定义WebSocket URL

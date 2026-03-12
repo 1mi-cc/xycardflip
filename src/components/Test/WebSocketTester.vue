@@ -1,11 +1,11 @@
 <template>
   <div class="websocket-tester">
-    <n-card title="WebSocket连接测试" class="mb-4">
+    <n-card class="mb-4" title="WebSocket连接测试">
       <n-space direction="vertical" size="large">
         <!-- 连接状态 -->
-        <n-card title="连接状态" size="small">
+        <n-card size="small" title="连接状态">
           <n-space align="center">
-            <n-tag :type="getStatusType(status)" size="large">
+            <n-tag size="large" :type="getStatusType(status)">
               {{ getStatusText(status) }}
             </n-tag>
             <n-button
@@ -29,16 +29,16 @@
         <!-- 角色选择 -->
         <n-form-item label="选择角色">
           <n-select
-            v-model:value="selectedRoleId"
             placeholder="请选择要测试的角色"
+            v-model:value="selectedRoleId"
             :options="roleOptions"
             @update:value="onRoleChange"
-          />
+          ></n-select>
         </n-form-item>
 
         <!-- 连接详情 -->
-        <n-card v-if="connectionDetails" title="连接详情" size="small">
-          <n-descriptions :column="2" bordered size="small">
+        <n-card v-if="connectionDetails" size="small" title="连接详情">
+          <n-descriptions bordered size="small" :column="2">
             <n-descriptions-item label="角色ID">
               {{ connectionDetails.roleId }}
             </n-descriptions-item>
@@ -73,23 +73,23 @@
         </n-card>
 
         <!-- 游戏命令测试 -->
-        <n-card v-if="status === 'connected'" title="游戏命令测试" size="small">
+        <n-card v-if="status === 'connected'" size="small" title="游戏命令测试">
           <n-space direction="vertical">
             <n-form-item label="选择命令">
               <n-select
-                v-model:value="selectedCommand"
                 placeholder="请选择要测试的命令"
+                v-model:value="selectedCommand"
                 :options="commandOptions"
-              />
+              ></n-select>
             </n-form-item>
 
             <n-form-item v-if="selectedCommand" label="命令参数 (JSON)">
               <n-input
-                v-model:value="commandParams"
+                placeholder="例如: {&quot;roleId&quot;: 123456}"
                 type="textarea"
-                placeholder='例如: {"roleId": 123456}'
+                v-model:value="commandParams"
                 :rows="3"
-              />
+              ></n-input>
             </n-form-item>
 
             <n-space>
@@ -122,7 +122,7 @@
         </n-card>
 
         <!-- 消息日志 -->
-        <n-card title="消息日志" size="small">
+        <n-card size="small" title="消息日志">
           <template #header-extra>
             <n-button size="small" @click="clearLog"> 清空日志 </n-button>
           </template>
@@ -136,8 +136,8 @@
             >
               <div class="message-header">
                 <n-tag
-                  :type="msg.type === 'sent' ? 'info' : 'success'"
                   size="small"
+                  :type="msg.type === 'sent' ? 'info' : 'success'"
                 >
                   {{ msg.type === "sent" ? "发送" : "接收" }}
                 </n-tag>
@@ -160,8 +160,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+
 import { useTokenStore } from "@stores/tokenStore";
 
 const message = useMessage();
@@ -223,7 +224,8 @@ const getStatusText = (statusValue) => {
 };
 
 const formatTime = (timestamp) => {
-  if (!timestamp) return "-";
+  if (!timestamp)
+    return "-";
   return new Date(timestamp).toLocaleString("zh-CN");
 };
 
@@ -281,14 +283,15 @@ const connectWebSocket = async () => {
     message.success("WebSocket连接已启动");
   } catch (error) {
     console.error("WebSocket连接失败:", error);
-    message.error("WebSocket连接失败: " + error.message);
+    message.error(`WebSocket连接失败: ${error.message}`);
   } finally {
     setTimeout(updateStatus, 1000); // 延迟更新状态以等待连接建立
   }
 };
 
 const disconnectWebSocket = () => {
-  if (!selectedRoleId.value) return;
+  if (!selectedRoleId.value)
+    return;
 
   tokenStore.closeWebSocketConnection(selectedRoleId.value);
   status.value = "disconnected";
@@ -327,7 +330,7 @@ const sendCommand = async () => {
     }
   } catch (error) {
     console.error("发送命令失败:", error);
-    message.error("发送命令失败: " + error.message);
+    message.error(`发送命令失败: ${error.message}`);
   } finally {
     sendingCommand.value = false;
   }
@@ -363,7 +366,7 @@ const sendCommandWithPromise = async () => {
     message.success("命令执行成功，已收到响应");
   } catch (error) {
     console.error("发送命令失败:", error);
-    message.error("发送命令失败: " + error.message);
+    message.error(`发送命令失败: ${error.message}`);
   } finally {
     waitingResponse.value = false;
   }
@@ -447,7 +450,7 @@ const testConcurrentRequests = async () => {
     }
   } catch (error) {
     console.error("并发测试失败:", error);
-    message.error("并发测试失败: " + error.message);
+    message.error(`并发测试失败: ${error.message}`);
     addToLog("received", {
       message: "并发测试异常",
       error: error.message,

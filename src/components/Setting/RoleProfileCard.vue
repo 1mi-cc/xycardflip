@@ -8,11 +8,11 @@
       <!-- 头像区域 -->
       <div class="avatar-container">
         <img
-          :src="roleAvatar"
-          :alt="roleInfo.name || '角色'"
           class="role-avatar"
+          :alt="roleInfo.name || '角色'"
+          :src="roleAvatar"
           @error="handleAvatarError"
-        />
+        >
       </div>
 
       <!-- 角色信息区域 -->
@@ -20,9 +20,7 @@
         <div class="role-name">{{ roleInfo.name || "未知角色" }}</div>
         <div class="role-stats">
           <span class="level-text">Lv.{{ roleInfo.level || 1 }}</span>
-          <span class="power-value"
-            >战力 {{ formatPower(roleInfo.power) }}</span
-          >
+          <span class="power-value">战力 {{ formatPower(roleInfo.power) }}</span>
         </div>
       </div>
 
@@ -37,8 +35,8 @@
         <div class="progress-bar">
           <div
             class="progress-fill"
-            :style="{ width: progressPercentage + '%' }"
             :class="rankInfo.class"
+            :style="{ width: `${progressPercentage}%` }"
           ></div>
         </div>
         <div class="progress-text">
@@ -54,7 +52,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
 
 const tokenStore = useTokenStore();
@@ -226,7 +225,8 @@ const progressPercentage = computed(() => {
 
 // 格式化战力数值
 const formatPower = (power) => {
-  if (!power || power === 0) return "0";
+  if (!power || power === 0)
+    return "0";
 
   const yi = 100000000; // 1亿
   const wan = 10000; // 1万
@@ -271,7 +271,8 @@ const handleAvatarError = () => {
 
 // 初始化和数据加载
 const loadRoleData = async () => {
-  if (!tokenStore.selectedToken) return;
+  if (!tokenStore.selectedToken)
+    return;
 
   const tokenId = tokenStore.selectedToken.id;
   const status = tokenStore.getWebSocketStatus(tokenId);
@@ -306,7 +307,8 @@ watch(
 
 // 监听WebSocket状态变化
 const wsStatus = computed(() => {
-  if (!tokenStore.selectedToken) return "disconnected";
+  if (!tokenStore.selectedToken)
+    return "disconnected";
   return tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
 });
 

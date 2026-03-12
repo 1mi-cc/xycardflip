@@ -11,14 +11,14 @@
 
           <div class="header-actions">
             <n-button
-              type="primary"
               size="large"
+              type="primary"
               :loading="isRefreshing"
               @click="refreshTasks"
             >
               <template #icon>
                 <n-icon>
-                  <Refresh />
+                  <Refresh></Refresh>
                 </n-icon>
               </template>
               刷新任务
@@ -29,7 +29,7 @@
                 批量操作
                 <template #icon>
                   <n-icon>
-                    <ChevronDown />
+                    <ChevronDown></ChevronDown>
                   </n-icon>
                 </template>
               </n-button>
@@ -45,12 +45,12 @@
         <div class="role-selector">
           <span class="selector-label">选择角色：</span>
           <n-select
-            v-model:value="selectedRoleId"
-            :options="roleOptions"
             placeholder="请选择游戏角色"
             style="min-width: 200px"
+            v-model:value="selectedRoleId"
+            :options="roleOptions"
             @update:value="onRoleChange"
-          />
+          ></n-select>
 
           <div v-if="selectedRole" class="role-stats">
             <div class="stat-item">
@@ -86,14 +86,14 @@
 
           <div class="search-box">
             <n-input
-              v-model:value="searchKeyword"
-              placeholder="搜索任务..."
               clearable
+              placeholder="搜索任务..."
+              v-model:value="searchKeyword"
               @update:value="onSearch"
             >
               <template #prefix>
                 <n-icon>
-                  <Search />
+                  <Search></Search>
                 </n-icon>
               </template>
             </n-input>
@@ -113,7 +113,7 @@
             @execute="executeTask"
             @toggle-status="toggleTaskStatus"
             @update:task="updateTask"
-          />
+          ></DailyTaskCard>
         </div>
 
         <!-- 空状态 -->
@@ -121,7 +121,7 @@
           <n-empty description="暂无任务数据" size="large">
             <template #icon>
               <n-icon>
-                <Cube />
+                <Cube></Cube>
               </n-icon>
             </template>
             <template #extra>
@@ -144,15 +144,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ChevronDown, Cube, Refresh, Search } from "@vicons/ionicons5";
+import { useDialog, useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { useMessage, useDialog } from "naive-ui";
-import { useTokenStore } from "@/stores/tokenStore";
+
 import DailyTaskCard from "@/components/Daily/DailyTaskCard.vue";
-import { Refresh, ChevronDown, Search, Cube } from "@vicons/ionicons5";
+import { useAuthStore } from "@/stores/auth";
 import { useGameRolesStore } from "@/stores/gameRoles";
 import { useLocalTokenStore } from "@/stores/localTokenManager";
-import { useAuthStore } from "@/stores/auth";
+import { useTokenStore } from "@/stores/tokenStore";
 
 const router = useRouter();
 const message = useMessage();
@@ -213,8 +214,8 @@ const filteredTasks = computed(() => {
     const keyword = searchKeyword.value.toLowerCase();
     filtered = filtered.filter(
       (task) =>
-        task.title.toLowerCase().includes(keyword) ||
-        task.subtitle?.toLowerCase().includes(keyword),
+        task.title.toLowerCase().includes(keyword)
+        || task.subtitle?.toLowerCase().includes(keyword),
     );
   }
 

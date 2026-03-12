@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="hang-up" :statusClass="{ active: hangUp.isActive }">
+  <MyCard class="hang-up" :status-class="{ active: hangUp.isActive }">
     <template #icon>
-      <img src="/icons/174061875626614.png" alt="挂机图标" />
+      <img alt="挂机图标" src="/icons/174061875626614.png">
     </template>
     <template #title>
       <h3>挂机时间</h3>
@@ -41,9 +41,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -62,7 +64,8 @@ const hangUp = ref({
 
 const formatTime = (seconds) => {
   const total = Math.floor(Number(seconds) || 0);
-  if (total <= 0) return "00:00:00";
+  if (total <= 0)
+    return "00:00:00";
   const h = Math.floor(total / 3600)
     .toString()
     .padStart(2, "0");
@@ -75,7 +78,8 @@ const formatTime = (seconds) => {
 
 const syncFromRole = () => {
   const role = roleInfo.value?.role;
-  if (!role?.hangUp) return;
+  if (!role?.hangUp)
+    return;
   const now = Date.now() / 1000;
   hangUp.value.lastTime = role.hangUp.lastTime;
   hangUp.value.hangUpTime = role.hangUp.hangUpTime;
@@ -100,16 +104,19 @@ onMounted(() => {
     if (hangUp.value.isActive && hangUp.value.remainingTime > 0) {
       hangUp.value.remainingTime = Math.max(0, hangUp.value.remainingTime - 1);
       hangUp.value.elapsedTime = hangUp.value.elapsedTime + 1;
-      if (hangUp.value.remainingTime <= 0) hangUp.value.isActive = false;
+      if (hangUp.value.remainingTime <= 0)
+        hangUp.value.isActive = false;
     }
   }, 1000);
 });
 onUnmounted(() => {
-  if (timer) clearInterval(timer);
+  if (timer)
+    clearInterval(timer);
 });
 
 const extendHangUp = async () => {
-  if (!tokenStore.selectedToken) return message.warning("请先选择Token");
+  if (!tokenStore.selectedToken)
+    return message.warning("请先选择Token");
   const tokenId = tokenStore.selectedToken.id;
   try {
     hangUp.value.isExtending = true;
@@ -135,13 +142,14 @@ const extendHangUp = async () => {
       hangUp.value.isExtending = false;
     }, 2500);
   } catch (e) {
-    message.error("加钟操作失败: " + (e?.message || "未知错误"));
+    message.error(`加钟操作失败: ${e?.message || "未知错误"}`);
     hangUp.value.isExtending = false;
   }
 };
 
 const claimHangUpReward = async () => {
-  if (!tokenStore.selectedToken) return message.warning("请先选择Token");
+  if (!tokenStore.selectedToken)
+    return message.warning("请先选择Token");
   const tokenId = tokenStore.selectedToken.id;
   try {
     hangUp.value.isClaiming = true;
@@ -165,7 +173,7 @@ const claimHangUpReward = async () => {
       hangUp.value.isClaiming = false;
     }, 1200);
   } catch (e) {
-    message.error("领取挂机奖励失败: " + (e?.message || "未知错误"));
+    message.error(`领取挂机奖励失败: ${e?.message || "未知错误"}`);
     hangUp.value.isClaiming = false;
   }
 };

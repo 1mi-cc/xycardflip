@@ -25,10 +25,11 @@ export class DataReader {
   get data() {
     return this._data;
   }
+
   get dataView() {
     return (
-      this._view ||
-      (this._view = new DataView(
+      this._view
+      || (this._view = new DataView(
         this._data.buffer,
         this._data.byteOffset,
         this._data.byteLength,
@@ -51,45 +52,53 @@ export class DataReader {
   }
 
   readUInt8() {
-    if (!this.validate(1)) return;
+    if (!this.validate(1))
+      return;
     return this._data[this.position++];
   }
 
   readInt16() {
-    if (!this.validate(2)) return;
+    if (!this.validate(2))
+      return;
     const v = this._data[this.position++] | (this._data[this.position++] << 8);
     return (v << 16) >> 16;
   }
 
   readInt32() {
-    if (!this.validate(4)) return;
-    const v =
-      this._data[this.position++] |
-      (this._data[this.position++] << 8) |
-      (this._data[this.position++] << 16) |
-      (this._data[this.position++] << 24);
+    if (!this.validate(4))
+      return;
+    const v
+      = this._data[this.position++]
+        | (this._data[this.position++] << 8)
+        | (this._data[this.position++] << 16)
+        | (this._data[this.position++] << 24);
     return v | 0;
   }
 
   readInt64() {
     const lo = this.readInt32();
-    if (lo === undefined) return;
+    if (lo === undefined)
+      return;
     let _lo = lo;
-    if (_lo < 0) _lo += 0x100000000;
+    if (_lo < 0)
+      _lo += 0x100000000;
     const hi = this.readInt32();
-    if (hi === undefined) return;
+    if (hi === undefined)
+      return;
     return _lo + 0x100000000 * hi;
   }
 
   readFloat32() {
-    if (!this.validate(4)) return;
+    if (!this.validate(4))
+      return;
     const v = this.dataView.getFloat32(this.position, true);
     this.position += 4;
     return v;
   }
 
   readFloat64() {
-    if (!this.validate(8)) return;
+    if (!this.validate(8))
+      return;
     const v = this.dataView.getFloat64(this.position, true);
     this.position += 8;
     return v;
@@ -101,9 +110,10 @@ export class DataReader {
     let b = 0;
     let count = 0;
     do {
-      if (count++ === 35) throw new Error("Format_Bad7BitInt32");
+      if (count++ === 35)
+        throw new Error("Format_Bad7BitInt32");
       b = this.readUInt8();
-      value |= (b & 0x7f) << shift;
+      value |= (b & 0x7F) << shift;
       shift += 7;
     } while ((b & 0x80) !== 0);
     return value >>> 0;
@@ -125,8 +135,10 @@ export class DataReader {
   }
 
   readUTFBytes(length) {
-    if (length === 0) return "";
-    if (!this.validate(length)) return;
+    if (length === 0)
+      return "";
+    if (!this.validate(length))
+      return;
     const str = new TextDecoder("utf8").decode(
       this._data.subarray(this.position, this.position + length),
     );
@@ -146,8 +158,8 @@ export class DataWriter {
 
   get dataView() {
     return (
-      this._view ||
-      (this._view = new DataView(this.data.buffer, 0, this.data.byteLength))
+      this._view
+      || (this._view = new DataView(this.data.buffer, 0, this.data.byteLength))
     );
   }
 
@@ -158,7 +170,8 @@ export class DataWriter {
   }
 
   ensureBuffer(size) {
-    if (this.position + size <= _shared.byteLength) return;
+    if (this.position + size <= _shared.byteLength)
+      return;
     const prev = _shared;
     const need = this.position + size;
     const nextLen = Math.max(Math.floor((_shared.byteLength * 12) / 10), need);
@@ -176,15 +189,15 @@ export class DataWriter {
   writeInt16(v) {
     this.ensureBuffer(2);
     this.data[this.position++] = v | 0;
-    this.data[this.position++] = (v >> 8) & 0xff;
+    this.data[this.position++] = (v >> 8) & 0xFF;
   }
 
   writeInt32(v) {
     this.ensureBuffer(4);
     this.data[this.position++] = v | 0;
-    this.data[this.position++] = (v >> 8) & 0xff;
-    this.data[this.position++] = (v >> 16) & 0xff;
-    this.data[this.position++] = (v >> 24) & 0xff;
+    this.data[this.position++] = (v >> 8) & 0xFF;
+    this.data[this.position++] = (v >> 16) & 0xFF;
+    this.data[this.position++] = (v >> 24) & 0xFF;
   }
 
   writeInt64(v) {
@@ -211,10 +224,10 @@ export class DataWriter {
   _write7BitInt(v) {
     let n = v >>> 0;
     while (n >= 0x80) {
-      this.data[this.position++] = (n & 0xff) | 0x80;
+      this.data[this.position++] = (n & 0xFF) | 0x80;
       n >>>= 7;
     }
-    this.data[this.position++] = n & 0x7f;
+    this.data[this.position++] = n & 0x7F;
   }
 
   write7BitInt(v) {
@@ -271,7 +284,8 @@ export class DataWriter {
     const start = offset | 0;
     const end = Math.min(src.byteLength, start + (length ?? src.byteLength));
     const n = end - start;
-    if (n <= 0) return;
+    if (n <= 0)
+      return;
     this.ensureBuffer(n);
     this.data.set(src.subarray(start, end), this.position);
     this.position += n;
@@ -331,8 +345,10 @@ export class BonEncoder {
   }
 
   encodeNumber(v) {
-    if ((v | 0) === v) this.encodeInt(v);
-    else if (Math.floor(v) === v) this.encodeLong(v);
+    if ((v | 0) === v)
+      this.encodeInt(v);
+    else if (Math.floor(v) === v)
+      this.encodeLong(v);
     else this.encodeDouble(v);
   }
 
@@ -387,10 +403,13 @@ export class BonEncoder {
     this.dw.writeInt8(8);
     const keys = [];
     for (const k in obj) {
-      if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
-      if (k.startsWith("_")) continue;
+      if (!Object.prototype.hasOwnProperty.call(obj, k))
+        continue;
+      if (k.startsWith("_"))
+        continue;
       const type = typeof obj[k];
-      if (type === "function" || type === "undefined") continue;
+      if (type === "function" || type === "undefined")
+        continue;
       keys.push(k);
     }
     this.dw.write7BitInt(keys.length);
@@ -436,7 +455,6 @@ export class BonEncoder {
           return;
         }
         this.encodeObject(v);
-        return;
     }
   }
 
@@ -538,27 +556,35 @@ export class ProtoMsg {
   get sendMsg() {
     return this._sendMsg;
   }
+
   get seq() {
     return this._raw.seq;
   }
+
   get resp() {
     return this._raw.resp;
   }
+
   get ack() {
     return this._raw.ack;
   }
+
   get cmd() {
     return this._raw?.cmd && this._raw?.cmd.toLowerCase();
   }
+
   get code() {
     return ~~this._raw.code;
   }
+
   get error() {
     return this._raw.error;
   }
+
   get time() {
     return this._raw.time;
   }
+
   get body() {
     return this._raw.body;
   }
@@ -573,7 +599,8 @@ export class ProtoMsg {
 
   /** 指定数据类型 */
   setDataType(t) {
-    if (t) this._t = { name: t.name ?? "Anonymous", ctor: t };
+    if (t)
+      this._t = { name: t.name ?? "Anonymous", ctor: t };
     return this;
   }
 
@@ -613,38 +640,38 @@ const registry = new Map();
 /** lz4 + 头部掩码的 "lx" 方案 */
 const lx = {
   encrypt: (buf) => {
-    let e = lz4.compress(buf);
+    const e = lz4.compress(buf);
     const t = 2 + ~~(Math.random() * 248);
-    for (let n = Math.min(e.length, 100); --n >= 0; ) e[n] ^= t;
+    for (let n = Math.min(e.length, 100); --n >= 0;) e[n] ^= t;
 
     // 写入标识与混淆位
     e[0] = 112;
     e[1] = 108;
-    e[2] =
-      (e[2] & 0b10101010) |
-      (((t >> 7) & 1) << 6) |
-      (((t >> 6) & 1) << 4) |
-      (((t >> 5) & 1) << 2) |
-      ((t >> 4) & 1);
-    e[3] =
-      (e[3] & 0b10101010) |
-      (((t >> 3) & 1) << 6) |
-      (((t >> 2) & 1) << 4) |
-      (((t >> 1) & 1) << 2) |
-      (t & 1);
+    e[2]
+      = (e[2] & 0b10101010)
+        | (((t >> 7) & 1) << 6)
+        | (((t >> 6) & 1) << 4)
+        | (((t >> 5) & 1) << 2)
+        | ((t >> 4) & 1);
+    e[3]
+      = (e[3] & 0b10101010)
+        | (((t >> 3) & 1) << 6)
+        | (((t >> 2) & 1) << 4)
+        | (((t >> 1) & 1) << 2)
+        | (t & 1);
     return e;
   },
   decrypt: (e) => {
-    const t =
-      (((e[2] >> 6) & 1) << 7) |
-      (((e[2] >> 4) & 1) << 6) |
-      (((e[2] >> 2) & 1) << 5) |
-      ((e[2] & 1) << 4) |
-      (((e[3] >> 6) & 1) << 3) |
-      (((e[3] >> 4) & 1) << 2) |
-      (((e[3] >> 2) & 1) << 1) |
-      (e[3] & 1);
-    for (let n = Math.min(100, e.length); --n >= 2; ) e[n] ^= t;
+    const t
+      = (((e[2] >> 6) & 1) << 7)
+        | (((e[2] >> 4) & 1) << 6)
+        | (((e[2] >> 2) & 1) << 5)
+        | ((e[2] & 1) << 4)
+        | (((e[3] >> 6) & 1) << 3)
+        | (((e[3] >> 4) & 1) << 2)
+        | (((e[3] >> 2) & 1) << 1)
+        | (e[3] & 1);
+    for (let n = Math.min(100, e.length); --n >= 2;) e[n] ^= t;
     e[0] = 4;
     e[1] = 34;
     e[2] = 77;
@@ -656,42 +683,42 @@ const lx = {
 /** 随机首 4 字节 + XOR 的 "x" 方案 */
 const x = {
   encrypt: (e) => {
-    const rnd = ~~(Math.random() * 0xffffffff) >>> 0;
+    const rnd = ~~(Math.random() * 0xFFFFFFFF) >>> 0;
     const n = new Uint8Array(e.length + 4);
-    n[0] = rnd & 0xff;
-    n[1] = (rnd >>> 8) & 0xff;
-    n[2] = (rnd >>> 16) & 0xff;
-    n[3] = (rnd >>> 24) & 0xff;
+    n[0] = rnd & 0xFF;
+    n[1] = (rnd >>> 8) & 0xFF;
+    n[2] = (rnd >>> 16) & 0xFF;
+    n[3] = (rnd >>> 24) & 0xFF;
     n.set(e, 4);
     const r = 2 + ~~(Math.random() * 248);
-    for (let i = n.length; --i >= 0; ) n[i] ^= r;
+    for (let i = n.length; --i >= 0;) n[i] ^= r;
     n[0] = 112;
     n[1] = 120;
-    n[2] =
-      (n[2] & 0b10101010) |
-      (((r >> 7) & 1) << 6) |
-      (((r >> 6) & 1) << 4) |
-      (((r >> 5) & 1) << 2) |
-      ((r >> 4) & 1);
-    n[3] =
-      (n[3] & 0b10101010) |
-      (((r >> 3) & 1) << 6) |
-      (((r >> 2) & 1) << 4) |
-      (((r >> 1) & 1) << 2) |
-      (r & 1);
+    n[2]
+      = (n[2] & 0b10101010)
+        | (((r >> 7) & 1) << 6)
+        | (((r >> 6) & 1) << 4)
+        | (((r >> 5) & 1) << 2)
+        | ((r >> 4) & 1);
+    n[3]
+      = (n[3] & 0b10101010)
+        | (((r >> 3) & 1) << 6)
+        | (((r >> 2) & 1) << 4)
+        | (((r >> 1) & 1) << 2)
+        | (r & 1);
     return n;
   },
   decrypt: (e) => {
-    const t =
-      (((e[2] >> 6) & 1) << 7) |
-      (((e[2] >> 4) & 1) << 6) |
-      (((e[2] >> 2) & 1) << 5) |
-      ((e[2] & 1) << 4) |
-      (((e[3] >> 6) & 1) << 3) |
-      (((e[3] >> 4) & 1) << 2) |
-      (((e[3] >> 2) & 1) << 1) |
-      (e[3] & 1);
-    for (let n = e.length; --n >= 4; ) e[n] ^= t;
+    const t
+      = (((e[2] >> 6) & 1) << 7)
+        | (((e[2] >> 4) & 1) << 6)
+        | (((e[2] >> 2) & 1) << 5)
+        | ((e[2] & 1) << 4)
+        | (((e[3] >> 6) & 1) << 3)
+        | (((e[3] >> 4) & 1) << 2)
+        | (((e[3] >> 2) & 1) << 1)
+        | (e[3] & 1);
+    for (let n = e.length; --n >= 4;) e[n] ^= t;
     return e.subarray(4);
   },
 };
@@ -738,7 +765,7 @@ export function getEnc(name) {
 
 /** 对外：encode（bon.encode → 加密） */
 export function encode(obj, enc) {
-  let bytes = bon.encode(obj, false);
+  const bytes = bon.encode(obj, false);
   const out = enc.encrypt(bytes);
   return out.buffer.byteLength === out.length
     ? out.buffer
@@ -874,9 +901,9 @@ export const bonProtocol = {
         message = messageData;
       }
       if (
-        message.body &&
-        (message.body instanceof ArrayBuffer ||
-          message.body instanceof Uint8Array)
+        message.body
+        && (message.body instanceof ArrayBuffer
+          || message.body instanceof Uint8Array)
       ) {
         message.body = bon.decode(message.body);
       }
@@ -892,7 +919,7 @@ export const bonProtocol = {
   },
   generateSeq: () => Math.floor(Math.random() * 1000000),
   generateMessageId: () =>
-    "msg_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+    `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
 };
 
 // 导出单独的加密器类以兼容测试文件

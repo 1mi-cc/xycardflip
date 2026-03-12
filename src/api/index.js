@@ -1,4 +1,5 @@
 import axios from "axios";
+
 import { useAuthStore } from "@/stores/auth";
 
 // 创建axios实例
@@ -38,7 +39,7 @@ request.interceptors.response.use(
     // 兼容不同的响应格式
     return {
       success: true,
-      data: data,
+      data,
       message: "success",
     };
   },

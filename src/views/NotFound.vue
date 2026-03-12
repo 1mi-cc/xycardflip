@@ -6,7 +6,7 @@
           <div class="error-number">404</div>
           <div class="error-icon">
             <n-icon size="120">
-              <Search />
+              <Search></Search>
             </n-icon>
           </div>
         </div>
@@ -17,7 +17,7 @@
         </div>
 
         <div class="error-actions">
-          <n-button type="primary" size="large" @click="router.push('/')">
+          <n-button size="large" type="primary" @click="router.push('/')">
             返回首页
           </n-button>
           <n-button size="large" @click="router.back()"> 返回上一页 </n-button>
@@ -28,8 +28,8 @@
 </template>
 
 <script setup>
-import { useRouter } from "vue-router";
 import { Search } from "@vicons/ionicons5";
+import { useRouter } from "vue-router";
 
 const router = useRouter();
 </script>

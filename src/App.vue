@@ -5,7 +5,7 @@
         <n-notification-provider>
           <n-dialog-provider>
             <div id="app">
-              <router-view />
+              <router-view></router-view>
             </div>
           </n-dialog-provider>
         </n-notification-provider>
@@ -15,12 +15,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from "vue";
 import { darkTheme } from "naive-ui";
+import { computed, onMounted, onUnmounted } from "vue";
+
 import { useTheme } from "@/composables/useTheme";
 
-const { isDark, initTheme, setupSystemThemeListener, updateReactiveState } =
-  useTheme();
+const { isDark, initTheme, setupSystemThemeListener, updateReactiveState }
+  = useTheme();
 
 // Naive UI 主题
 const naiveTheme = computed(() => {

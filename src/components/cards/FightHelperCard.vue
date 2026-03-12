@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="bottle-helper" :statusClass="{ active: state.isRunning }">
+  <MyCard class="bottle-helper" :status-class="{ active: state.isRunning }">
     <template #icon>
-      <img src="/icons/1736425783912140.png" alt="竞技场" />
+      <img alt="竞技场" src="/icons/1736425783912140.png">
     </template>
     <template #title>
       <h3>竞技场助手</h3>
@@ -16,17 +16,17 @@
       </div>
       <div class="container">
         <div class="selects">
-          <n-select v-model:value="number" :options="numberOptions" />
+          <n-select v-model:value="number" :options="numberOptions"></n-select>
         </div>
       </div>
     </template>
     <template #action>
       <a-button
-        type="primary"
-        :disabled="state.isRunning"
+        block
         secondary
         size="small"
-        block
+        type="primary"
+        :disabled="state.isRunning"
         @click="handleFightHelper"
       >
         {{ state.isRunning ? "运行中" : "开始战斗" }}
@@ -36,9 +36,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, watchEffect } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -50,15 +52,17 @@ const itemcount = computed(
 );
 
 const pickArenaTargetId = (targets) => {
-  const candidate =
-    targets?.rankList?.[0] ||
-    targets?.roleList?.[0] ||
-    targets?.targets?.[0] ||
-    targets?.targetList?.[0] ||
-    targets?.list?.[0];
+  const candidate
+    = targets?.rankList?.[0]
+      || targets?.roleList?.[0]
+      || targets?.targets?.[0]
+      || targets?.targetList?.[0]
+      || targets?.list?.[0];
 
-  if (candidate?.roleId) return candidate.roleId;
-  if (candidate?.id) return candidate.id;
+  if (candidate?.roleId)
+    return candidate.roleId;
+  if (candidate?.id)
+    return candidate.id;
   return targets?.roleId || targets?.id;
 };
 
@@ -121,7 +125,6 @@ const handleFightHelper = async () => {
   await tokenStore.sendMessage(tokenId, "role_getroleinfo");
   message.success("竞技场战斗完毕");
   state.value.isRunning = false;
-  return;
 };
 </script>
 

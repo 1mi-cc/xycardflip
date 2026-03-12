@@ -19,7 +19,8 @@
               <button
                 v-for="type in versionTypes"
                 :key="type.value"
-                :class="['filter-btn', { active: selectedType === type.value }]"
+                class="filter-btn"
+                :class="[{ active: selectedType === type.value }]"
                 @click="selectedType = type.value"
               >
                 {{ type.label }}
@@ -68,7 +69,7 @@
             v-for="entry in filteredChangelogs"
             :key="entry.version"
             :entry="entry"
-          />
+          ></ChangelogCard>
         </transition-group>
 
         <!-- 空状态 -->
@@ -99,7 +100,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
+
 import ChangelogCard from "@/components/ChangelogCard.vue";
 import { useChangelogStore } from "@/stores/changelogStore";
 

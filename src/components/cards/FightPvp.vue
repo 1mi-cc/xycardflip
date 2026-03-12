@@ -4,7 +4,7 @@
     <div class="status-card main-card">
       <!-- 卡片头部 -->
       <div class="card-header">
-        <img src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png" alt="切磋图标" class="status-icon">
+        <img alt="切磋图标" class="status-icon" src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png">
         <div class="status-info">
           <h3>切磋系统</h3>
           <p>查询对手信息并进行切磋</p>
@@ -14,68 +14,68 @@
       <!-- 操作区域 -->
       <div class="action-section">
         <div class="input-group">
-          <n-input 
-            v-model:value="targetId" 
-            type="text" 
-            placeholder="请输入对手ID" 
+          <n-input
             class="target-input"
+            placeholder="请输入对手ID"
             size="medium"
-          />
-          <n-button 
-            type="primary" 
-            :disabled="loading1 || !targetId" 
+            type="text"
+            v-model:value="targetId"
+          ></n-input>
+          <n-button
+            size="medium"
+            type="primary"
+            :disabled="loading1 || !targetId"
             @click="getTargetInfo"
-            size="medium"
           >
             <template #icon>
               <n-icon>
-                <Refresh />
+                <Refresh></Refresh>
               </n-icon>
             </template>
             查询对手
           </n-button>
         </div>
-        
+
         <div class="fight-options">
           <div class="option-item">
             <span class="option-label">切磋次数：</span>
-            <n-select 
-              v-model:value="fightNum" 
-              :options="options" 
-              size="medium"
-              class="fight-count-select"
+            <n-select
+              allow-create
               filterable
               tag
-              allow-create
-              :placeholder="'请选择或输入切磋次数'"
-              @update:value="handleFightNumChange"
-            />
-          </div>
-          
-          <div class="option-actions">
-            <n-button 
-              type="success" 
-              :disabled="loading1 || !targetId || !memberData" 
-              @click="fightPVPRefresh"
+              class="fight-count-select"
+              placeholder="请选择或输入切磋次数"
               size="medium"
+              v-model:value="fightNum"
+              :options="options"
+              @update:value="handleFightNumChange"
+            ></n-select>
+          </div>
+
+          <div class="option-actions">
+            <n-button
+              size="medium"
+              type="success"
+              :disabled="loading1 || !targetId || !memberData"
+              @click="fightPVPRefresh"
             >
               <template #icon>
                 <n-icon>
-                  <Trophy />
+                  <Trophy></Trophy>
                 </n-icon>
               </template>
               开始切磋
             </n-button>
-            
-            <n-button 
-              type="default" 
-              :disabled="loading1 || !memberData" 
-              @click="handleExport1"
+
+            <n-button
               size="medium"
+              type="default"
+              :disabled="loading1 || !memberData"
+              @click="handleExport1"
             >
               <template #icon>
                 <n-icon>
-                  <Copy />
+                  <Copy></Copy>
                 </n-icon>
               </template>
               导出数据
@@ -94,7 +94,7 @@
       </div>
 
       <!-- 对手信息卡片 -->
-      <div v-else-if="memberData" ref="exportDom" class="content-section">
+      <div ref="exportDom" v-else-if="memberData" class="content-section">
         <!-- 对手信息和阵容左右布局 -->
         <div class="opponent-main-layout">
           <!-- 左侧对手信息 -->
@@ -102,14 +102,14 @@
             <div class="card-title">
               <h4>对手信息</h4>
             </div>
-            
+
             <!-- 表格形式显示对手信息 -->
             <div class="opponent-info-table">
               <table class="info-table">
                 <tbody>
                   <tr>
                     <td class="avatar-cell" rowspan="8">
-                      <n-avatar round :size="60" :src="memberData.headImg" class="opponent-avatar" />
+                      <n-avatar round class="opponent-avatar" :size="60" :src="memberData.headImg"></n-avatar>
                     </td>
                     <td class="label-cell">游戏名：</td>
                     <td class="value-cell">{{ memberData.name }}</td>
@@ -160,33 +160,33 @@
                 <span class="click-hint">（点击头像图片可看详情）</span>
               </div>
             </div>
-            
+
             <div class="heroes-grid compact">
-              <div 
-                v-for="hero in memberData.heroList" 
-                :key="hero.heroId || hero.heroName" 
+              <div
+                v-for="hero in memberData.heroList"
+                :key="hero.heroId || hero.heroName"
                 class="hero-card compact"
                 @click="selectHeroInfo(hero)"
               >
                 <div class="hero-avatar-container">
                   <div class="hero-circle">
-                    <img 
-                      v-if="hero.heroAvate" 
-                      :src="hero.heroAvate" 
-                      :alt="hero.heroName" 
+                    <img
+                      v-if="hero.heroAvate"
                       class="hero-avatar-img"
-                    />
+                      :alt="hero.heroName"
+                      :src="hero.heroAvate"
+                    >
                     <div v-else class="hero-placeholder">{{ hero.heroName?.substring(0, 2) || "?" }}</div>
                   </div>
                 </div>
-                
+
                 <div class="hero-info compact">
                   <div class="hero-name-row">
                     <h5 class="hero-name">{{ hero.heroName || "未知武将" }}</h5>
-                    <n-tag 
-                      :type="hero.HolyBeast ? 'success' : 'warning'" 
-                      size="small" 
+                    <n-tag
                       class="holy-beast-tag"
+                      size="small"
+                      :type="hero.HolyBeast ? 'success' : 'warning'"
                     >
                       {{ hero.HolyBeast ? '已开四圣' : '未开四圣' }}
                     </n-tag>
@@ -222,46 +222,47 @@
 
               <div class="summary-item win-rate">
                 <span class="summary-label">胜率：</span>
-                <span class="summary-value">{{ ((fightResult.winCount/fightNum)*100).toFixed(2) }}%</span>
+                <span class="summary-value">{{ ((fightResult.winCount / fightNum) * 100).toFixed(2) }}%</span>
               </div>
               <div class="summary-item die-rate">
                 <span class="summary-label">我方掉将率：</span>
-                <span class="summary-value">{{ ((fightResult.ourTotalDieHeroCount/(fightNum*5))*100).toFixed(2) }}%</span>
+                <span class="summary-value">{{ ((fightResult.ourTotalDieHeroCount / (fightNum * 5)) * 100).toFixed(2) }}%</span>
               </div>
               <div class="summary-item die-rate">
                 <span class="summary-label">敌方掉将率：</span>
-                <span class="summary-value">{{ ((fightResult.enemyTotalDieHeroCount/(fightNum*5))*100).toFixed(2) }}%</span>
+                <span class="summary-value">{{ ((fightResult.enemyTotalDieHeroCount / (fightNum * 5)) * 100).toFixed(2) }}%</span>
               </div>
             </div>
           </div>
-          
+
           <div class="result-list">
-            <div 
-              v-for="(battle, index) in fightResult.resultCount" 
-              :key="index" 
-              :class="['battle-result-item', battle.isWin ? 'win' : 'loss']"
+            <div
+              v-for="(battle, index) in fightResult.resultCount"
+              :key="index"
+              class="battle-result-item"
+              :class="[battle.isWin ? 'win' : 'loss']"
             >
               <div class="battle-header">
                 <span class="battle-index">第 {{ index + 1 }} 场</span>
-                <n-tag :type="battle.isWin ? 'success' : 'error'" size="small">
+                <n-tag size="small" :type="battle.isWin ? 'success' : 'error'">
                   {{ battle.isWin ? '胜利' : '失败' }}
                 </n-tag>
               </div>
-              
+
               <div class="battle-details">
                 <div class="battle-side left-side">
-                  <n-avatar round :size="32" :src="battle.leftheadImg" class="side-avatar" />
+                  <n-avatar round class="side-avatar" :size="32" :src="battle.leftheadImg"></n-avatar>
                   <div class="side-info">
                     <span class="side-name">{{ battle.leftName || '未知' }}</span>
                     <span class="side-power">战力: {{ battle.leftpower }}</span>
                     <span class="side-die">掉将: {{ battle.leftDieHero }} 个</span>
                   </div>
                 </div>
-                
+
                 <div class="battle-vs">VS</div>
-                
+
                 <div class="battle-side right-side">
-                  <n-avatar round :size="32" :src="battle.rightheadImg" class="side-avatar" />
+                  <n-avatar round class="side-avatar" :size="32" :src="battle.rightheadImg"></n-avatar>
                   <div class="side-info">
                     <span class="side-name">{{ battle.rightName || '未知' }}</span>
                     <span class="side-power">战力: {{ battle.rightpower }}</span>
@@ -276,17 +277,17 @@
 
       <!-- 空状态 -->
       <div v-else class="empty-state">
-        <n-empty description="请输入对手ID并点击查询按钮获取对手信息" />
+        <n-empty description="请输入对手ID并点击查询按钮获取对手信息"></n-empty>
       </div>
     </div>
 
     <!-- 武将详情模态框 -->
     <n-modal
-      v-model:show="showHeroModal"
       class="hero-detail-modal"
       preset="card"
-      title="武将信息"
       size="large"
+      title="武将信息"
+      v-model:show="showHeroModal"
       :bordered="false"
       :segmented="{ content: 'soft', footer: 'soft' }"
       :style="{ width: '600px' }"
@@ -294,11 +295,11 @@
       <template #header-extra>
         <span class="hero-id">武将ID: {{ heroModealTemp?.heroId }}</span>
       </template>
-      
+
       <div v-if="heroModealTemp" class="hero-modal-content">
         <div class="hero-modal-header">
           <div class="hero-modal-avatar">
-            <img v-if="heroModealTemp.heroAvate" :src="heroModealTemp.heroAvate" :alt="heroModealTemp.heroName" />
+            <img v-if="heroModealTemp.heroAvate" :alt="heroModealTemp.heroName" :src="heroModealTemp.heroAvate">
           </div>
           <div class="hero-modal-basic">
             <h3 class="hero-modal-name">{{ heroModealTemp.heroName }}</h3>
@@ -312,9 +313,9 @@
             </div>
           </div>
         </div>
-        
+
         <div class="hero-modal-details">
-          <n-descriptions label-placement="left" column="3" bordered>
+          <n-descriptions bordered column="3" label-placement="left">
             <n-descriptions-item label="战力">
               {{ heroModealTemp.power }}
             </n-descriptions-item>
@@ -338,11 +339,11 @@
             </n-descriptions-item>
             <n-descriptions-item label="鱼灵洗练">
               <div v-if="heroModealTemp?.PearlInfo?.slotMap?.length > 0">
-                <div 
-                  v-for="item in heroModealTemp.PearlInfo.slotMap" 
+                <div
+                  v-for="item in heroModealTemp.PearlInfo.slotMap"
                   :key="item.id"
                   class="ModalEquipment"
-                  :style="'background-color:' + item.value"
+                  :style="`background-color:${item.value}`"
                 ></div>
               </div>
               <div v-else>无</div>
@@ -352,16 +353,16 @@
             </n-descriptions-item>
           </n-descriptions>
         </div>
-        
+
         <div class="hero-modal-equipment">
           <h4 class="section-title">装备详情</h4>
           <div class="equipment-grid">
             <div class="equipment-item">
               <span class="equipment-label">武器:</span>
               <div class="equipment-slots">
-                <div 
-                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[0]?.quenches || {})" 
-                  :key="idx" 
+                <div
+                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[0]?.quenches || {})"
+                  :key="idx"
                   class="equipment-slot"
                   :class="{ 'red-slot': item.colorId === 6 }"
                 ></div>
@@ -370,9 +371,9 @@
             <div class="equipment-item">
               <span class="equipment-label">衣服:</span>
               <div class="equipment-slots">
-                <div 
-                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[1]?.quenches || {})" 
-                  :key="idx" 
+                <div
+                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[1]?.quenches || {})"
+                  :key="idx"
                   class="equipment-slot"
                   :class="{ 'red-slot': item.colorId === 6 }"
                 ></div>
@@ -381,9 +382,9 @@
             <div class="equipment-item">
               <span class="equipment-label">头盔:</span>
               <div class="equipment-slots">
-                <div 
-                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[2]?.quenches || {})" 
-                  :key="idx" 
+                <div
+                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[2]?.quenches || {})"
+                  :key="idx"
                   class="equipment-slot"
                   :class="{ 'red-slot': item.colorId === 6 }"
                 ></div>
@@ -392,9 +393,9 @@
             <div class="equipment-item">
               <span class="equipment-label">坐骑:</span>
               <div class="equipment-slots">
-                <div 
-                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[3]?.quenches || {})" 
-                  :key="idx" 
+                <div
+                  v-for="(item, idx) in Object.values(Object.values(heroModealTemp.equipment)[3]?.quenches || {})"
+                  :key="idx"
                   class="equipment-slot"
                   :class="{ 'red-slot': item.colorId === 6 }"
                 ></div>
@@ -403,7 +404,7 @@
           </div>
         </div>
       </div>
-      
+
       <template #footer>
         <div class="modal-footer">
           <n-button type="default" @click="showHeroModal = false">关闭</n-button>
@@ -414,224 +415,213 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch  } from 'vue'
-import { useMessage, NDatePicker, NPagination } from 'naive-ui'
-import { useTokenStore } from '@/stores/tokenStore'
 import {
-  Trophy,
-  Refresh,
   Copy,
-  ChevronDown,
-  ChevronUp,
-  DocumentText
-} from '@vicons/ionicons5'
-import {
-  getLastSaturday,
-  formatTimestamp,
-  formatTimestamp1,
-  parseBattleResult,
-  parseAttackType,
-  formatBattleRecordsForExport,
-  copyToClipboard
-} from '@/utils/clubBattleUtils'
-import { gettoday, formatWarrankRecordsForExport, allianceincludes } from '@/utils/goldWarrankUtils'
-import { HERO_DICT, HeroFillInfo } from '@/utils/HeroList'
-import html2canvas from 'html2canvas';
+  Refresh,
+  Trophy,
+} from "@vicons/ionicons5";
+import html2canvas from "html2canvas";
+import { useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
+import { gettoday } from "@/utils/goldWarrankUtils";
+import { HERO_DICT, HeroFillInfo } from "@/utils/HeroList";
 
 const props = defineProps({
   visible: {
     type: Boolean,
-    default: false
+    default: false,
   },
   inline: {
     type: Boolean,
-    default: false
-  }
-})
+    default: false,
+  },
+});
 
-const emit = defineEmits(['update:visible'])
+const emit = defineEmits(["update:visible"]);
 
-const message = useMessage()
-const tokenStore = useTokenStore()
+const message = useMessage();
+const tokenStore = useTokenStore();
 
 const showModal = computed({
   get: () => props.visible,
-  set: (val) => emit('update:visible', val)
-})
+  set: (val) => emit("update:visible", val),
+});
 
 const exportDom = ref(null);
-const loading1 = ref(false)
-const loadingText = ref('正在查询对手信息...')
-const topranklist = ref(null)
-const expandedMembers = ref(new Set())
-const roleIdinput = ref('')
-const queryDate = ref('')
-const targetId = ref('')
-const teamArray = ref(null)
-//切磋对手信息
-const memberData = ref(null)
-//批量数量
-const fightNum = ref(1)
-//战斗结果
-const fightResult = ref(null)
+const loading1 = ref(false);
+const loadingText = ref("正在查询对手信息...");
+const topranklist = ref(null);
+const expandedMembers = ref(new Set());
+const roleIdinput = ref("");
+const queryDate = ref("");
+const targetId = ref("");
+const teamArray = ref(null);
+// 切磋对手信息
+const memberData = ref(null);
+// 批量数量
+const fightNum = ref(1);
+// 战斗结果
+const fightResult = ref(null);
 
 // 监听targetId变化，清除之前的切磋结果
 watch(targetId, (newId, oldId) => {
   if (newId !== oldId) {
     fightResult.value = null;
   }
-})
+});
 // 模态框控制符
-const showHeroModal = ref(false)
-//选中的武将信息
-const heroModealTemp = ref(null)
+const showHeroModal = ref(false);
+// 选中的武将信息
+const heroModealTemp = ref(null);
 const options = [
   {
     label: "1",
-    value: 1
+    value: 1,
   },
   {
     label: "10",
-    value: 10
+    value: 10,
   },
   {
     label: "25",
-    value: 25
+    value: 25,
   },
   {
     label: "50",
-    value: 50
-  }
-]
-let player_date = { name: '', power: '' }
+    value: 50,
+  },
+];
+const player_date = { name: "", power: "" };
 
 // 分页状态
-const currentPage = ref(1)
-const pageSize = ref(20) // 每页20条，共5页
+const currentPage = ref(1);
+const pageSize = ref(20); // 每页20条，共5页
 
 // 计算总页数
 const totalPages = computed(() => {
-  if (!topranklist.value) return 0
-  return Math.ceil(Object.keys(topranklist.value).length / pageSize.value)
-})
+  if (!topranklist.value)
+    return 0;
+  return Math.ceil(Object.keys(topranklist.value).length / pageSize.value);
+});
 
 const selectHeroInfo = (heroInfo) => {
-    showHeroModal.value = true;
-    heroModealTemp.value = heroInfo
-}
-
+  showHeroModal.value = true;
+  heroModealTemp.value = heroInfo;
+};
 
 // 获取当前页的数据
 const currentPageData = computed(() => {
-  if (!topranklist.value) return {}
+  if (!topranklist.value)
+    return {};
 
-  const startIndex = (currentPage.value - 1) * pageSize.value
-  const endIndex = startIndex + pageSize.value
-  const entries = Object.entries(topranklist.value)
+  const startIndex = (currentPage.value - 1) * pageSize.value;
+  const endIndex = startIndex + pageSize.value;
+  const entries = Object.entries(topranklist.value);
 
-  return Object.fromEntries(entries.slice(startIndex, endIndex))
-})
+  return Object.fromEntries(entries.slice(startIndex, endIndex));
+});
 // 格式化战力
 const formatPower = (power) => {
-  if (!power) return '0'
+  if (!power)
+    return "0";
   if (power >= 100000000) {
-    return (power / 100000000).toFixed(2) + '亿'
+    return `${(power / 100000000).toFixed(2)}亿`;
   }
   if (power >= 10000) {
-    return (power / 10000).toFixed(2) + '万'
+    return `${(power / 10000).toFixed(2)}万`;
   }
-  return power.toString()
-}
+  return power.toString();
+};
 
 // 获取战斗样式类
 const getBattleClass = (battle) => {
-  const classes = []
+  const classes = [];
   if (battle.isWin) {
-    classes.push('battle-win')
+    classes.push("battle-win");
   } else {
-    classes.push('battle-loss')
+    classes.push("battle-loss");
   }
-  return classes.join(' ')
-}
+  return classes.join(" ");
+};
 
 const formatScore = (score) => {
-  return score.toFixed(0).toString()
-}
+  return score.toFixed(0).toString();
+};
 
 const formatServerId = (ServerId) => {
-  return (ServerId - 27).toFixed(0).toString()
-}
-
+  return (ServerId - 27).toFixed(0).toString();
+};
 
 // 处理图片加载错误
 const handleImageError = (event) => {
-  event.target.style.display = 'none'
-}
+  event.target.style.display = "none";
+};
 
 // 切磋
 const fetchfightPVP = async () => {
   if (!tokenStore.selectedToken) {
-    message.warning('请先选择游戏角色')
-    return
+    message.warning("请先选择游戏角色");
+    return;
   }
 
-  const tokenId = tokenStore.selectedToken.id
+  const tokenId = tokenStore.selectedToken.id;
 
   // 检查WebSocket连接
-  const wsStatus = tokenStore.getWebSocketStatus(tokenId)
-  if (wsStatus !== 'connected') {
-    message.error('WebSocket未连接，无法查询战绩')
-    return
+  const wsStatus = tokenStore.getWebSocketStatus(tokenId);
+  if (wsStatus !== "connected") {
+    message.error("WebSocket未连接，无法查询战绩");
+    return;
   }
 
-  loading1.value = true
-  loadingText.value = '正在进行切磋，请稍候...'
-  queryDate.value = gettoday()
+  loading1.value = true;
+  loadingText.value = "正在进行切磋，请稍候...";
+  queryDate.value = gettoday();
 
   try {
     let winCount = 0;
     let ourTotalDieHeroCount = 0; // 我方总掉落将领数
     let enemyTotalDieHeroCount = 0; // 敌方总掉落将领数
-    let resultCount = [];
-    for (var i = 0; i < fightNum.value; i++) {
-      const result = await tokenStore.sendMessageWithPromise(tokenId, 'fight_startpvp',
-        {
-          targetId: targetId.value,
-        }, 5000)
+    const resultCount = [];
+    for (let i = 0; i < fightNum.value; i++) {
+      const result = await tokenStore.sendMessageWithPromise(tokenId, "fight_startpvp", {
+        targetId: targetId.value,
+      }, 5000);
       if (!result.battleData) {
         fightResult.value = null;
-        message.warning('切磋错误');
+        message.warning("切磋错误");
         return;
       }
-      //处理掉将情况
+      // 处理掉将情况
       let leftCount = 0;
-      result.battleData.result.sponsor.teamInfo.forEach(item => {
+      result.battleData.result.sponsor.teamInfo.forEach((item) => {
         if (item.hp == 0) {
           leftCount++;
         }
-      })
+      });
       ourTotalDieHeroCount += leftCount;
-      
+
       let rightCount = 0;
-      result.battleData.result.accept.teamInfo.forEach(item => {
+      result.battleData.result.accept.teamInfo.forEach((item) => {
         if (item.hp == 0) {
           rightCount++;
         }
-      })
+      });
       enemyTotalDieHeroCount += rightCount;
-      
-      let tempObj = {
+
+      const tempObj = {
         leftName: result.battleData.leftTeam.name,
         leftheadImg: result.battleData.leftTeam.headImg,
         leftpower: formatPower(result.battleData.leftTeam.power),
         rightName: result.battleData.rightTeam.name,
         rightheadImg: result.battleData.rightTeam.headImg,
         rightpower: formatPower(result.battleData.rightTeam.power),
-        //掉将情况
+        // 掉将情况
         leftDieHero: leftCount,
         rightDieHero: rightCount,
-        isWin: result.battleData.result.isWin ? true : false //对战结果
-      }
+        isWin: !!result.battleData.result.isWin, // 对战结果
+      };
       if (result.battleData.result.isWin) {
         winCount++;
       }
@@ -641,55 +631,53 @@ const fetchfightPVP = async () => {
       winCount,
       ourTotalDieHeroCount,
       enemyTotalDieHeroCount,
-      resultCount
+      resultCount,
     };
     fightResult.value = teamData;
-    message.success('切磋完成');
+    message.success("切磋完成");
     return teamData;
-
   } catch (error) {
     message.error(`查询失败: ${error.message}`);
     topranklist.value = null;
   } finally {
     loading1.value = false;
-    loadingText.value = '正在查询对手信息...'
+    loadingText.value = "正在查询对手信息...";
   }
-}
+};
 
 // 查询
 const fetchTargetInfo = async () => {
   if (!tokenStore.selectedToken) {
-    message.warning('请先选择游戏角色')
-    return
+    message.warning("请先选择游戏角色");
+    return;
   }
 
-  const tokenId = tokenStore.selectedToken.id
+  const tokenId = tokenStore.selectedToken.id;
 
   // 检查WebSocket连接
-  const wsStatus = tokenStore.getWebSocketStatus(tokenId)
-  if (wsStatus !== 'connected') {
-    message.error('WebSocket未连接，无法查询战绩')
-    return
+  const wsStatus = tokenStore.getWebSocketStatus(tokenId);
+  if (wsStatus !== "connected") {
+    message.error("WebSocket未连接，无法查询战绩");
+    return;
   }
 
   // 清除之前的切磋结果
   fightResult.value = null;
-  
-  loading1.value = true
-  loadingText.value = '正在查询对手信息...'
-  queryDate.value = gettoday()
+
+  loading1.value = true;
+  loadingText.value = "正在查询对手信息...";
+  queryDate.value = gettoday();
 
   try {
-    const result = await tokenStore.sendMessageWithPromise(tokenId, 'rank_getroleinfo',
-      {
-        bottleType: 0,
-        includeBottleTeam: false,
-        isSearch: false,
-        roleId: targetId.value
-      }, 5000)
+    const result = await tokenStore.sendMessageWithPromise(tokenId, "rank_getroleinfo", {
+      bottleType: 0,
+      includeBottleTeam: false,
+      isSearch: false,
+      roleId: targetId.value,
+    }, 5000);
     if (!result.roleInfo && !result.legionInfo) {
       memberData.value = null;
-      message.warning('未查询到对手信息');
+      message.warning("未查询到对手信息");
       return;
     }
     const teamData = {};
@@ -697,17 +685,17 @@ const fetchTargetInfo = async () => {
     // 处理鱼灵信息
     const fishInfo = HeroFillInfo(result.roleInfo);
     // 将鱼灵信息添加到英雄列表中
-    heroAndholdAndRed.heroList.forEach(hero => {
+    heroAndholdAndRed.heroList.forEach((hero) => {
       hero.PearlInfo = fishInfo[hero.artifactId] || {};
     });
     // 俱乐部名称
     teamData.legionName = result.legionInfo.name;
     // 俱乐部当前红数
-    teamData.legionRed = result.legionInfo.statistics['battle:red:quench'];
+    teamData.legionRed = result.legionInfo.statistics["battle:red:quench"];
     // 俱乐部历史最高红数
-    teamData.legionMaxRed = result.legionInfo.statistics['red:quench'];
+    teamData.legionMaxRed = result.legionInfo.statistics["red:quench"];
     // 俱乐部历史最高战力
-    teamData.MaxPower = formatPower(result.legionInfo.statistics['max:power']);
+    teamData.MaxPower = formatPower(result.legionInfo.statistics["max:power"]);
     // 切磋对手武将信息
     teamData.heroList = heroAndholdAndRed.heroList;
     // 切磋对手玩家头像
@@ -719,144 +707,143 @@ const fetchTargetInfo = async () => {
     teamData.hole = heroAndholdAndRed.holeCount;
     teamData.red = heroAndholdAndRed.redCount;
     memberData.value = teamData;
-    message.success('对手信息加载成功');
+    message.success("对手信息加载成功");
     return teamData;
-
   } catch (error) {
     message.error(`查询失败: ${error.message}`);
     topranklist.value = null;
   } finally {
     loading1.value = false;
-    loadingText.value = '正在查询对手信息...'
+    loadingText.value = "正在查询对手信息...";
   }
-}
+};
 
 /**
  * 提取数组中的英雄信息
- * @param {Object} heroObj
+ * @param {object} heroObj
  */
 const getHeroInfo = (heroObj) => {
-    //统计总红数
-    let redCount = 0;
-    let holeCount = 0;
-    let heroList = [];
-    Object.values(heroObj).forEach(hero => {
-        let heroInfo = HERO_DICT[hero.heroId];
-        let equipmentInfo = getEquipment(hero.equipment);
-        let tempObj = {
-            heroId: hero.heroId, //英雄ID
-            artifactId: hero.artifactId, //英雄装备ID，用于匹配鱼灵信息
-            power: formatPower(hero.power), //英雄战力
-            star: hero.star, //英雄星级
-            equipment:hero.equipment, //英雄具体孔数和红数
-            heroName: heroInfo.name, //英雄姓名
-            heroAvate: heroInfo.avatar,
-            level: hero.level, //英雄等级
-            hole: equipmentInfo.holeCount, //英雄开孔数量
-            red: equipmentInfo.redCount, //英雄红数
-            HolyBeast: hero.hB?.active   //激活四圣
-        }
-        redCount += tempObj.red;
-        holeCount += tempObj.hole;
-        heroList.push(tempObj);
-    });
-    return { redCount, holeCount, heroList };
-}
+  // 统计总红数
+  let redCount = 0;
+  let holeCount = 0;
+  const heroList = [];
+  Object.values(heroObj).forEach((hero) => {
+    const heroInfo = HERO_DICT[hero.heroId];
+    const equipmentInfo = getEquipment(hero.equipment);
+    const tempObj = {
+      heroId: hero.heroId, // 英雄ID
+      artifactId: hero.artifactId, // 英雄装备ID，用于匹配鱼灵信息
+      power: formatPower(hero.power), // 英雄战力
+      star: hero.star, // 英雄星级
+      equipment: hero.equipment, // 英雄具体孔数和红数
+      heroName: heroInfo.name, // 英雄姓名
+      heroAvate: heroInfo.avatar,
+      level: hero.level, // 英雄等级
+      hole: equipmentInfo.holeCount, // 英雄开孔数量
+      red: equipmentInfo.redCount, // 英雄红数
+      HolyBeast: hero.hB?.active, // 激活四圣
+    };
+    redCount += tempObj.red;
+    holeCount += tempObj.hole;
+    heroList.push(tempObj);
+  });
+  return { redCount, holeCount, heroList };
+};
 
-//获取装备信息红数和孔数
+// 获取装备信息红数和孔数
 const getEquipment = (equipment) => {
   let redCount = 0;
   let holeCount = 0;
-  let equipArr = [];
-  //此处遍历4件装备
-  Object.values(equipment).forEach(equ => {
-    //遍历每件装备的属性
-    Object.values(equ.quenches).forEach(item => {
+  const equipArr = [];
+  // 此处遍历4件装备
+  Object.values(equipment).forEach((equ) => {
+    // 遍历每件装备的属性
+    Object.values(equ.quenches).forEach((item) => {
       holeCount++;
       if (item.colorId == 6) {
         redCount++;
       }
-    })
+    });
   });
-  return { redCount, holeCount }
-}
+  return { redCount, holeCount };
+};
 
 // 处理分页大小改变
 const handlePageSizeChange = (size) => {
-  pageSize.value = size
-  currentPage.value = 1 // 重置到第一页
-}
+  pageSize.value = size;
+  currentPage.value = 1; // 重置到第一页
+};
 // 刷新战绩
 const fightPVPRefresh = () => {
-  fetchfightPVP()
-}
+  fetchfightPVP();
+};
 
-//处理切磋次数变化
+// 处理切磋次数变化
 const handleFightNumChange = (value) => {
   // 确保输入的是有效的数字
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     // 如果是字符串，转换为数字
-    const num = parseInt(value, 10);
+    const num = Number.parseInt(value, 10);
     // 确保数字有效且大于0,尽量限制最大次数,万一谁请求打多了,可不是什么好事情
-    if (!isNaN(num) && num > 0&&num<=50) {
+    if (!isNaN(num) && num > 0 && num <= 50) {
       fightNum.value = num;
     } else {
       // 否则重置为默认值1
       fightNum.value = 1;
     }
   } else {
-    if(num>0&&num<50){
+    if (num > 0 && num < 50) {
       // 如果已经是数字类型，直接使用
       fightNum.value = value;
-    }else{
+    } else {
       fightNum.value = 1;
     }
   }
-}
+};
 
-//获取对手信息
+// 获取对手信息
 const getTargetInfo = () => {
   fetchTargetInfo();
-}
+};
 
 const handleExport1 = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert('未找到要导出的DOM元素');
+    alert("未找到要导出的DOM元素");
     return;
   }
 
   try {
     // 获取结果列表元素
-    const resultList = exportDom.value.querySelector('.result-list');
-    let originalMaxHeight = '';
-    let originalOverflow = '';
-    let originalPaddingRight = '';
-    
+    const resultList = exportDom.value.querySelector(".result-list");
+    let originalMaxHeight = "";
+    let originalOverflow = "";
+    let originalPaddingRight = "";
+
     // 临时移除结果列表的高度限制，让所有结果都可见
     if (resultList) {
       originalMaxHeight = resultList.style.maxHeight;
       originalOverflow = resultList.style.overflowY;
       originalPaddingRight = resultList.style.paddingRight;
-      
-      resultList.style.maxHeight = 'none';
-      resultList.style.overflowY = 'visible';
-      resultList.style.paddingRight = '0';
+
+      resultList.style.maxHeight = "none";
+      resultList.style.overflowY = "visible";
+      resultList.style.paddingRight = "0";
     }
-    
+
     // 等待DOM更新
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     // 生成canvas并导出
     const canvas = await html2canvas(exportDom.value, {
       scale: 2, // 放大2倍，解决图片模糊问题
       useCORS: true, // 允许跨域图片（若DOM内有远程图片，需开启）
-      backgroundColor: '#ffffff', // 避免透明背景（默认透明）
+      backgroundColor: "#ffffff", // 避免透明背景（默认透明）
       logging: false, // 关闭控制台日志
       allowTaint: true, // 允许跨域图片
-      taintTest: false // 关闭跨域测试
+      taintTest: false, // 关闭跨域测试
     });
-    
+
     // 恢复原始样式
     if (resultList) {
       resultList.style.maxHeight = originalMaxHeight;
@@ -864,36 +851,36 @@ const handleExport1 = async () => {
       resultList.style.paddingRight = originalPaddingRight;
     }
 
-    const imgUrl = canvas.toDataURL('image/png'); 
+    const imgUrl = canvas.toDataURL("image/png");
 
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = imgUrl;
-    link.download = '切磋结果.png'; 
+    link.download = "切磋结果.png";
     document.body.appendChild(link);
-    link.click(); 
-    document.body.removeChild(link); 
+    link.click();
+    document.body.removeChild(link);
   } catch (err) {
-    console.error('导出图片失败:', err);
-    alert('导出图片失败，请重试');
+    console.error("导出图片失败:", err);
+    alert("导出图片失败，请重试");
   }
 };
 
 // 关闭弹窗
 const handleClose = () => {
-  expandedMembers.value.clear()
-}
+  expandedMembers.value.clear();
+};
 
 // 暴露方法给父组件
 defineExpose({
-  fetchfightPVP
-})
+  fetchfightPVP,
+});
 
 // Inline 模式：挂载后自动拉取
 onMounted(() => {
   // if (props.inline) {
   //     topranklistRefresh()
   // }
-})
+});
 </script>
 
 <style scoped lang="scss">
@@ -1684,7 +1671,7 @@ onMounted(() => {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .heroes-card .heroes-grid {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
@@ -1694,27 +1681,27 @@ onMounted(() => {
   .main-card {
     padding: 16px;
   }
-  
+
   .card-header {
     flex-direction: column;
     text-align: center;
     gap: 12px;
   }
-  
+
   .action-section .input-group {
     flex-direction: column;
   }
-  
+
   .result-card .card-title .result-summary {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .result-card .battle-details {
     flex-direction: column;
     gap: 16px;
   }
-  
+
   .result-card .battle-side {
     justify-content: center !important;
   }
@@ -1724,12 +1711,12 @@ onMounted(() => {
   .info-card {
     padding: 12px;
   }
-  
+
   .heroes-card .heroes-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
   }
-  
+
   .heroes-card .hero-card {
     padding: 12px;
   }

@@ -4,12 +4,12 @@
       <n-form-item label="上传 bin / dmp 文件">
         <input
           ref="fileInputRef"
+          multiple
+          accept=".bin,.dmp"
           class="file-input"
           type="file"
-          accept=".bin,.dmp"
-          multiple
           @change="handleFileChange"
-        />
+        >
         <div class="upload-hint">
           选择一个或多个本地文件。系统会尝试把文件内容转换成可用 Token，并加入待导入列表。
         </div>
@@ -27,7 +27,7 @@
     </div>
 
     <div class="form-actions">
-      <n-button type="primary" block :loading="submitting" @click="handleSubmit">
+      <n-button block type="primary" :loading="submitting" @click="handleSubmit">
         添加 Token
       </n-button>
       <n-button v-if="tokenStore.hasTokens" block @click="handleCancel">
@@ -38,17 +38,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
 import { useMessage } from "naive-ui";
+import { ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
 import { transformToken } from "@/utils/token";
 
-type RoleItem = {
+interface RoleItem {
   name: string;
   token: string;
   server: string;
   wsUrl: string;
-};
+}
 
 const emit = defineEmits(["cancel", "ok"]);
 const tokenStore = useTokenStore();
@@ -68,7 +69,8 @@ const handleCancel = () => {
 const handleFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement;
   const files = Array.from(target.files || []);
-  if (!files.length) return;
+  if (!files.length)
+    return;
 
   for (const file of files) {
     try {

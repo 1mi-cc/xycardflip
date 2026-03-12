@@ -9,9 +9,9 @@
             <p>管理您的所有游戏角色</p>
           </div>
           <div class="header-actions">
-            <n-button type="primary" size="large" @click="showAddModal = true">
+            <n-button size="large" type="primary" @click="showAddModal = true">
               <template #icon>
-                <n-icon><Add /></n-icon>
+                <n-icon><Add></Add></n-icon>
               </template>
               添加角色
             </n-button>
@@ -31,9 +31,9 @@
           <div class="card-header">
             <div class="role-avatar">
               <img
-                :src="role.avatar || '/icons/xiaoyugan.png'"
                 :alt="role.name"
-              />
+                :src="role.avatar || '/icons/xiaoyugan.png'"
+              >
             </div>
             <div class="role-actions">
               <n-dropdown
@@ -42,7 +42,7 @@
               >
                 <n-button text>
                   <template #icon>
-                    <n-icon><EllipsisHorizontal /></n-icon>
+                    <n-icon><EllipsisHorizontal></EllipsisHorizontal></n-icon>
                   </template>
                 </n-button>
               </n-dropdown>
@@ -84,11 +84,11 @@
         <n-empty description="暂无游戏角色" size="large">
           <template #icon>
             <n-icon size="64">
-              <PersonCircle />
+              <PersonCircle></PersonCircle>
             </n-icon>
           </template>
           <template #extra>
-            <n-button type="primary" size="large" @click="showAddModal = true">
+            <n-button size="large" type="primary" @click="showAddModal = true">
               添加第一个角色
             </n-button>
           </template>
@@ -97,64 +97,64 @@
 
       <!-- 添加/编辑角色模态框 -->
       <n-modal
-        v-model:show="showAddModal"
         preset="card"
-        title="添加游戏角色"
         style="width: 500px"
+        title="添加游戏角色"
+        v-model:show="showAddModal"
       >
         <n-form
           ref="roleFormRef"
-          :model="roleForm"
-          :rules="roleRules"
           label-placement="left"
           label-width="80px"
+          :model="roleForm"
+          :rules="roleRules"
         >
           <n-form-item label="角色名称" path="name">
             <n-input
-              v-model:value="roleForm.name"
               placeholder="请输入角色名称"
-            />
+              v-model:value="roleForm.name"
+            ></n-input>
           </n-form-item>
 
           <n-form-item label="服务器" path="server">
             <n-select
+              placeholder="请选择服务器"
               v-model:value="roleForm.server"
               :options="serverOptions"
-              placeholder="请选择服务器"
-            />
+            ></n-select>
           </n-form-item>
 
           <n-form-item label="职业" path="profession">
             <n-select
+              placeholder="请选择职业"
               v-model:value="roleForm.profession"
               :options="professionOptions"
-              placeholder="请选择职业"
-            />
+            ></n-select>
           </n-form-item>
 
           <n-form-item label="等级" path="level">
             <n-input-number
-              v-model:value="roleForm.level"
-              :min="1"
-              :max="200"
               placeholder="角色等级"
-            />
+              v-model:value="roleForm.level"
+              :max="200"
+              :min="1"
+            ></n-input-number>
           </n-form-item>
 
           <n-form-item label="账号信息">
             <n-input
-              v-model:value="roleForm.account"
               placeholder="游戏账号（可选）"
-            />
+              v-model:value="roleForm.account"
+            ></n-input>
           </n-form-item>
 
           <n-form-item label="备注">
             <n-input
-              v-model:value="roleForm.note"
-              type="textarea"
               placeholder="角色备注信息（可选）"
+              type="textarea"
+              v-model:value="roleForm.note"
               :rows="3"
-            />
+            ></n-input>
           </n-form-item>
         </n-form>
 
@@ -176,11 +176,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from "vue";
+import { Add, EllipsisHorizontal, PersonCircle } from "@vicons/ionicons5";
+import { useDialog, useMessage } from "naive-ui";
+import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { useMessage, useDialog } from "naive-ui";
+
 import { useGameRolesStore } from "@/stores/gameRoles";
-import { PersonCircle, Add, EllipsisHorizontal } from "@vicons/ionicons5";
 
 const router = useRouter();
 const message = useMessage();
@@ -295,7 +296,8 @@ const deleteRole = (role) => {
 };
 
 const handleSubmit = async () => {
-  if (!roleFormRef.value) return;
+  if (!roleFormRef.value)
+    return;
 
   try {
     await roleFormRef.value.validate();
@@ -336,9 +338,9 @@ const resetForm = () => {
 
 const formatNumber = (num) => {
   if (num >= 100000000) {
-    return (num / 100000000).toFixed(1) + "亿";
+    return `${(num / 100000000).toFixed(1)}亿`;
   } else if (num >= 10000) {
-    return (num / 10000).toFixed(1) + "万";
+    return `${(num / 10000).toFixed(1)}万`;
   }
   return num.toString();
 };

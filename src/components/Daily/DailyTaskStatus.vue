@@ -2,10 +2,10 @@
   <div class="status-card daily-task">
     <div class="card-header">
       <img
-        src="/icons/174023274867420.png"
         alt="每日任务"
         class="status-icon"
-      />
+        src="/icons/174023274867420.png"
+      >
       <div class="status-info">
         <h3>每日任务</h3>
         <p>当前进度</p>
@@ -16,20 +16,20 @@
           :class="{ completed: isFull }"
           @click="showTaskDetails = true"
         >
-          <div class="status-dot" :class="{ completed: isFull }" />
+          <div class="status-dot" :class="{ completed: isFull }"></div>
           <span>任务详情</span>
         </div>
 
         <button
           class="settings-gear"
-          @click="showSettings = true"
           title="任务设置"
+          @click="showSettings = true"
         >
           <svg
-            viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             stroke-width="1.5"
+            viewBox="0 0 24 24"
           >
             <path
               d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.240.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
@@ -45,13 +45,13 @@
       <!-- 进度条 -->
       <div class="progress-container">
         <n-progress
+          rail-color="#f3f4f6"
           type="line"
-          :percentage="dailyPoint"
-          :height="8"
           :border-radius="4"
           :color="progressColor"
-          rail-color="#f3f4f6"
-        />
+          :height="8"
+          :percentage="dailyPoint"
+        ></n-progress>
       </div>
 
       <!-- 提示信息 -->
@@ -68,8 +68,8 @@
         <span v-if="busy" class="loading-text">
           <svg class="loading-icon" viewBox="0 0 24 24">
             <path
-              fill="currentColor"
               d="M12 22c5.421 0 10-4.579 10-10h-2c0 4.337-3.663 8-8 8s-8-3.663-8-8c0-4.336 3.663-8 8-8V2C6.579 2 2 6.58 2 12c0 5.421 4.579 10 10 10z"
+              fill="currentColor"
             />
           </svg>
           执行中...
@@ -81,15 +81,15 @@
 
     <!-- 任务设置模态框 -->
     <n-modal
-      v-model:show="showSettings"
       preset="card"
-      title="任务设置"
       style="width: 90%; max-width: 400px"
+      title="任务设置"
+      v-model:show="showSettings"
     >
       <template #header>
         <div class="modal-header">
           <n-icon>
-            <Settings />
+            <Settings></Settings>
           </n-icon>
           <span>任务设置</span>
         </div>
@@ -101,66 +101,66 @@
           <div class="setting-item">
             <label class="setting-label">竞技场阵容</label>
             <n-select
+              size="small"
               v-model:value="settings.arenaFormation"
               :options="formationOptions"
-              size="small"
-            />
+            ></n-select>
           </div>
 
           <!-- BOSS设置 -->
           <div class="setting-item">
             <label class="setting-label">BOSS阵容</label>
             <n-select
+              size="small"
               v-model:value="settings.bossFormation"
               :options="formationOptions"
-              size="small"
-            />
+            ></n-select>
           </div>
 
           <!-- BOSS次数 -->
           <div class="setting-item">
             <label class="setting-label">BOSS次数</label>
             <n-select
+              size="small"
               v-model:value="settings.bossTimes"
               :options="bossTimesOptions"
-              size="small"
-            />
+            ></n-select>
           </div>
 
           <!-- 功能开关 -->
           <div class="setting-switches">
             <div class="switch-row">
               <span class="switch-label">领罐子</span>
-              <n-switch v-model:value="settings.claimBottle" />
+              <n-switch v-model:value="settings.claimBottle"></n-switch>
             </div>
 
             <div class="switch-row">
               <span class="switch-label">领挂机</span>
-              <n-switch v-model:value="settings.claimHangUp" />
+              <n-switch v-model:value="settings.claimHangUp"></n-switch>
             </div>
 
             <div class="switch-row">
               <span class="switch-label">竞技场</span>
-              <n-switch v-model:value="settings.arenaEnable" />
+              <n-switch v-model:value="settings.arenaEnable"></n-switch>
             </div>
 
             <div class="switch-row">
               <span class="switch-label">开宝箱</span>
-              <n-switch v-model:value="settings.openBox" />
+              <n-switch v-model:value="settings.openBox"></n-switch>
             </div>
 
             <div class="switch-row">
               <span class="switch-label">领取邮件奖励</span>
-              <n-switch v-model:value="settings.claimEmail" />
+              <n-switch v-model:value="settings.claimEmail"></n-switch>
             </div>
             <div class="switch-row">
               <span class="switch-label">黑市购买物品</span>
-              <n-switch v-model:value="settings.blackMarketPurchase" />
+              <n-switch v-model:value="settings.blackMarketPurchase"></n-switch>
             </div>
 
             <div class="switch-row">
               <span class="switch-label">付费招募</span>
-              <n-switch v-model:value="settings.payRecruit" />
+              <n-switch v-model:value="settings.payRecruit"></n-switch>
             </div>
           </div>
         </div>
@@ -169,15 +169,15 @@
 
     <!-- 任务详情模态框 -->
     <n-modal
-      v-model:show="showTaskDetails"
       preset="card"
-      title="每日任务详情"
       style="width: 90%; max-width: 400px"
+      title="每日任务详情"
+      v-model:show="showTaskDetails"
     >
       <template #header>
         <div class="modal-header">
           <n-icon>
-            <Calendar />
+            <Calendar></Calendar>
           </n-icon>
           <span>每日任务详情</span>
           <button
@@ -186,7 +186,7 @@
             @click="handleRefreshTaskStatus"
           >
             <n-icon>
-              <Refresh />
+              <Refresh></Refresh>
             </n-icon>
             刷新状态
           </button>
@@ -200,12 +200,12 @@
               class="task-status-icon"
               :class="{ completed: task.completed }"
             >
-              <CheckmarkCircle v-if="task.completed" />
-              <EllipseOutline v-else />
+              <CheckmarkCircle v-if="task.completed"></CheckmarkCircle>
+              <EllipseOutline v-else></EllipseOutline>
             </n-icon>
             <span class="task-name">{{ task.name }}</span>
           </div>
-          <n-tag :type="task.completed ? 'success' : 'default'" size="small">
+          <n-tag size="small" :type="task.completed ? 'success' : 'default'">
             {{ task.completed ? "已完成" : "未完成" }}
           </n-tag>
         </div>
@@ -214,15 +214,15 @@
 
     <!-- 执行日志模态框 -->
     <n-modal
-      v-model:show="showLog"
       preset="card"
-      title="任务执行日志"
       style="width: 90%; max-width: 500px"
+      title="任务执行日志"
+      v-model:show="showLog"
     >
       <template #header>
         <div class="modal-header">
           <n-icon>
-            <DocumentText />
+            <DocumentText></DocumentText>
           </n-icon>
           <span>任务执行日志</span>
         </div>
@@ -253,25 +253,26 @@
 
 <script setup>
 import {
-  ref,
-  reactive,
-  computed,
-  watch,
-  onMounted,
-  onBeforeUnmount,
-  nextTick,
-} from "vue";
-import { useTokenStore } from "@/stores/tokenStore";
-import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
-import { useMessage } from "naive-ui";
-import {
-  Settings,
   Calendar,
   CheckmarkCircle,
-  EllipseOutline,
   DocumentText,
+  EllipseOutline,
   Refresh,
+  Settings,
 } from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
+import { DailyTaskRunner } from "@/utils/dailyTaskRunner";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -342,7 +343,8 @@ const progressColor = computed(() => (isFull.value ? "#10b981" : "#3b82f6"));
 
 // WebSocket连接状态
 const isConnected = computed(() => {
-  if (!tokenStore.selectedToken) return false;
+  if (!tokenStore.selectedToken)
+    return false;
   const status = tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
   return status === "connected";
 });
@@ -538,7 +540,8 @@ watch(
   settings,
   (cur) => {
     const role = getCurrentRole();
-    if (role) saveSettings(role.roleId, cur);
+    if (role)
+      saveSettings(role.roleId, cur);
   },
   { deep: true },
 );
@@ -552,7 +555,8 @@ watch(
 
       // 加载新token的设置
       const saved = loadSettings(newToken.id);
-      if (saved) Object.assign(settings, saved);
+      if (saved)
+        Object.assign(settings, saved);
 
       // 如果WebSocket已连接，尝试获取最新角色信息
       if (isConnected.value) {
@@ -595,7 +599,8 @@ onMounted(async () => {
   const role = getCurrentRole();
   if (role) {
     const saved = loadSettings(role.roleId);
-    if (saved) Object.assign(settings, saved);
+    if (saved)
+      Object.assign(settings, saved);
   }
 
   // 初始化时的任务状态同步会通过 watch selectedTokenRoleInfo 自动处理

@@ -5,14 +5,14 @@
       <div class="container">
         <div class="nav-content">
           <div class="nav-brand">
-            <img src="/icons/xiaoyugan.png" alt="XYZW" class="brand-logo" />
+            <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
             <span class="brand-text">XYZW 游戏管理系统</span>
           </div>
 
           <div class="mobile-menu-button">
             <n-button text @click="isMobileMenuOpen = true">
               <n-icon>
-                <Menu />
+                <Menu></Menu>
               </n-icon>
             </n-button>
           </div>
@@ -21,15 +21,15 @@
             <template v-if="!authStore.isAuthenticated">
               <n-button
                 text
-                type="primary"
                 size="large"
+                type="primary"
                 @click="router.push('/login')"
               >
                 登录
               </n-button>
               <n-button
-                type="primary"
                 size="large"
+                type="primary"
                 @click="router.push('/register')"
               >
                 注册
@@ -37,8 +37,8 @@
             </template>
             <template v-else>
               <n-button
-                type="primary"
                 size="large"
+                type="primary"
                 @click="router.push('/admin/dashboard')"
               >
                 进入控制台
@@ -50,80 +50,82 @@
     </nav>
 
     <n-drawer
-      v-model:show="isMobileMenuOpen"
       placement="left"
       style="width: 260px"
+      v-model:show="isMobileMenuOpen"
     >
       <div class="drawer-menu">
         <router-link
-          to="/"
           class="drawer-item"
+          to="/"
           @click="isMobileMenuOpen = false"
         >
           <n-icon>
-            <Ribbon />
+            <Ribbon></Ribbon>
           </n-icon>
           <span>首页</span>
         </router-link>
         <router-link
-          to="/admin/dashboard"
           class="drawer-item"
+          to="/admin/dashboard"
           @click="isMobileMenuOpen = false"
         >
           <n-icon>
-            <Settings />
+            <Settings></Settings>
           </n-icon>
           <span>控制台</span>
         </router-link>
         <router-link
-          to="/admin/game-features"
           class="drawer-item"
+          to="/admin/game-features"
           @click="isMobileMenuOpen = false"
         >
           <n-icon>
-            <Cube />
+            <Cube></Cube>
           </n-icon>
           <span>游戏功能</span>
         </router-link>
         <router-link
-          to="/tokens"
           class="drawer-item"
+          to="/tokens"
           @click="isMobileMenuOpen = false"
         >
           <n-icon>
-            <PersonCircle />
+            <PersonCircle></PersonCircle>
           </n-icon>
           <span>Token管理</span>
         </router-link>
         <router-link
-          to="/changelog"
           class="drawer-item"
+          to="/changelog"
           @click="isMobileMenuOpen = false"
         >
           <n-icon>
-            <Ribbon />
+            <Ribbon></Ribbon>
           </n-icon>
           <span>更新日志</span>
         </router-link>
         <div class="drawer-actions">
           <n-button
-            type="primary"
             block
+            type="primary"
             @click="
               router.push('/login');
               isMobileMenuOpen = false;
             "
-            >登录</n-button
           >
+            登录
+          </n-button>
           <n-button
-            type="primary"
             block
+            type="primary"
             @click="
               router.push('/register');
               isMobileMenuOpen = false;
             "
-            >注册</n-button
           >
+            注册
+          </n-button>
         </div>
       </div>
     </n-drawer>
@@ -139,9 +141,9 @@
               <p class="hero-subtitle">让游戏变得更简单，让管理变得更高效</p>
               <div class="hero-actions">
                 <n-button
-                  type="primary"
-                  size="large"
                   class="hero-button"
+                  size="large"
+                  type="primary"
                   @click="
                     router.push(
                       authStore.isAuthenticated
@@ -154,9 +156,9 @@
                 </n-button>
                 <n-button
                   text
-                  type="primary"
-                  size="large"
                   class="hero-button"
+                  size="large"
+                  type="primary"
                   @click="scrollToFeatures"
                 >
                   了解更多
@@ -172,7 +174,7 @@
                   class="feature-card"
                 >
                   <div class="card-icon">
-                    <component :is="card.icon" />
+                    <component :is="card.icon"></component>
                   </div>
                   <div class="card-content">
                     <h3>{{ card.title }}</h3>
@@ -200,7 +202,7 @@
               class="feature-item"
             >
               <div class="feature-icon">
-                <component :is="feature.icon" />
+                <component :is="feature.icon"></component>
               </div>
               <h3 class="feature-title">
                 {{ feature.title }}
@@ -235,17 +237,17 @@
       <div class="container">
         <div class="footer-content">
           <div class="footer-brand">
-            <img src="/icons/xiaoyugan.png" alt="XYZW" class="footer-logo" />
+            <img alt="XYZW" class="footer-logo" src="/icons/xiaoyugan.png">
             <span class="footer-text">XYZW 游戏管理系统</span>
           </div>
           <div class="footer-links">
-            <router-link to="/changelog" class="footer-link">
+            <router-link class="footer-link" to="/changelog">
               更新日志
             </router-link>
-            <a href="#" class="footer-link">关于我们</a>
-            <a href="#" class="footer-link">隐私政策</a>
-            <a href="#" class="footer-link">服务条款</a>
-            <a href="#" class="footer-link">联系我们</a>
+            <a class="footer-link" href="#">关于我们</a>
+            <a class="footer-link" href="#">隐私政策</a>
+            <a class="footer-link" href="#">服务条款</a>
+            <a class="footer-link" href="#">联系我们</a>
           </div>
         </div>
         <div class="footer-bottom">
@@ -257,10 +259,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, markRaw } from "vue";
+import { Cube, Menu, PersonCircle, Ribbon, Settings } from "@vicons/ionicons5";
+import { markRaw, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+
 import { useAuthStore } from "@/stores/auth";
-import { PersonCircle, Cube, Ribbon, Settings, Menu } from "@vicons/ionicons5";
 
 const router = useRouter();
 const authStore = useAuthStore();

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import * as autoRoutes from "vue-router/auto-routes";
+
 import { useAuthStore } from "@/stores/auth";
 import { useTokenStore } from "@/stores/tokenStore";
 
@@ -47,7 +48,7 @@ const myRoutes = [
       requiresAuth: true,
       permission: "token:view",
     },
-    props: route => ({
+    props: (route) => ({
       token: route.query.token,
       name: route.query.name,
       server: route.query.server,

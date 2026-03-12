@@ -9,17 +9,17 @@
         </div>
 
         <div class="hero-tags">
-          <n-tag size="small" round :type="isLiveMode ? 'error' : 'info'">
+          <n-tag round size="small" :type="isLiveMode ? 'error' : 'info'">
             {{ isLiveMode ? "实战执行链路" : "模拟执行链路" }}
           </n-tag>
           <n-tag
-            size="small"
             round
+            size="small"
             :type="autotradeStatus.running ? 'success' : 'default'"
           >
             {{ autotradeStatus.running ? "审批引擎运行中" : "审批引擎已停止" }}
           </n-tag>
-          <n-tag size="small" round type="warning">
+          <n-tag round size="small" type="warning">
             数据窗口：最近 {{ windowDays }} 天
           </n-tag>
         </div>
@@ -34,9 +34,9 @@
 
     <n-alert
       v-if="loadError"
+      class="error-alert"
       type="error"
       :show-icon="false"
-      class="error-alert"
     >
       {{ loadError }}
     </n-alert>
@@ -52,7 +52,7 @@
 
         <div class="filter-row">
           <span class="filter-label">时间窗口</span>
-          <n-radio-group v-model:value="windowDays" size="small">
+          <n-radio-group size="small" v-model:value="windowDays">
             <n-radio-button
               v-for="option in windowOptions"
               :key="option.value"
@@ -66,7 +66,7 @@
         <div class="filter-row">
           <span class="filter-label">趋势指标</span>
           <n-checkbox-group v-model:value="selectedMetricKeys">
-            <n-space size="small" wrap>
+            <n-space wrap size="small">
               <n-checkbox
                 v-for="option in metricOptions"
                 :key="option.key"
@@ -126,27 +126,27 @@
             @mouseleave="clearActivePoint(chart.key)"
           >
             <svg
-              viewBox="0 0 100 36"
-              preserveAspectRatio="none"
               class="trend-svg"
+              preserveAspectRatio="none"
+              viewBox="0 0 100 36"
             >
               <defs>
                 <linearGradient
                   :id="`area-${chart.key}`"
                   x1="0"
-                  y1="0"
                   x2="0"
+                  y1="0"
                   y2="1"
                 >
                   <stop
                     offset="0%"
-                    :stop-color="chart.gradientStart"
                     stop-opacity="0.35"
+                    :stop-color="chart.gradientStart"
                   />
                   <stop
                     offset="100%"
-                    :stop-color="chart.gradientEnd"
                     stop-opacity="0.04"
+                    :stop-color="chart.gradientEnd"
                   />
                 </linearGradient>
               </defs>
@@ -154,48 +154,48 @@
               <line
                 v-for="lineY in [8, 18, 28]"
                 :key="`line-${chart.key}-${lineY}`"
-                x1="0"
-                :y1="lineY"
-                x2="100"
-                :y2="lineY"
                 class="trend-grid-line"
+                x1="0"
+                x2="100"
+                :y1="lineY"
+                :y2="lineY"
               />
 
               <polygon
-                :points="chart.areaPoints"
-                :fill="`url(#area-${chart.key})`"
                 class="trend-area"
+                :fill="`url(#area-${chart.key})`"
+                :points="chart.areaPoints"
               />
               <polyline
+                class="trend-line"
                 :points="chart.linePoints"
                 :stroke="chart.color"
-                class="trend-line"
               />
 
               <line
                 v-if="activePointForChart(chart.key)"
-                :x1="activePointForChart(chart.key).x"
-                y1="4"
-                :x2="activePointForChart(chart.key).x"
-                y2="34"
                 class="trend-cursor"
+                y1="4"
+                y2="34"
+                :x1="activePointForChart(chart.key).x"
+                :x2="activePointForChart(chart.key).x"
               />
               <circle
                 v-if="activePointForChart(chart.key)"
+                class="trend-point"
+                r="1.6"
                 :cx="activePointForChart(chart.key).x"
                 :cy="activePointForChart(chart.key).y"
-                r="1.6"
                 :fill="chart.color"
-                class="trend-point"
               />
 
               <circle
                 v-for="point in chart.points"
                 :key="`${chart.key}-${point.index}`"
+                class="trend-hit"
+                r="2.8"
                 :cx="point.x"
                 :cy="point.y"
-                r="2.8"
-                class="trend-hit"
                 @mouseenter="setActivePoint(chart.key, point.index)"
               />
             </svg>
@@ -213,7 +213,7 @@
           </div>
 
           <div v-else class="trend-empty">
-            <n-empty size="small" :description="emptyChartDescription" />
+            <n-empty size="small" :description="emptyChartDescription"></n-empty>
           </div>
 
           <footer class="trend-foot">
@@ -227,10 +227,11 @@
 </template>
 
 <script setup>
-import cardFlipApi from "@/api/cardFlip";
-import useCardFlipOpsData from "@/views/card-flip-ops/useCardFlipOpsData";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+
+import cardFlipApi from "@/api/cardFlip";
+import useCardFlipOpsData from "@/views/card-flip-ops/useCardFlipOpsData";
 
 const props = defineProps({
   mode: {
@@ -298,7 +299,7 @@ const formatDayKey = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-const formatDayLabel = key => key.slice(5);
+const formatDayLabel = (key) => key.slice(5);
 
 const trendDayKeys = computed(() => {
   const days = [];
@@ -318,11 +319,14 @@ const modeWindowLogs = computed(() => {
   const expectedDryRun = dryRunFilter.value;
   const result = [];
   for (const item of executionLogs.value) {
-    if (Boolean(item?.dry_run) !== expectedDryRun) continue;
+    if (Boolean(item?.dry_run) !== expectedDryRun)
+      continue;
     const parsedDate = new Date(item?.created_at || "");
-    if (Number.isNaN(parsedDate.getTime())) continue;
+    if (Number.isNaN(parsedDate.getTime()))
+      continue;
     const dayKey = formatDayKey(parsedDate);
-    if (!keySet.has(dayKey)) continue;
+    if (!keySet.has(dayKey))
+      continue;
     result.push({
       action: item?.action,
       success: Boolean(item?.success),
@@ -335,7 +339,7 @@ const modeWindowLogs = computed(() => {
 const trendSource = computed(() => {
   const days = trendDayKeys.value;
   const bucket = new Map(
-    days.map(day => [
+    days.map((day) => [
       day,
       {
         total: 0,
@@ -347,12 +351,16 @@ const trendSource = computed(() => {
   );
 
   for (const item of modeWindowLogs.value) {
-    if (!bucket.has(item.dayKey)) continue;
+    if (!bucket.has(item.dayKey))
+      continue;
     const row = bucket.get(item.dayKey);
     row.total += 1;
-    if (item.success) row.success += 1;
-    if (item.action === "buy") row.buy += 1;
-    if (item.action === "sell") row.sell += 1;
+    if (item.success)
+      row.success += 1;
+    if (item.action === "buy")
+      row.buy += 1;
+    if (item.action === "sell")
+      row.sell += 1;
   }
 
   const labels = days.map(formatDayLabel);
@@ -379,9 +387,9 @@ const trendLabels = computed(() => trendSource.value.labels);
 const executionSummary = computed(() => {
   const items = modeWindowLogs.value;
   const total = items.length;
-  const success = items.filter(item => item.success).length;
-  const buyCount = items.filter(item => item.action === "buy").length;
-  const sellCount = items.filter(item => item.action === "sell").length;
+  const success = items.filter((item) => item.success).length;
+  const buyCount = items.filter((item) => item.action === "buy").length;
+  const sellCount = items.filter((item) => item.action === "sell").length;
   return {
     total,
     successRate: total > 0 ? Number(((success / total) * 100).toFixed(1)) : 0,
@@ -400,8 +408,8 @@ const buildChartGeometry = (values, labels) => {
     };
   }
 
-  const safeValues = values.map(value => (Number.isFinite(value) ? Number(value) : 0));
-  const hasData = safeValues.some(value => value > 0);
+  const safeValues = values.map((value) => (Number.isFinite(value) ? Number(value) : 0));
+  const hasData = safeValues.some((value) => value > 0);
   if (!hasData) {
     return {
       points: safeValues.map((value, index) => ({
@@ -434,7 +442,7 @@ const buildChartGeometry = (values, labels) => {
     };
   });
 
-  const linePoints = points.map(point => `${point.x},${point.y}`).join(" ");
+  const linePoints = points.map((point) => `${point.x},${point.y}`).join(" ");
   const areaPoints = `${linePoints} ${points[points.length - 1].x},34 ${points[0].x},34`;
   return {
     points,
@@ -446,7 +454,7 @@ const buildChartGeometry = (values, labels) => {
 
 const chartCards = computed(() => {
   const source = trendSource.value;
-  const latest = values => (values.length ? values[values.length - 1] : 0);
+  const latest = (values) => (values.length ? values[values.length - 1] : 0);
   const cards = [
     {
       key: "exec-total",
@@ -494,7 +502,7 @@ const chartCards = computed(() => {
     },
   ];
 
-  return cards.map(card => ({
+  return cards.map((card) => ({
     ...card,
     ...buildChartGeometry(card.values, source.labels),
   }));
@@ -503,8 +511,8 @@ const chartCards = computed(() => {
 const visibleChartCards = computed(() => {
   const selected = selectedMetricKeys.value.length
     ? new Set(selectedMetricKeys.value)
-    : new Set(metricOptions.map(option => option.key));
-  return chartCards.value.filter(chart => selected.has(chart.key));
+    : new Set(metricOptions.map((option) => option.key));
+  return chartCards.value.filter((chart) => selected.has(chart.key));
 });
 
 const activePointMap = computed(() => {
@@ -512,10 +520,12 @@ const activePointMap = computed(() => {
   if (!hoverState.value.chartKey || hoverState.value.pointIndex < 0) {
     return result;
   }
-  const chart = visibleChartCards.value.find(item => item.key === hoverState.value.chartKey);
-  if (!chart) return result;
+  const chart = visibleChartCards.value.find((item) => item.key === hoverState.value.chartKey);
+  if (!chart)
+    return result;
   const point = chart.points[hoverState.value.pointIndex];
-  if (point) result[chart.key] = point;
+  if (point)
+    result[chart.key] = point;
   return result;
 });
 
@@ -532,7 +542,7 @@ const clearActivePoint = (chartKey = "") => {
   }
 };
 
-const activePointForChart = chartKey => activePointMap.value[chartKey] || null;
+const activePointForChart = (chartKey) => activePointMap.value[chartKey] || null;
 
 const tooltipLeftStyle = (x) => {
   const safeX = Number.isFinite(x) ? x : 50;
@@ -547,7 +557,8 @@ watch(windowDays, () => {
 watch(
   selectedMetricKeys,
   (next) => {
-    if (!next.length) selectedMetricKeys.value = [metricOptions[0].key];
+    if (!next.length)
+      selectedMetricKeys.value = [metricOptions[0].key];
     clearActivePoint();
   },
   { deep: true },

@@ -1,8 +1,8 @@
 <template>
   <!-- 俱乐部签到 -->
-  <MyCard class="legion-match" :statusClass="{ active: isSignedIn }">
+  <MyCard class="legion-match" :status-class="{ active: isSignedIn }">
     <template #icon>
-      <img src="/icons/1733492491706148.png" alt="签到图标" />
+      <img alt="签到图标" src="/icons/1733492491706148.png">
     </template>
     <template #title>
       <h3>俱乐部签到</h3>
@@ -13,7 +13,7 @@
     </template>
     <template #default>
       <p v-if="clubInfo.name" class="club-name">
-        当前俱乐部<br />
+        当前俱乐部<br>
         <strong>{{ clubInfo.name }}</strong>
       </p>
       <p v-else>尚未加入任何俱乐部</p>
@@ -31,8 +31,9 @@
 </template>
 
 <script setup lang="ts">
-import { useTokenStore } from "@/stores/tokenStore";
 import { useMessage } from "naive-ui";
+
+import { useTokenStore } from "@/stores/tokenStore";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -45,7 +46,8 @@ const roleInfo = computed(() => {
 const isSignedIn = computed(() => {
   const role = roleInfo.value?.role;
 
-  if (!role || !role.statisticsTime) return false;
+  if (!role || !role.statisticsTime)
+    return false;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -64,7 +66,8 @@ onMounted(() => {
 
 // 俱乐部签到
 const signInLegion = () => {
-  if (!tokenStore.selectedToken || isSignedIn.value) return;
+  if (!tokenStore.selectedToken || isSignedIn.value)
+    return;
   const tokenId = tokenStore.selectedToken.id;
   tokenStore.sendMessage(tokenId, "legion_signin");
   tokenStore.sendMessage(tokenId, "role_getroleinfo");

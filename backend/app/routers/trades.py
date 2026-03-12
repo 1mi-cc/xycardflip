@@ -68,21 +68,6 @@ def _extract_title_keywords(title: str) -> list[str]:
     return unique
 
 
-def _clamp(value: float, floor: float, ceiling: float) -> float:
-    return max(floor, min(ceiling, value))
-
-
-def _derive_action(current_target_price: float, recommended: float) -> str:
-    if current_target_price <= 0:
-        return "set"
-    diff_ratio = (recommended - current_target_price) / current_target_price
-    if diff_ratio >= 0.03:
-        return "raise"
-    if diff_ratio <= -0.03:
-        return "lower"
-    return "keep"
-
-
 def _build_trade_pricing_payload(
     trade_id: int, mode: Literal["balanced", "fast_exit", "profit_max"]
 ) -> dict:
@@ -101,6 +86,23 @@ def _build_trade_pricing_payload(
             break
 
     active_count = repo.count_active_trades()
+
+    # Fetch market sentiment before building the plan so it can be applied
+    # inside build_pricing_plan together with the other discount factors.
+    sentiment = market_sentiment_service.assess_pricing_adjustment(
+        title=str(ctx["title"]),
+        mode=mode,
+        expected_sale_price=float(ctx["expected_sale_price"]),
+        suggested_list_price=float(ctx["suggested_list_price"]),
+        similar_sold_prices=similar_prices,
+    )
+    sentiment_adjustment = (
+        float(sentiment.get("adjustment_ratio") or 0.0)
+        if settings.pricing_rag_sentiment_enabled and sentiment.get("applied")
+        else 0.0
+    )
+    sentiment_label = str(sentiment.get("label") or "neutral")
+
     plan = build_pricing_plan(
         approved_buy_price=float(ctx["approved_buy_price"]),
         current_target_price=float(ctx["target_sell_price"]),
@@ -112,30 +114,9 @@ def _build_trade_pricing_payload(
         similar_sold_prices=similar_prices,
         active_trade_count=active_count,
         mode=mode,
+        sentiment_adjustment=sentiment_adjustment,
+        sentiment_label=sentiment_label,
     )
-
-    sentiment = market_sentiment_service.assess_pricing_adjustment(
-        title=str(ctx["title"]),
-        mode=mode,
-        expected_sale_price=float(ctx["expected_sale_price"]),
-        suggested_list_price=float(ctx["suggested_list_price"]),
-        similar_sold_prices=similar_prices,
-    )
-    if settings.pricing_rag_sentiment_enabled and sentiment.get("applied"):
-        current_price = float(plan["recommended_price"])
-        adjusted_price = _clamp(
-            current_price * (1.0 + float(sentiment.get("adjustment_ratio") or 0.0)),
-            float(plan["price_floor"]),
-            float(plan["price_ceiling"]),
-        )
-        plan["recommended_price"] = round(adjusted_price, 2)
-        plan["action"] = _derive_action(float(plan["current_target_price"]), adjusted_price)
-        reasons = list(plan.get("reasons") or [])
-        reasons.append(
-            "rag_sentiment="
-            f"{sentiment.get('label')}:{float(sentiment.get('adjustment_ratio') or 0.0):+.2%}"
-        )
-        plan["reasons"] = reasons
     plan["rag_sentiment"] = sentiment
 
     return {
