@@ -107,9 +107,10 @@ const calculateStringSimilarity = (() => {
             }
 
             // 处理剩余字符
+            let newValue = currentRow;
             while (currentRow < len2) {
               let char = str2.charCodeAt(start + currentRow);
-              let newValue = ++currentRow;
+              newValue = ++currentRow;
 
               for (let j = 0; j < rowLength; j += 2) {
                 const oldValue = row[j];

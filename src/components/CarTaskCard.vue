@@ -385,7 +385,7 @@ const getCarList = async () => {
 
         // 遍历所有车辆
         for (const carId in carDataMap) {
-          if (carDataMap.hasOwnProperty(carId)) {
+          if (Object.hasOwn(carDataMap, carId)) {
             const carInfo = carDataMap[carId];
             const color = carInfo.color || 0;
             const slot = carInfo.slot || 0;

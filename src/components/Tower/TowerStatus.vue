@@ -199,11 +199,9 @@ const getTowerInfo = async () => {
       return;
     }
     // 首先获取角色信息，这包含了塔的数据
-    const roleResult = tokenStore.sendMessage(tokenId, "role_getroleinfo");
+    tokenStore.sendMessage(tokenId, "role_getroleinfo");
     // 直接请求塔信息
-    const towerResult = tokenStore.sendMessage(tokenId, "tower_getinfo");
-    if (!roleResult && !towerResult) {
-    }
+    tokenStore.sendMessage(tokenId, "tower_getinfo");
   } catch (error) {
     // 获取塔信息失败：静默，避免噪声
   }

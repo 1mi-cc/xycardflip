@@ -122,9 +122,9 @@ function validateCronExpression(expression: string): { valid: boolean; message: 
   const [minute, hour, dayOfMonth, month, dayOfWeek] = cronParts;
 
   const validateCronField = (field: string, min: number, max: number, fieldName: string) => {
-    const cronFieldRegex = new RegExp(
-      "^(?:\\*|\\*/\\d+|\\d+/\\d+|(?:\\d+-?)*(?:\\d(?:,\\d+-?)+\\d+|\\d{2})(?:/\\d+)?)$",
-    );
+    // Safe cron field regex: matches *, */n, n, n-m, n,m,o, n-m/s, n/s
+    // Avoids super-linear backtracking by using non-overlapping alternation only.
+    const cronFieldRegex = /^(?:\*(?:\/\d+)?|\d+(?:-\d+)?(?:\/\d+)?(?:,\d+(?:-\d+)?(?:\/\d+)?)*)$/;
     if (!cronFieldRegex.test(field)) {
       return { valid: false, message: `${fieldName}字段格式错误` };
     }

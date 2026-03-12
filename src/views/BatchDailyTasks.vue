@@ -1206,6 +1206,7 @@ const calculateNextExecutionTime = (task) => {
     const maxCheckTime = new Date(now);
     maxCheckTime.setFullYear(maxCheckTime.getFullYear() + 1);
 
+    // eslint-disable-next-line no-unmodified-loop-condition -- nextRun and maxCheckTime are mutated via Date methods (.setMinutes, .setFullYear)
     while (nextRun <= maxCheckTime) {
       const minutes = nextRun.getMinutes();
       const hours = nextRun.getHours();

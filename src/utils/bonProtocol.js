@@ -477,8 +477,6 @@ export class BonDecoder {
   decode() {
     const tag = this.dr.readUInt8();
     switch (tag) {
-      default:
-        return null;
       case 1:
         return this.dr.readInt32();
       case 2:
@@ -518,6 +516,8 @@ export class BonDecoder {
         return new Date(this.dr.readInt64());
       case 99:
         return this.strArr[this.dr.read7BitInt()];
+      default:
+        return null;
     }
   }
 }
