@@ -1,5 +1,6 @@
-﻿import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+
 import cardFlipApi from "@/api/cardFlip";
 import { useAuthStore } from "@/stores/auth";
 import useCardFlipOpsData from "@/views/card-flip-ops/useCardFlipOpsData";
@@ -8,18 +9,22 @@ export function useCardFlipOpsPage() {
   const message = useMessage();
   const authStore = useAuthStore();
   const recentMessages = new Map();
-  const { nextRequestId, isLatestRequest, isBusyError, getErrorMessage } =
-    useCardFlipOpsData();
+  const { nextRequestId, isLatestRequest, isBusyError, getErrorMessage }
+    = useCardFlipOpsData();
 
   const notifyDedup = (type, text, dedupMs = 2200) => {
     const key = `${type}:${text}`;
     const now = Date.now();
     const last = recentMessages.get(key) || 0;
-    if (now - last < dedupMs) return;
+    if (now - last < dedupMs)
+      return;
     recentMessages.set(key, now);
-    if (type === "success") message.success(text);
-    else if (type === "warning") message.warning(text);
-    else if (type === "info") message.info(text);
+    if (type === "success")
+      message.success(text);
+    else if (type === "warning")
+      message.warning(text);
+    else if (type === "info")
+      message.info(text);
     else message.error(text);
   };
 
@@ -32,12 +37,14 @@ export function useCardFlipOpsPage() {
     const roles = Array.isArray(info.roles) ? info.roles : [];
     if (roles.length > 0) {
       const firstRole = roles[0];
-      if (typeof firstRole === "string") return firstRole.toLowerCase();
+      if (typeof firstRole === "string")
+        return firstRole.toLowerCase();
       if (firstRole && typeof firstRole === "object") {
         const text = String(firstRole.key || firstRole.name || "")
           .toLowerCase()
           .trim();
-        if (text) return text;
+        if (text)
+          return text;
       }
     }
     return "admin";
@@ -57,8 +64,10 @@ export function useCardFlipOpsPage() {
         : "success",
   );
   const roleTagText = computed(() => {
-    if (currentRoleKey.value === "viewer") return "viewer 只读模式";
-    if (currentRoleKey.value === "ops") return "ops 运营模式";
+    if (currentRoleKey.value === "viewer")
+      return "viewer 只读模式";
+    if (currentRoleKey.value === "ops")
+      return "ops 运营模式";
     return "admin 管理模式";
   });
   const isSimulationMode = computed(() => {
@@ -291,12 +300,15 @@ export function useCardFlipOpsPage() {
   const toPercent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`;
   const shortText = (value, max = 90) => {
     const text = String(value || "");
-    if (!text) return "-";
-    if (text.length <= max) return text;
+    if (!text)
+      return "-";
+    if (text.length <= max)
+      return text;
     return `${text.slice(0, max)}...`;
   };
   const compactJson = (value) => {
-    if (value == null || value === "") return "-";
+    if (value == null || value === "")
+      return "-";
     try {
       if (typeof value === "string") {
         const parsed = JSON.parse(value);
@@ -365,10 +377,13 @@ export function useCardFlipOpsPage() {
   };
   const getRiskReasonText = (reason) => riskReasonTextMap[reason] || reason;
   const rawListingJson = computed(() => {
-    if (!listingPayload.value) return "";
+    if (!listingPayload.value)
+      return "";
     const raw = listingPayload.value.raw_json;
-    if (raw == null) return "";
-    if (typeof raw === "string") return raw;
+    if (raw == null)
+      return "";
+    if (typeof raw === "string")
+      return raw;
     try {
       return JSON.stringify(raw, null, 2);
     } catch {
@@ -377,7 +392,8 @@ export function useCardFlipOpsPage() {
   });
   const monitorStopReason = computed(() => {
     const monitor = automationStatus.value?.monitor || {};
-    if (monitor.is_running) return "";
+    if (monitor.is_running)
+      return "";
     if (monitor.circuit_open && monitor.circuit_reason) {
       return `熔断中：${monitor.circuit_reason}`;
     }
@@ -390,7 +406,8 @@ export function useCardFlipOpsPage() {
     const monitor = automationStatus.value?.monitor || {};
     const cookieMeta = monitor.cookie_meta || {};
     const ttl = Number(cookieMeta?.m_h5_tk_ttl_sec);
-    if (!Number.isFinite(ttl)) return "";
+    if (!Number.isFinite(ttl))
+      return "";
     const expireAt = String(cookieMeta?.m_h5_tk_expire_at || "");
     const expired = Boolean(cookieMeta?.m_h5_tk_expired);
     if (expired || ttl <= 0) {
@@ -404,7 +421,8 @@ export function useCardFlipOpsPage() {
   });
   const dataIntegrityAlert = computed(() => {
     const integrity = healthStatus.value?.data_integrity || {};
-    if (integrity.ok) return "";
+    if (integrity.ok)
+      return "";
     const duplicateCount = Number(
       integrity.duplicate_trade_opportunity_count || 0,
     );
@@ -416,7 +434,8 @@ export function useCardFlipOpsPage() {
   const guardAlert = computed(() => {
     const guards = healthStatus.value?.automation_guards || {};
     const items = Object.values(guards).filter((item) => item && item.busy);
-    if (!items.length) return "";
+    if (!items.length)
+      return "";
     return "有自动化任务正在执行，重复触发会立即返回 busy。";
   });
   const cachePricingItems = (items = []) => {
@@ -428,7 +447,8 @@ export function useCardFlipOpsPage() {
   };
 
   const syncExecutionRetryServiceControls = (status) => {
-    if (!status || executionRetryServiceControlInitialized.value) return;
+    if (!status || executionRetryServiceControlInitialized.value)
+      return;
     executionRetryServiceAction.value = status.action || "all";
     executionRetryServiceDryRun.value = Boolean(status.dry_run);
     executionRetryServiceExecutionForce.value = Boolean(status.force);
@@ -436,7 +456,8 @@ export function useCardFlipOpsPage() {
   };
 
   const syncAutomationDefaults = (status) => {
-    if (!status) return;
+    if (!status)
+      return;
     // In mock/dry-run mode, monitor is usually unnecessary and can trigger cooldown warnings.
     automationIncludeMonitor.value = isSimulationMode.value
       ? false
@@ -458,7 +479,8 @@ export function useCardFlipOpsPage() {
     try {
       const status = await cardFlipApi.updateAutotradeConfig(payload);
       autotradeStatus.value = status || autotradeStatus.value;
-      if (successText) message.success(successText);
+      if (successText)
+        message.success(successText);
     } catch (error) {
       showActionError("更新 AutoTrade 参数失败", error);
     } finally {
@@ -469,20 +491,22 @@ export function useCardFlipOpsPage() {
   const adjustAutotradeNumber = async (key, delta, min, max) => {
     const current = Number(autotradeStatus.value?.[key] ?? 0);
     const next = clamp(Number((current + delta).toFixed(4)), min, max);
-    if (next === current) return;
+    if (next === current)
+      return;
     await updateAutotradeConfig({ [key]: next });
   };
 
   const adjustAutotradeRoi = async (delta) => {
     const current = Number(autotradeStatus.value?.min_roi ?? 0);
     const next = clamp(Number((current + delta).toFixed(4)), 0, 3);
-    if (next === current) return;
+    if (next === current)
+      return;
     await updateAutotradeConfig({ min_roi: next });
   };
 
   const toggleAutotradeFlag = async (key) => {
     await updateAutotradeConfig({
-      [key]: !Boolean(autotradeStatus.value?.[key]),
+      [key]: !autotradeStatus.value?.[key],
     });
   };
 
@@ -491,7 +515,8 @@ export function useCardFlipOpsPage() {
     try {
       const status = await cardFlipApi.updateExecutionConfig(payload);
       executionStatus.value = status || executionStatus.value;
-      if (successText) message.success(successText);
+      if (successText)
+        message.success(successText);
     } catch (error) {
       showActionError("更新执行参数失败", error);
     } finally {
@@ -500,20 +525,22 @@ export function useCardFlipOpsPage() {
   };
 
   const setExecutionProvider = async (provider) => {
-    if (executionStatus.value?.provider === provider) return;
+    if (executionStatus.value?.provider === provider)
+      return;
     await updateExecutionConfig({ provider });
   };
 
   const toggleExecutionFlag = async (key) => {
     await updateExecutionConfig({
-      [key]: !Boolean(executionStatus.value?.[key]),
+      [key]: !executionStatus.value?.[key],
     });
   };
 
   const adjustExecutionNumber = async (key, delta, min, max) => {
     const current = Number(executionStatus.value?.[key] ?? 0);
     const next = clamp(Number((current + delta).toFixed(4)), min, max);
-    if (next === current) return;
+    if (next === current)
+      return;
     await updateExecutionConfig({ [key]: next });
   };
 
@@ -521,10 +548,11 @@ export function useCardFlipOpsPage() {
     executionRetryConfigLoading.value = true;
     try {
       const status = await cardFlipApi.updateExecutionRetryConfig(payload);
-      executionRetryServiceStatus.value =
-        status || executionRetryServiceStatus.value;
+      executionRetryServiceStatus.value
+        = status || executionRetryServiceStatus.value;
       syncExecutionRetryServiceControls(status);
-      if (successText) message.success(successText);
+      if (successText)
+        message.success(successText);
     } catch (error) {
       showActionError("更新 ExecutionRetry 参数失败", error);
     } finally {
@@ -535,18 +563,20 @@ export function useCardFlipOpsPage() {
   const adjustExecutionRetryNumber = async (key, delta, min, max) => {
     const current = Number(executionRetryServiceStatus.value?.[key] ?? 0);
     const next = clamp(Number((current + delta).toFixed(4)), min, max);
-    if (next === current) return;
+    if (next === current)
+      return;
     await updateExecutionRetryConfig({ [key]: next });
   };
 
   const toggleExecutionRetryFlag = async (key) => {
     await updateExecutionRetryConfig({
-      [key]: !Boolean(executionRetryServiceStatus.value?.[key]),
+      [key]: !executionRetryServiceStatus.value?.[key],
     });
   };
 
   const setExecutionRetryDefaultAction = async (action) => {
-    if (executionRetryServiceStatus.value?.action === action) return;
+    if (executionRetryServiceStatus.value?.action === action)
+      return;
     await updateExecutionRetryConfig({ action });
   };
 
@@ -573,8 +603,8 @@ export function useCardFlipOpsPage() {
       } else if (key === "risk_level") {
         parsed.level = value || "unknown";
       } else if (key === "reasons") {
-        parsed.reasons =
-          value && value !== "none"
+        parsed.reasons
+          = value && value !== "none"
             ? value
                 .split(",")
                 .map((v) => v.trim())
@@ -591,7 +621,8 @@ export function useCardFlipOpsPage() {
     if (executionStatus.value.provider)
       providers.add(String(executionStatus.value.provider));
     for (const row of executionLogs.value) {
-      if (row?.provider) providers.add(String(row.provider));
+      if (row?.provider)
+        providers.add(String(row.provider));
     }
     return options.concat(
       Array.from(providers)
@@ -607,15 +638,20 @@ export function useCardFlipOpsPage() {
     };
 
     const tradeId = Number(filters.trade_id);
-    if (Number.isInteger(tradeId) && tradeId > 0) params.trade_id = tradeId;
+    if (Number.isInteger(tradeId) && tradeId > 0)
+      params.trade_id = tradeId;
     if (filters.action && filters.action !== "all")
       params.action = filters.action;
     if (filters.provider && filters.provider !== "all")
       params.provider = filters.provider;
-    if (filters.mode === "dry") params.dry_run = true;
-    else if (filters.mode === "live") params.dry_run = false;
-    if (filters.result === "success") params.success = true;
-    else if (filters.result === "failed") params.success = false;
+    if (filters.mode === "dry")
+      params.dry_run = true;
+    else if (filters.mode === "live")
+      params.dry_run = false;
+    if (filters.result === "success")
+      params.success = true;
+    else if (filters.result === "failed")
+      params.success = false;
 
     return params;
   };
@@ -631,17 +667,21 @@ export function useCardFlipOpsPage() {
 
   const loadHealth = async (silent = false) => {
     const requestId = nextRequestId("health");
-    if (!silent) healthLoading.value = true;
+    if (!silent)
+      healthLoading.value = true;
     try {
       const status = await cardFlipApi.getHealth();
-      if (!isLatestRequest("health", requestId)) return status;
+      if (!isLatestRequest("health", requestId))
+        return status;
       healthStatus.value = status || healthStatus.value;
       shardErrors.health = "";
       return status;
     } catch (error) {
-      if (!isLatestRequest("health", requestId)) return null;
+      if (!isLatestRequest("health", requestId))
+        return null;
       shardErrors.health = getErrorMessage(error);
-      if (!silent) showActionError("加载健康状态失败", error);
+      if (!silent)
+        showActionError("加载健康状态失败", error);
       return null;
     } finally {
       if (!silent && isLatestRequest("health", requestId)) {
@@ -651,7 +691,8 @@ export function useCardFlipOpsPage() {
   };
   const loadOverview = async (silent = false) => {
     const requestId = nextRequestId("overview");
-    if (!silent) overviewLoading.value = true;
+    if (!silent)
+      overviewLoading.value = true;
     try {
       const [metricsRes, executionRes] = await Promise.all([
         cardFlipApi.getMetrics(),
@@ -665,9 +706,11 @@ export function useCardFlipOpsPage() {
       shardErrors.overview = "";
       return { metricsRes, executionRes };
     } catch (error) {
-      if (!isLatestRequest("overview", requestId)) return null;
+      if (!isLatestRequest("overview", requestId))
+        return null;
       shardErrors.overview = getErrorMessage(error);
-      if (!silent) showActionError("加载总览失败", error);
+      if (!silent)
+        showActionError("加载总览失败", error);
       return null;
     } finally {
       if (!silent && isLatestRequest("overview", requestId)) {
@@ -677,18 +720,22 @@ export function useCardFlipOpsPage() {
   };
   const loadAutomationStatus = async (silent = false) => {
     const requestId = nextRequestId("automation");
-    if (!silent) automationStatusLoading.value = true;
+    if (!silent)
+      automationStatusLoading.value = true;
     try {
       const status = await cardFlipApi.getAutomationStatus();
-      if (!isLatestRequest("automation", requestId)) return status;
+      if (!isLatestRequest("automation", requestId))
+        return status;
       automationStatus.value = status || automationStatus.value;
       syncAutomationDefaults(status);
       shardErrors.automation = "";
       return status;
     } catch (error) {
-      if (!isLatestRequest("automation", requestId)) return null;
+      if (!isLatestRequest("automation", requestId))
+        return null;
       shardErrors.automation = getErrorMessage(error);
-      if (!silent) showActionError("加载 Automation 状态失败", error);
+      if (!silent)
+        showActionError("加载 Automation 状态失败", error);
       return null;
     } finally {
       if (!silent && isLatestRequest("automation", requestId)) {
@@ -698,17 +745,21 @@ export function useCardFlipOpsPage() {
   };
   const loadAutotradeStatus = async (silent = false) => {
     const requestId = nextRequestId("autotrade");
-    if (!silent) autotradeStatusLoading.value = true;
+    if (!silent)
+      autotradeStatusLoading.value = true;
     try {
       const status = await cardFlipApi.getAutotradeStatus();
-      if (!isLatestRequest("autotrade", requestId)) return status;
+      if (!isLatestRequest("autotrade", requestId))
+        return status;
       autotradeStatus.value = status || autotradeStatus.value;
       shardErrors.autotrade = "";
       return status;
     } catch (error) {
-      if (!isLatestRequest("autotrade", requestId)) return null;
+      if (!isLatestRequest("autotrade", requestId))
+        return null;
       shardErrors.autotrade = getErrorMessage(error);
-      if (!silent) showActionError("加载 AutoTrade 状态失败", error);
+      if (!silent)
+        showActionError("加载 AutoTrade 状态失败", error);
       return null;
     } finally {
       if (!silent && isLatestRequest("autotrade", requestId)) {
@@ -718,19 +769,23 @@ export function useCardFlipOpsPage() {
   };
   const loadExecutionRetryServiceStatus = async (silent = false) => {
     const requestId = nextRequestId("executionRetry");
-    if (!silent) executionRetryServiceStatusLoading.value = true;
+    if (!silent)
+      executionRetryServiceStatusLoading.value = true;
     try {
       const status = await cardFlipApi.getExecutionRetryStatus();
-      if (!isLatestRequest("executionRetry", requestId)) return status;
-      executionRetryServiceStatus.value =
-        status || executionRetryServiceStatus.value;
+      if (!isLatestRequest("executionRetry", requestId))
+        return status;
+      executionRetryServiceStatus.value
+        = status || executionRetryServiceStatus.value;
       syncExecutionRetryServiceControls(status);
       shardErrors.executionRetry = "";
       return status;
     } catch (error) {
-      if (!isLatestRequest("executionRetry", requestId)) return null;
+      if (!isLatestRequest("executionRetry", requestId))
+        return null;
       shardErrors.executionRetry = getErrorMessage(error);
-      if (!silent) showActionError("加载 ExecutionRetry 状态失败", error);
+      if (!silent)
+        showActionError("加载 ExecutionRetry 状态失败", error);
       return null;
     } finally {
       if (!silent && isLatestRequest("executionRetry", requestId)) {
@@ -740,17 +795,19 @@ export function useCardFlipOpsPage() {
   };
   const loadLists = async (silent = false) => {
     const requestId = nextRequestId("lists");
-    if (!silent) listsLoading.value = true;
+    if (!silent)
+      listsLoading.value = true;
     try {
-      const [oppsRes, blockedRes, activeRes, listedRes, soldRes] =
-        await Promise.all([
+      const [oppsRes, blockedRes, activeRes, listedRes, soldRes]
+        = await Promise.all([
           cardFlipApi.listOpportunities("pending_review", 200),
           cardFlipApi.listOpportunities("blocked_risk", 200),
           cardFlipApi.listTrades("approved_for_buy", 200),
           cardFlipApi.listTrades("listed_for_sale", 200),
           cardFlipApi.listTrades("sold", 200),
         ]);
-      if (!isLatestRequest("lists", requestId)) return null;
+      if (!isLatestRequest("lists", requestId))
+        return null;
       opportunities.value = oppsRes.items || [];
       blockedOpportunities.value = (blockedRes.items || []).map((item) => ({
         ...item,
@@ -770,9 +827,11 @@ export function useCardFlipOpsPage() {
         soldRes,
       };
     } catch (error) {
-      if (!isLatestRequest("lists", requestId)) return null;
+      if (!isLatestRequest("lists", requestId))
+        return null;
       shardErrors.lists = getErrorMessage(error);
-      if (!silent) showActionError("加载列表失败", error);
+      if (!silent)
+        showActionError("加载列表失败", error);
       return null;
     } finally {
       if (!silent && isLatestRequest("lists", requestId)) {
@@ -782,27 +841,31 @@ export function useCardFlipOpsPage() {
   };
   const loadExecutionLogs = async (silent = false, force = false) => {
     if (
-      !force &&
-      activeTab.value !== "executionLogs" &&
-      !executionLogsInitialized.value
+      !force
+      && activeTab.value !== "executionLogs"
+      && !executionLogsInitialized.value
     ) {
       return null;
     }
     const requestId = nextRequestId("executionLogs");
-    if (!silent) executionLogsLoading.value = true;
+    if (!silent)
+      executionLogsLoading.value = true;
     try {
       const logsRes = await cardFlipApi.listExecutionLogs(
         buildExecutionLogParams(),
       );
-      if (!isLatestRequest("executionLogs", requestId)) return logsRes;
+      if (!isLatestRequest("executionLogs", requestId))
+        return logsRes;
       executionLogs.value = logsRes.items || [];
       executionLogsInitialized.value = true;
       shardErrors.executionLogs = "";
       return logsRes;
     } catch (error) {
-      if (!isLatestRequest("executionLogs", requestId)) return null;
+      if (!isLatestRequest("executionLogs", requestId))
+        return null;
       shardErrors.executionLogs = getErrorMessage(error);
-      if (!silent) showActionError("加载执行日志失败", error);
+      if (!silent)
+        showActionError("加载执行日志失败", error);
       return null;
     } finally {
       if (!silent && isLatestRequest("executionLogs", requestId)) {
@@ -818,18 +881,19 @@ export function useCardFlipOpsPage() {
   const retryFailedExecutions = async () => {
     if (!executionRetryDryRun.value) {
       if (
-        executionStatus.value.live_confirm_required &&
-        !executionLiveConfirmToken.value.trim()
+        executionStatus.value.live_confirm_required
+        && !executionLiveConfirmToken.value.trim()
       ) {
         message.warning("请先输入实盘确认口令");
         return;
       }
-      if (!window.confirm("确认执行失败记录重试（live）？")) return;
+      if (!window.confirm("确认执行失败记录重试（live）？"))
+        return;
     }
     executionRetryLoading.value = true;
     try {
-      const action =
-        executionRetryAction.value === "all"
+      const action
+        = executionRetryAction.value === "all"
           ? null
           : executionRetryAction.value;
       const res = await cardFlipApi.retryFailedExecution(
@@ -899,31 +963,34 @@ export function useCardFlipOpsPage() {
       );
       const stageReasons = [];
       if (
-        automationIncludeMonitor.value &&
-        res.monitor?.reason &&
-        res.monitor?.reason !== "already running"
-      )
+        automationIncludeMonitor.value
+        && res.monitor?.reason
+        && res.monitor?.reason !== "already running"
+      ) {
         stageReasons.push(`Monitor: ${res.monitor.reason}`);
+      }
       if (
-        automationIncludeAutotrade.value &&
-        res.autotrade?.reason &&
-        res.autotrade?.reason !== "already running"
-      )
+        automationIncludeAutotrade.value
+        && res.autotrade?.reason
+        && res.autotrade?.reason !== "already running"
+      ) {
         stageReasons.push(`AutoTrade: ${res.autotrade.reason}`);
+      }
       if (
-        automationIncludeExecutionRetry.value &&
-        res.execution_retry?.reason &&
-        res.execution_retry?.reason !== "already running"
-      )
+        automationIncludeExecutionRetry.value
+        && res.execution_retry?.reason
+        && res.execution_retry?.reason !== "already running"
+      ) {
         stageReasons.push(`ExecRetry: ${res.execution_retry.reason}`);
+      }
       const allAlreadyRunning = Boolean(
         (automationIncludeMonitor.value
           ? res.monitor?.reason === "already running"
-          : true) &&
-        (automationIncludeAutotrade.value
+          : true)
+        && (automationIncludeAutotrade.value
           ? res.autotrade?.reason === "already running"
-          : true) &&
-        (automationIncludeExecutionRetry.value
+          : true)
+        && (automationIncludeExecutionRetry.value
           ? res.execution_retry?.reason === "already running"
           : true),
       );
@@ -973,10 +1040,10 @@ export function useCardFlipOpsPage() {
 
   const runAutomationOnce = async () => {
     if (
-      automationIncludeExecutionRetry.value &&
-      executionStatus.value.live_confirm_required &&
-      !executionRetryServiceStatus.value.confirm_token_configured &&
-      !executionLiveConfirmToken.value.trim()
+      automationIncludeExecutionRetry.value
+      && executionStatus.value.live_confirm_required
+      && !executionRetryServiceStatus.value.confirm_token_configured
+      && !executionLiveConfirmToken.value.trim()
     ) {
       message.warning(
         "ExecutionRetry 可能需要实盘确认口令，请先填写口令或配置环境变量",
@@ -1126,16 +1193,17 @@ export function useCardFlipOpsPage() {
   const runExecutionRetryServiceOnce = async () => {
     if (!executionRetryServiceDryRun.value) {
       if (
-        executionStatus.value.live_confirm_required &&
-        !executionRetryServiceStatus.value.confirm_token_configured &&
-        !executionLiveConfirmToken.value.trim()
+        executionStatus.value.live_confirm_required
+        && !executionRetryServiceStatus.value.confirm_token_configured
+        && !executionLiveConfirmToken.value.trim()
       ) {
         message.warning(
           "请先输入实盘确认口令，或在环境中配置 EXECUTION_RETRY_CONFIRM_TOKEN",
         );
         return;
       }
-      if (!window.confirm("确认执行 ExecutionRetry 单次 live 重试？")) return;
+      if (!window.confirm("确认执行 ExecutionRetry 单次 live 重试？"))
+        return;
     }
     executionRetryServiceActionLoading.value = "run_once";
     try {
@@ -1179,10 +1247,11 @@ export function useCardFlipOpsPage() {
   const refreshOverviewAndLists = async ({ includeLogs = false } = {}) => {
     const tasks = [loadOverview(true), loadLists(true)];
     if (
-      includeLogs &&
-      (activeTab.value === "executionLogs" || executionLogsInitialized.value)
-    )
+      includeLogs
+      && (activeTab.value === "executionLogs" || executionLogsInitialized.value)
+    ) {
       tasks.push(loadExecutionLogs(true, true));
+    }
     await Promise.allSettled(tasks);
   };
 
@@ -1196,12 +1265,14 @@ export function useCardFlipOpsPage() {
       loadAutotradeStatus(true),
       loadExecutionRetryServiceStatus(true),
     ];
-    if (includeLists) tasks.push(loadOverview(true), loadLists(true));
+    if (includeLists)
+      tasks.push(loadOverview(true), loadLists(true));
     if (
-      includeLogs &&
-      (activeTab.value === "executionLogs" || executionLogsInitialized.value)
-    )
+      includeLogs
+      && (activeTab.value === "executionLogs" || executionLogsInitialized.value)
+    ) {
       tasks.push(loadExecutionLogs(true, true));
+    }
     await Promise.allSettled(tasks);
   };
 
@@ -1266,8 +1337,8 @@ export function useCardFlipOpsPage() {
   const executeTradeBuy = async (trade, dryRun = true) => {
     if (!dryRun) {
       if (
-        executionStatus.value.live_confirm_required &&
-        !executionLiveConfirmToken.value.trim()
+        executionStatus.value.live_confirm_required
+        && !executionLiveConfirmToken.value.trim()
       ) {
         message.warning("请先输入实盘确认口令");
         return;
@@ -1309,8 +1380,8 @@ export function useCardFlipOpsPage() {
   const executeTradeList = async (trade, dryRun = true) => {
     if (!dryRun) {
       if (
-        executionStatus.value.live_confirm_required &&
-        !executionLiveConfirmToken.value.trim()
+        executionStatus.value.live_confirm_required
+        && !executionLiveConfirmToken.value.trim()
       ) {
         message.warning("请先输入实盘确认口令");
         return;
@@ -1355,8 +1426,8 @@ export function useCardFlipOpsPage() {
   const executeTradeSell = async (trade, dryRun = true) => {
     if (!dryRun) {
       if (
-        executionStatus.value.live_confirm_required &&
-        !executionLiveConfirmToken.value.trim()
+        executionStatus.value.live_confirm_required
+        && !executionLiveConfirmToken.value.trim()
       ) {
         message.warning("请先输入实盘确认口令");
         return;
@@ -1449,8 +1520,8 @@ export function useCardFlipOpsPage() {
 
   const submitApprove = async () => {
     if (
-      !approveForm.value.opportunity_id ||
-      approveForm.value.approved_buy_price <= 0
+      !approveForm.value.opportunity_id
+      || approveForm.value.approved_buy_price <= 0
     ) {
       message.warning("请填写有效的审批价格");
       return false;
@@ -1571,7 +1642,8 @@ export function useCardFlipOpsPage() {
         totalScanned += Number(res.scanned || 0);
         totalRejected += Number(res.rejected || 0);
         totalLogged += Number(res.logged || 0);
-        if (Number(res.rejected || 0) === 0) break;
+        if (Number(res.rejected || 0) === 0)
+          break;
       }
       message.success(
         `批量忽略完成: 扫描 ${totalScanned} 条, 已忽略 ${totalRejected} 条, 已入库 ${totalLogged} 条`,
@@ -1941,6 +2013,3 @@ export function useCardFlipOpsPage() {
 }
 
 export default useCardFlipOpsPage;
-
-
-

@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="bottle-helper" :statusClass="{ active: state.isRunning }">
+  <MyCard class="bottle-helper" :status-class="{ active: state.isRunning }">
     <template #icon>
-      <img :src="iconPath" alt="宝箱图标" />
+      <img alt="宝箱图标" :src="iconPath">
     </template>
     <template #title>
       <h3>宝箱助手</h3>
@@ -16,8 +16,8 @@
       </div>
       <div class="container">
         <div class="list">
-          <div class="item" v-for="item in boxDataList" :key="item.type">
-            <img :src="item.img" :alt="item.type" />
+          <div v-for="item in boxDataList" :key="item.type" class="item">
+            <img :alt="item.type" :src="item.img">
             <div class="box-info">
               <div class="box-type">{{ item.type }}</div>
               <div class="box-count">数量：{{ item.count }}</div>
@@ -25,39 +25,41 @@
           </div>
         </div>
         <div class="selects">
-          <n-select v-model:value="type" :options="typeOptions" />
-          <n-select v-model:value="number" :options="numberOptions" />
+          <n-select v-model:value="type" :options="typeOptions"></n-select>
+          <n-select v-model:value="number" :options="numberOptions"></n-select>
         </div>
       </div>
     </template>
     <template #action>
       <a-button
-        type="primary"
-        :disabled="state.isRunning"
+        block
         secondary
         size="small"
-        block
+        type="primary"
+        :disabled="state.isRunning"
         @click="handleBoxHelper"
       >
         {{ state.isRunning ? "运行中" : "开启宝箱" }}
       </a-button>
-      <a-button type="primary" size="small" @click="batchclaimboxpointreward"
-        >领取宝箱积分</a-button
-      >
+      <a-button size="small" type="primary" @click="batchclaimboxpointreward">
+        领取宝箱积分
+      </a-button>
     </template>
   </MyCard>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, watchEffect } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
 
-const iconPath = computed(() => import.meta.env.BASE_URL + "box/zsbx.png");
+const iconPath = computed(() => `${import.meta.env.BASE_URL}box/zsbx.png`);
 
 const roleInfo = computed(() => tokenStore.gameData?.roleInfo || null);
 
@@ -163,7 +165,6 @@ const handleBoxHelper = async () => {
     tokenStore.sendMessage(tokenId, "activity_get");
     message.success("宝箱开启完毕");
     state.value.isRunning = false;
-    return;
   }
 };
 </script>

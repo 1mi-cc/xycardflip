@@ -1,10 +1,10 @@
 <template>
   <MyCard
     class="study"
-    :statusClass="{ weekly: true, completed: study.isCompleted }"
+    :status-class="{ weekly: true, completed: study.isCompleted }"
   >
     <template #icon>
-      <img src="/icons/1736425783912140.png" alt="学习图标" />
+      <img alt="学习图标" src="/icons/1736425783912140.png">
     </template>
     <template #title>
       <h3>咸鱼大冲关</h3>
@@ -56,13 +56,15 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
 import { useMessage } from "naive-ui";
-import {
-  preloadQuestions,
-  getQuestionCount,
-} from "@/utils/studyQuestionsFromJSON.js";
+import { computed } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+import {
+  getQuestionCount,
+  preloadQuestions,
+} from "@/utils/studyQuestionsFromJSON.js";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -70,8 +72,10 @@ const message = useMessage();
 const study = computed(() => tokenStore.gameData.studyStatus);
 
 const startStudy = async () => {
-  if (!tokenStore.selectedToken || study.value.thisWeek) return;
-  if (study.value.status != "" && study.value.status != "idel") return;
+  if (!tokenStore.selectedToken || study.value.thisWeek)
+    return;
+  if (study.value.status != "" && study.value.status != "idel")
+    return;
   console.log("开始答题", study.value);
 
   study.value.status = "starting";
@@ -109,7 +113,7 @@ const startStudy = async () => {
     message.info(`🚀 开始一键答题... (题库包含 ${questionCount} 道题目)`);
   } catch (error) {
     console.error("启动答题失败:", error);
-    message.error("启动答题失败: " + error.message);
+    message.error(`启动答题失败: ${error.message}`);
   }
 };
 </script>

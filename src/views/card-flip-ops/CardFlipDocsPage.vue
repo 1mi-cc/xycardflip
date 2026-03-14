@@ -9,9 +9,9 @@
           先看模拟盘，再进入操作台调参，最后才考虑切到实战盘。
         </p>
         <div class="hero-tags">
-          <n-tag size="small" round type="info">先模拟，再实战</n-tag>
-          <n-tag size="small" round type="warning">先 dry-run，再 live</n-tag>
-          <n-tag size="small" round type="success">按数字顺序一步一步做</n-tag>
+          <n-tag round size="small" type="info">先模拟，再实战</n-tag>
+          <n-tag round size="small" type="warning">先 dry-run，再 live</n-tag>
+          <n-tag round size="small" type="success">按数字顺序一步一步做</n-tag>
         </div>
       </div>
 
@@ -35,8 +35,8 @@
           <button
             v-for="section in sectionLinks"
             :key="section.id"
-            type="button"
             class="sidebar-link"
+            type="button"
             :class="{ active: activeSection === section.id }"
             @click="scrollToSection(section.id)"
           >
@@ -74,7 +74,7 @@
             </article>
           </div>
 
-          <n-alert type="warning" :bordered="false" show-icon class="doc-alert">
+          <n-alert show-icon class="doc-alert" type="warning" :bordered="false">
             这套系统负责辅助判断和执行流程，不替你承担市场风险。只要你还没完全看懂参数含义，
             就先待在模拟盘。
           </n-alert>
@@ -132,7 +132,7 @@
               </div>
 
               <div class="shot-shell">
-                <img :src="step.image" :alt="step.title" class="shot-image" />
+                <img class="shot-image" :alt="step.title" :src="step.image">
                 <div
                   v-for="marker in step.markers"
                   :key="`${step.number}-${marker.label}`"
@@ -170,7 +170,7 @@
             从模拟盘切到实战盘，不是“换个页面”这么简单，而是要把几组关键参数从演练状态改成真实执行状态。
           </p>
 
-          <n-alert type="error" :bordered="false" show-icon class="doc-alert">
+          <n-alert show-icon class="doc-alert" type="error" :bordered="false">
             不要一次把所有开关全打开。正确做法是：先把真实执行条件配齐，再用“运行一次”只验证 1 条，
             最后才考虑开启后台循环。
           </n-alert>
@@ -283,18 +283,18 @@
       </article>
     </div>
 
-    <button type="button" class="floating-toc-btn" @click="tocDrawerOpen = true">
+    <button class="floating-toc-btn" type="button" @click="tocDrawerOpen = true">
       目录
     </button>
 
-    <n-drawer v-model:show="tocDrawerOpen" placement="right" :width="320">
+    <n-drawer placement="right" v-model:show="tocDrawerOpen" :width="320">
       <div class="drawer-toc">
         <div class="sidebar-title">目录</div>
         <button
           v-for="section in sectionLinks"
           :key="`drawer-${section.id}`"
-          type="button"
           class="sidebar-link"
+          type="button"
           :class="{ active: activeSection === section.id }"
           @click="handleDrawerJump(section.id)"
         >
@@ -655,7 +655,8 @@ const faqItems = [
 
 const scrollToSection = (id) => {
   const target = document.getElementById(id);
-  if (!target) return;
+  if (!target)
+    return;
   activeSection.value = id;
   target.scrollIntoView({ behavior: "smooth", block: "start" });
 };
@@ -669,15 +670,16 @@ const setupSectionObserver = async () => {
   await nextTick();
   const root = document.querySelector(".page-container");
   const sections = sectionLinks
-    .map(item => document.getElementById(item.id))
+    .map((item) => document.getElementById(item.id))
     .filter(Boolean);
 
-  if (!sections.length) return;
+  if (!sections.length)
+    return;
   observer?.disconnect();
   observer = new IntersectionObserver(
     (entries) => {
       const visible = entries
-        .filter(entry => entry.isIntersecting)
+        .filter((entry) => entry.isIntersecting)
         .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
       if (visible[0]?.target?.id) {
         activeSection.value = visible[0].target.id;
@@ -690,7 +692,7 @@ const setupSectionObserver = async () => {
     },
   );
 
-  sections.forEach(section => observer.observe(section));
+  sections.forEach((section) => observer.observe(section));
 };
 
 onMounted(() => {

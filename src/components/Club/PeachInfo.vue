@@ -1,17 +1,17 @@
 <template>
-  <MyCard class="club-info" :statusClass="{ active: !!club }">
+  <MyCard class="club-info" :status-class="{ active: !!club }">
     <template #icon>
-      <img src="/icons/1733492491706152.png" alt="俱乐部图标" />
+      <img alt="俱乐部图标" src="/icons/1733492491706152.png">
     </template>
     <template #title>
       <h3>蟠桃园信息</h3>
     </template>
-    <template v-if="!club" #badge >
-      <span v-if="!club">{{"暂无俱乐部" }}</span>
+    <template #badge v-if="!club">
+      <span v-if="!club">{{ "暂无俱乐部" }}</span>
     </template>
     <template #default>
       <div v-if="!club" class="empty-club">
-        <n-empty description="暂无俱乐部" />
+        <n-empty description="暂无俱乐部"></n-empty>
         <div class="actions">
           <n-button size="small" @click="refreshClub">刷新</n-button>
         </div>
@@ -23,14 +23,14 @@
           </n-space>
         </div>
 
-        <n-tabs v-model:value="activeTab" type="line" animated>
-          <n-tab-pane name="overview" tab="对手信息" display-directive="show:lazy">
+        <n-tabs animated type="line" v-model:value="activeTab">
+          <n-tab-pane display-directive="show:lazy" name="overview" tab="对手信息">
             <div class="overview">
               <div class="club-header">
                 <n-avatar
                   :size="48"
                   :src="battleInfo.logo || '/icons/xiaoyugan.png'"
-                />
+                ></n-avatar>
                 <div class="meta">
                   <div class="name">{{ battleInfo.name }}</div>
                   <div class="sub">
@@ -59,18 +59,18 @@
           </n-tab-pane>
 
           <n-tab-pane
+            display-directive="show:lazy"
             name="records"
             tab="蟠桃园战绩"
-            display-directive="show:lazy"
           >
-            <PeachBattleRecords inline />
+            <PeachBattleRecords inline></PeachBattleRecords>
           </n-tab-pane>
           <n-tab-pane
+            display-directive="show:lazy"
             name="recordsopponent"
             tab="蟠桃园对手战绩"
-            display-directive="show:lazy"
           >
-            <PeachOpponentBattleRecords inline />
+            <PeachOpponentBattleRecords inline></PeachOpponentBattleRecords>
           </n-tab-pane>
         </n-tabs>
       </div>
@@ -79,13 +79,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
-import { useTokenStore } from "@/stores/tokenStore";
 import { useMessage } from "naive-ui";
-import { Refresh, Copy } from "@vicons/ionicons5";
-import { gettoday } from '@/utils/clubWarrankUtils'
+import { computed, onMounted, ref } from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
+import { gettoday } from "@/utils/clubWarrankUtils";
+
 import PeachBattleRecords from "./PeachBattleRecords.vue";
 import PeachOpponentBattleRecords from "./PeachOpponentBattleRecords.vue";
+
 const tokenStore = useTokenStore();
 const message = useMessage();
 const info = computed(() => tokenStore.gameData?.legionInfo || null);
@@ -94,30 +96,33 @@ const loading = ref(false);
 const battleInfo = ref(null);
 // 格式化战力
 const formatPower = (power) => {
-  if (!power) return '0'
+  if (!power)
+    return "0";
   if (power >= 100000000) {
-    return (power / 100000000).toFixed(2) + '亿'
+    return `${(power / 100000000).toFixed(2)}亿`;
   }
   if (power >= 10000) {
-    return (power / 10000).toFixed(2) + '万'
+    return `${(power / 10000).toFixed(2)}万`;
   }
-  return power.toString()
-}
+  return power.toString();
+};
 
 const formatDateToShort = (dateStr) => {
-  if (!dateStr) return ''
-  const parts = dateStr.split('/')
-  if (parts.length !== 3) return dateStr
-  const [year, month, day] = parts
-  return year.slice(2) + month + day
-}
+  if (!dateStr)
+    return "";
+  const parts = dateStr.split("/");
+  if (parts.length !== 3)
+    return dateStr;
+  const [year, month, day] = parts;
+  return year.slice(2) + month + day;
+};
 
 // 获取最近的周日日期
 // 如果今天是周日，返回今天的日期；否则返回上周日的日期
 const getLastSunday = () => {
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=周日, 1=周一, ..., 6=周六
-  
+
   let daysToSubtract = 0;
   if (dayOfWeek === 0) {
     // 今天是周日，返回今天
@@ -139,7 +144,7 @@ const getLastSunday = () => {
 
 const refreshClub = async () => {
   if (!tokenStore.selectedToken) {
-    message.warning('请先选择游戏角色');
+    message.warning("请先选择游戏角色");
     return;
   }
 
@@ -147,77 +152,77 @@ const refreshClub = async () => {
 
   // 检查WebSocket连接
   const wsStatus = tokenStore.getWebSocketStatus(tokenId);
-  if (wsStatus !== 'connected') {
-    message.error('WebSocket未连接，无法查询战绩');
+  if (wsStatus !== "connected") {
+    message.error("WebSocket未连接，无法查询战绩");
     return;
   }
-    loading.value = true;
-    try {
-      // 1. 查询蟠桃园对战俱乐部ID
-      let firstLegionId;
-      if (getLastSunday() === gettoday()) {
-        const payloadTaskRes = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "legion_getpayloadbf",
-          {},
-          10000
-        );
-        if (!payloadTaskRes) {
-          message.error("未获取到对战俱乐部");
-          return;
-        }
-        firstLegionId = payloadTaskRes.legions[0].id;
-        if(club.value.id === firstLegionId) {
-          firstLegionId = payloadTaskRes.legions[1].id;
-        }
-        if (!firstLegionId) {
-          message.error("未获取到对战俱乐部ID");
-          return;
-        }
-      } else {
-        const payloadTaskRes = await tokenStore.sendMessageWithPromise(
-          tokenId,
-          "legion_getpayloadrecord",
-          {},
-          10000
-        );
-        if (!payloadTaskRes) {
-          message.error("未获取到对战俱乐部");
-          return;
-        }
-        firstLegionId = payloadTaskRes.enemyLegionMap[formatDateToShort(getLastSunday())].id;
-        if (!firstLegionId) {
-          message.error("未获取到对战俱乐部ID");
-          return;
-        }
-      }
-      
-      // 2. 获取俱乐部的详细信息
-      const firstLegionInfo = await tokenStore.sendMessageWithPromise(
+  loading.value = true;
+  try {
+    // 1. 查询蟠桃园对战俱乐部ID
+    let firstLegionId;
+    if (getLastSunday() === gettoday()) {
+      const payloadTaskRes = await tokenStore.sendMessageWithPromise(
         tokenId,
-        "legion_getinfobyid",
-        { legionId: firstLegionId },
-        10000
+        "legion_getpayloadbf",
+        {},
+        10000,
       );
-      // 3. 整理对战信息
-      battleInfo.value = {
-        id: firstLegionId,
-        level: firstLegionInfo?.legionData?.level || 0,
-        power: firstLegionInfo?.legionData?.power || 0,
-        name: firstLegionInfo?.legionData?.name || '',
-        serverId: firstLegionInfo?.legionData?.serverId || '',
-        logo: firstLegionInfo?.legionData?.logo || '',
-        quenchNum: firstLegionInfo?.legionData?.quenchNum || 0,
-        announcement: firstLegionInfo?.legionData?.announcement || ''
-      };
-      message.success("查询对战信息成功");
-    } catch (error) {
-      console.error("查询对战信息失败:", error);
-      message.error(`查询失败: ${error.message}`);
-    } finally {
-      loading.value = false;
+      if (!payloadTaskRes) {
+        message.error("未获取到对战俱乐部");
+        return;
+      }
+      firstLegionId = payloadTaskRes.legions[0].id;
+      if (club.value.id === firstLegionId) {
+        firstLegionId = payloadTaskRes.legions[1].id;
+      }
+      if (!firstLegionId) {
+        message.error("未获取到对战俱乐部ID");
+        return;
+      }
+    } else {
+      const payloadTaskRes = await tokenStore.sendMessageWithPromise(
+        tokenId,
+        "legion_getpayloadrecord",
+        {},
+        10000,
+      );
+      if (!payloadTaskRes) {
+        message.error("未获取到对战俱乐部");
+        return;
+      }
+      firstLegionId = payloadTaskRes.enemyLegionMap[formatDateToShort(getLastSunday())].id;
+      if (!firstLegionId) {
+        message.error("未获取到对战俱乐部ID");
+        return;
+      }
     }
-  };
+
+    // 2. 获取俱乐部的详细信息
+    const firstLegionInfo = await tokenStore.sendMessageWithPromise(
+      tokenId,
+      "legion_getinfobyid",
+      { legionId: firstLegionId },
+      10000,
+    );
+      // 3. 整理对战信息
+    battleInfo.value = {
+      id: firstLegionId,
+      level: firstLegionInfo?.legionData?.level || 0,
+      power: firstLegionInfo?.legionData?.power || 0,
+      name: firstLegionInfo?.legionData?.name || "",
+      serverId: firstLegionInfo?.legionData?.serverId || "",
+      logo: firstLegionInfo?.legionData?.logo || "",
+      quenchNum: firstLegionInfo?.legionData?.quenchNum || 0,
+      announcement: firstLegionInfo?.legionData?.announcement || "",
+    };
+    message.success("查询对战信息成功");
+  } catch (error) {
+    console.error("查询对战信息失败:", error);
+    message.error(`查询失败: ${error.message}`);
+  } finally {
+    loading.value = false;
+  }
+};
 
 // 页面加载时自动执行查询
 onMounted(() => {

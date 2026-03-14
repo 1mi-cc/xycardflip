@@ -21,7 +21,22 @@ def build_pricing_plan(
     similar_sold_prices: list[float],
     active_trade_count: int,
     mode: PricingMode = "balanced",
+    sentiment_adjustment: float = 0.0,
+    sentiment_label: str = "neutral",
 ) -> dict:
+    """Build a recommended pricing plan for a held trade.
+
+    Parameters
+    ----------
+    sentiment_adjustment:
+        Fractional price adjustment from market sentiment analysis
+        (e.g. ``0.03`` means +3 %, ``-0.05`` means −5 %).  Clamped to
+        [−0.20, +0.20] before being applied.  Defaults to ``0.0`` (no
+        sentiment influence).
+    sentiment_label:
+        Human-readable sentiment label (``"bullish"``, ``"neutral"``, or
+        ``"bearish"``).  Recorded in ``reasons`` for traceability.
+    """
     created_at = _parse_iso_datetime(trade_created_at)
     holding_days = _compute_holding_days(created_at)
 
@@ -66,6 +81,18 @@ def build_pricing_plan(
     raw_price = anchor * mode_factor
     raw_price *= max(0.60, 1.0 - age_discount - inventory_pressure - volatility_discount)
 
+    # Apply market sentiment: clamp the adjustment to a safe range and scale
+    # it down for conservative modes to prevent over-reaction.
+    clamped_sentiment = _clamp(float(sentiment_adjustment), -0.20, 0.20)
+    if mode == "fast_exit":
+        # Fast exit is already discounted; only allow bearish sentiment to push
+        # the price further down, not up.
+        clamped_sentiment = min(0.0, clamped_sentiment)
+    elif mode == "profit_max":
+        # Profit-max benefits from bullish sentiment; limit bearish impact.
+        clamped_sentiment = max(-0.05, clamped_sentiment)
+    raw_price *= 1.0 + clamped_sentiment
+
     min_profitable = _min_profitable_sell_price(approved_buy_price)
     lower_guard = max(min_profitable, ci_low * 0.95 if ci_low > 0 else min_profitable)
     upper_guard = max(lower_guard, ci_high * 1.03 if ci_high > 0 else expected_sale_price * 1.15)
@@ -86,6 +113,7 @@ def build_pricing_plan(
         f"inventory_pressure={inventory_pressure:.4f}",
         f"min_profitable={min_profitable:.2f}",
         f"anchor={anchor:.2f}",
+        f"sentiment={sentiment_label}({clamped_sentiment:+.4f})",
     ]
 
     return {
@@ -100,8 +128,11 @@ def build_pricing_plan(
         "action": action,
         "volatility_ratio": round(volatility_ratio, 4),
         "similar_sales_count": len(similar_sold_prices),
+        "sentiment_label": sentiment_label,
+        "sentiment_adjustment": round(clamped_sentiment, 4),
         "reasons": reasons,
     }
+
 
 
 def _compute_anchor_price(

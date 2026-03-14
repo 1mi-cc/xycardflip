@@ -1,11 +1,13 @@
 import "@arco-design/web-vue/dist/arco.css";
 import "virtual:uno.css";
+
 import "./assets/styles/global.scss";
 
-import { createApp } from "vue";
 import { createPinia } from "pinia";
-import router from "./router";
+import { createApp } from "vue";
+
 import App from "./App.vue";
+import router from "./router";
 // import { i18n } from './locales';
 
 // 创建应用实例
@@ -24,9 +26,9 @@ const applyTheme = () => {
   } else if (saved === "light") {
     document.documentElement.removeAttribute("data-theme");
   } else {
-    const prefersDark =
-      window.matchMedia &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const prefersDark
+      = window.matchMedia
+        && window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (prefersDark)
       document.documentElement.setAttribute("data-theme", "dark");
     else document.documentElement.removeAttribute("data-theme");

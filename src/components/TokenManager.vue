@@ -4,9 +4,9 @@
       <div class="header-actions">
         <n-button size="small" @click="refreshTokens">
           <template #icon>
-            <n-icon>
-              <Refresh />
-            </n-icon>
+            <NIcon>
+              <Refresh></Refresh>
+            </NIcon>
           </template>
           <span class="btn-text">刷新</span>
         </n-button>
@@ -16,12 +16,12 @@
           </template>
           <span class="btn-text">导出</span>
         </n-button>
-        <n-upload :show-file-list="false" accept=".json" @change="importTokens">
+        <n-upload accept=".json" :show-file-list="false" @change="importTokens">
           <n-button size="small" type="info">
             <template #icon>
-              <n-icon>
-                <CloudUpload />
-              </n-icon>
+              <NIcon>
+                <CloudUpload></CloudUpload>
+              </NIcon>
             </template>
             <span class="btn-text">导入</span>
           </n-button>
@@ -77,15 +77,15 @@
                 </n-button>
 
                 <n-dropdown
-                  :options="getTokenMenuOptions(tokenData)"
                   trigger="click"
+                  :options="getTokenMenuOptions(tokenData)"
                   @select="handleTokenAction($event, roleId, tokenData)"
                 >
                   <n-button size="tiny" type="tertiary">
                     <template #icon>
-                      <n-icon>
-                        <EllipsisHorizontal />
-                      </n-icon>
+                      <NIcon>
+                        <EllipsisHorizontal></EllipsisHorizontal>
+                      </NIcon>
                     </template>
                   </n-button>
                 </n-dropdown>
@@ -140,21 +140,21 @@
 </template>
 
 <script setup>
-import { ref, h } from "vue";
-import { useMessage, useDialog, NIcon } from "naive-ui";
-import { gameTokens } from "@/stores/tokenStore";
-import { useLocalTokenStore } from "@/stores/localTokenManager";
-import { useGameRolesStore } from "@/stores/gameRoles";
 import {
-  Refresh,
-  Download,
   CloudUpload,
-  EllipsisHorizontal,
-  Create,
-  TrashBin,
-  SyncCircle,
   CopyOutline,
+  Create,
+  EllipsisHorizontal,
+  Refresh,
+  SyncCircle,
+  TrashBin,
 } from "@vicons/ionicons5";
+import { NIcon, useDialog, useMessage } from "naive-ui";
+import { h } from "vue";
+
+import { useGameRolesStore } from "@/stores/gameRoles";
+import { useLocalTokenStore } from "@/stores/localTokenManager";
+import { gameTokens } from "@/stores/tokenStore";
 
 const message = useMessage();
 const dialog = useDialog();
@@ -163,10 +163,12 @@ const gameRolesStore = useGameRolesStore();
 
 // 方法
 const maskToken = (token) => {
-  if (!token) return "";
+  if (!token)
+    return "";
   const len = token.length;
-  if (len <= 8) return token;
-  return token.substring(0, 8) + "***" + token.substring(len - 8);
+  if (len <= 8)
+    return token;
+  return `${token.substring(0, 8)}***${token.substring(len - 8)}`;
 };
 
 const formatTime = (timestamp) => {
@@ -337,11 +339,11 @@ const regenerateToken = (roleId) => {
         const sourceUrl = oldTokenData.sourceUrl;
 
         // 使用与TokenImport相同的跨域处理逻辑
-        const isLocalUrl =
-          sourceUrl.startsWith(window.location.origin) ||
-          sourceUrl.startsWith("/") ||
-          sourceUrl.startsWith("http://localhost") ||
-          sourceUrl.startsWith("http://127.0.0.1");
+        const isLocalUrl
+          = sourceUrl.startsWith(window.location.origin)
+            || sourceUrl.startsWith("/")
+            || sourceUrl.startsWith("http://localhost")
+            || sourceUrl.startsWith("http://127.0.0.1");
 
         if (isLocalUrl) {
           response = await fetch(sourceUrl);
@@ -458,11 +460,11 @@ const refreshTokenFromUrl = async (roleId, tokenData) => {
 
         // 使用与TokenImport相同的逻辑获取Token
         let response;
-        const isLocalUrl =
-          tokenData.sourceUrl.startsWith(window.location.origin) ||
-          tokenData.sourceUrl.startsWith("/") ||
-          tokenData.sourceUrl.startsWith("http://localhost") ||
-          tokenData.sourceUrl.startsWith("http://127.0.0.1");
+        const isLocalUrl
+          = tokenData.sourceUrl.startsWith(window.location.origin)
+            || tokenData.sourceUrl.startsWith("/")
+            || tokenData.sourceUrl.startsWith("http://localhost")
+            || tokenData.sourceUrl.startsWith("http://127.0.0.1");
 
         if (isLocalUrl) {
           response = await fetch(tokenData.sourceUrl);
@@ -491,7 +493,7 @@ const refreshTokenFromUrl = async (roleId, tokenData) => {
         message.success("Token刷新成功");
       } catch (error) {
         console.error("URL刷新Token失败:", error);
-        message.error("刷新失败: " + error.message);
+        message.error(`刷新失败: ${error.message}`);
       }
     },
   });
@@ -510,7 +512,7 @@ const exportTokens = () => {
 
     message.success("Token数据已导出");
   } catch (error) {
-    message.error("导出失败: " + error.message);
+    message.error(`导出失败: ${error.message}`);
   }
 };
 

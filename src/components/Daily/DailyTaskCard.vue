@@ -4,10 +4,10 @@
     <div class="card-header">
       <div class="header-left">
         <img
-          :src="task.icon || '/icons/ta.png'"
-          :alt="task.title"
           class="task-icon"
-        />
+          :alt="task.title"
+          :src="task.icon || '/icons/ta.png'"
+        >
         <div class="title-container">
           <h3 class="title">
             {{ task.title }}
@@ -24,14 +24,14 @@
           :class="{ completed: task.completed }"
           @click="toggleStatus"
         >
-          <span class="status-dot" :class="{ completed: task.completed }" />
+          <span class="status-dot" :class="{ completed: task.completed }"></span>
           <span>{{ task.completed ? "已完成" : "待完成" }}</span>
         </div>
 
         <n-button text class="settings-button" @click="showSettings = true">
           <template #icon>
             <n-icon class="settings-icon">
-              <Settings />
+              <Settings></Settings>
             </n-icon>
           </template>
         </n-button>
@@ -43,9 +43,7 @@
       <div class="info-container">
         <div class="info-item">
           <span class="info-label">当前进度</span>
-          <span class="info-value"
-            >{{ task.progress.current }}/{{ task.progress.total }}</span
-          >
+          <span class="info-value">{{ task.progress.current }}/{{ task.progress.total }}</span>
         </div>
         <div v-if="task.reward" class="info-item">
           <span class="info-label">奖励</span>
@@ -61,11 +59,11 @@
     <!-- 操作按钮 -->
     <div v-if="!task.completed" class="actions-container">
       <n-button
-        type="primary"
         block
-        :loading="isExecuting"
-        :disabled="!task.canExecute"
         class="complete-button"
+        type="primary"
+        :disabled="!task.canExecute"
+        :loading="isExecuting"
         @click="executeTask"
       >
         {{ getButtonText() }}
@@ -74,15 +72,15 @@
 
     <!-- 设置模态框 -->
     <n-modal
-      v-model:show="showSettings"
       preset="card"
-      title="任务设置"
       style="width: 480px"
+      title="任务设置"
+      v-model:show="showSettings"
     >
       <template #header>
         <div class="modal-header">
           <n-icon class="modal-icon">
-            <Settings />
+            <Settings></Settings>
           </n-icon>
           <span>{{ task.title }} - 设置</span>
         </div>
@@ -103,10 +101,10 @@
             <label class="setting-label">执行延迟 (秒)</label>
             <n-input-number
               v-model:value="taskSettings.delay"
-              :min="0"
               :max="300"
+              :min="0"
               @update:value="updateSetting('delay', $event)"
-            />
+            ></n-input-number>
           </div>
 
           <div class="setting-item">
@@ -133,8 +131,8 @@
                   class="task-status-icon"
                   :class="{ completed: detail.completed }"
                 >
-                  <CheckCircle v-if="detail.completed" />
-                  <Clock v-else />
+                  <CheckCircle v-if="detail.completed"></CheckCircle>
+                  <Clock v-else></Clock>
                 </n-icon>
                 <span class="task-name">{{ detail.name }}</span>
               </div>
@@ -170,13 +168,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
-import { useMessage } from "naive-ui";
 import {
-  Settings,
   Checkmark as CheckCircle,
   Time as Clock,
+  Settings,
 } from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
+import { ref, watch } from "vue";
 
 const props = defineProps({
   task: {
@@ -200,8 +198,10 @@ const taskSettings = ref({
 
 // 计算属性
 const getButtonText = () => {
-  if (isExecuting.value) return "执行中...";
-  if (!props.task.canExecute) return "不可执行";
+  if (isExecuting.value)
+    return "执行中...";
+  if (!props.task.canExecute)
+    return "不可执行";
   return "立即执行";
 };
 
@@ -211,7 +211,8 @@ const toggleStatus = () => {
 };
 
 const executeTask = async () => {
-  if (isExecuting.value || !props.task.canExecute) return;
+  if (isExecuting.value || !props.task.canExecute)
+    return;
 
   try {
     isExecuting.value = true;

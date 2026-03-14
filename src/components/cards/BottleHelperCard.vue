@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="bottle-helper" :statusClass="{ active: state.isRunning }">
+  <MyCard class="bottle-helper" :status-class="{ active: state.isRunning }">
     <template #icon>
-      <img src="/icons/173746572831736.png" alt="盐罐图标" />
+      <img alt="盐罐图标" src="/icons/173746572831736.png">
     </template>
     <template #title>
       <h3>盐罐机器人</h3>
@@ -17,10 +17,10 @@
     </template>
     <template #action>
       <a-button
-        type="primary"
+        block
         secondary
         size="small"
-        block
+        type="primary"
         @click="handleBottleHelper"
       >
         {{ state.isRunning ? "重启服务" : "启动服务" }}
@@ -30,9 +30,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -48,7 +50,8 @@ const state = ref({
 
 const formatTime = (seconds) => {
   const total = Math.floor(Number(seconds) || 0);
-  if (total <= 0) return "00:00:00";
+  if (total <= 0)
+    return "00:00:00";
   const h = Math.floor(total / 3600)
     .toString()
     .padStart(2, "0");
@@ -61,7 +64,8 @@ const formatTime = (seconds) => {
 
 const syncFromRole = () => {
   const role = roleInfo.value?.role;
-  if (!role?.bottleHelpers) return;
+  if (!role?.bottleHelpers)
+    return;
   const now = Date.now() / 1000;
   state.value.stopTime = role.bottleHelpers.helperStopTime;
   state.value.isRunning = role.bottleHelpers.helperStopTime > now;
@@ -78,12 +82,14 @@ onMounted(() => {
   timer = setInterval(() => {
     if (state.value.isRunning && state.value.remainingTime > 0) {
       state.value.remainingTime = Math.max(0, state.value.remainingTime - 1);
-      if (state.value.remainingTime <= 0) state.value.isRunning = false;
+      if (state.value.remainingTime <= 0)
+        state.value.isRunning = false;
     }
   }, 1000);
 });
 onUnmounted(() => {
-  if (timer) clearInterval(timer);
+  if (timer)
+    clearInterval(timer);
 });
 
 const handleBottleHelper = () => {

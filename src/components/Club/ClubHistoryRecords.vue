@@ -8,7 +8,7 @@
           <n-button size="small" :disabled="loading" @click="handleRefresh">
             <template #icon>
               <n-icon>
-                <Refresh />
+                <Refresh></Refresh>
               </n-icon>
             </template>
             刷新
@@ -43,9 +43,7 @@
                 }}</span>
               </div>
               <div class="member-stats-inline">
-                <span class="stat-inline win"
-                  >比赛日期 {{ member.warDate }}</span
-                >
+                <span class="stat-inline win">比赛日期 {{ member.warDate }}</span>
               </div>
               <div class="ranking">名次:{{ battleRecords.warRank[index] }}</div>
             </div>
@@ -57,7 +55,7 @@
           <n-empty description="暂无战绩数据" size="large">
             <template #icon>
               <n-icon>
-                <DocumentText />
+                <DocumentText></DocumentText>
               </n-icon>
             </template>
           </n-empty>
@@ -68,10 +66,10 @@
     <!-- Modal 模式 -->
     <n-modal
       v-else
-      v-model:show="showModal"
       preset="card"
-      title="俱乐部盐场战绩"
       style="width: 90%; max-width: 800px"
+      title="俱乐部盐场战绩"
+      v-model:show="showModal"
       @after-leave="handleClose"
     >
       <template #header-extra>
@@ -79,7 +77,7 @@
           <n-button size="small" :disabled="loading" @click="handleRefresh">
             <template #icon>
               <n-icon>
-                <Refresh />
+                <Refresh></Refresh>
               </n-icon>
             </template>
             刷新
@@ -114,9 +112,7 @@
                 }}</span>
               </div>
               <div class="member-stats-inline">
-                <span class="stat-inline win"
-                  >比赛日期 {{ member.warDate }}</span
-                >
+                <span class="stat-inline win">比赛日期 {{ member.warDate }}</span>
               </div>
               <div>名次:{{ battleRecords.warRank[index] }}</div>
             </div>
@@ -128,7 +124,7 @@
           <n-empty description="暂无战绩数据" size="large">
             <template #icon>
               <n-icon>
-                <DocumentText />
+                <DocumentText></DocumentText>
               </n-icon>
             </template>
           </n-empty>
@@ -139,24 +135,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import {
+  DocumentText,
+  Refresh,
+} from "@vicons/ionicons5";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
 import {
-  Trophy,
-  Refresh,
-  Copy,
-  ChevronDown,
-  ChevronUp,
-  DocumentText,
-} from "@vicons/ionicons5";
-import {
-  getLastSaturday,
-  formatTimestamp,
-  parseBattleResult,
-  parseAttackType,
-  formatBattleRecordsForExport,
   copyToClipboard,
+  formatBattleRecordsForExport,
+  getLastSaturday,
 } from "@/utils/clubBattleUtils";
 
 const props = defineProps({
@@ -191,12 +181,13 @@ const legionMatch = ref({
 
 // 格式化战力
 const formatPower = (power) => {
-  if (!power) return "0";
+  if (!power)
+    return "0";
   if (power >= 100000000) {
-    return (power / 100000000).toFixed(2) + "亿";
+    return `${(power / 100000000).toFixed(2)}亿`;
   }
   if (power >= 10000) {
-    return (power / 10000).toFixed(2) + "万";
+    return `${(power / 10000).toFixed(2)}万`;
   }
   return power.toString();
 };

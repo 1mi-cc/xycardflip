@@ -2,10 +2,10 @@
   <div class="team-status-card">
     <div class="card-header">
       <img
-        src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
         alt="队伍图标"
         class="team-icon"
-      />
+        src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
+      >
       <div class="team-info">
         <h3>身份牌</h3>
         <p>当前使用的战斗阵容</p>
@@ -15,24 +15,25 @@
         <button
           v-for="teamId in availableTeams"
           :key="teamId"
+          class="team-button"
+          :class="[{ active: currentTeam === teamId }]"
           :disabled="loading || switching"
-          :class="['team-button', { active: currentTeam === teamId }]"
           @click="selectTeam(teamId)"
         >
           {{ teamId }}
         </button>
         <button
           class="refresh-button"
-          :disabled="loading"
           title="刷新队伍数据"
+          :disabled="loading"
           @click="refreshTeamData(true)"
         >
           <svg
             class="refresh-icon"
-            viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             stroke-width="2"
+            viewBox="0 0 24 24"
           >
             <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
             <path d="M21 3v5h-5" />
@@ -54,11 +55,11 @@
         <!-- 头像区域 -->
         <div class="avatar-container">
           <img
-            :src="roleAvatar"
-            :alt="roleInfo.name || '角色'"
             class="role-avatar"
+            :alt="roleInfo.name || '角色'"
+            :src="roleAvatar"
             @error="handleAvatarError"
-          />
+          >
         </div>
 
         <!-- 角色信息区域 -->
@@ -66,9 +67,7 @@
           <div class="role-name">{{ roleInfo.name || "未知角色" }}</div>
           <div class="role-stats">
             <span class="level-text">Lv.{{ roleInfo.level || 1 }}</span>
-            <span class="power-value"
-              >战力 {{ formatPower(roleInfo.power) }}</span
-            >
+            <span class="power-value">战力 {{ formatPower(roleInfo.power) }}</span>
           </div>
         </div>
 
@@ -103,10 +102,10 @@
               <div class="hero-circle">
                 <img
                   v-if="hero.avatar"
-                  :src="hero.avatar"
-                  :alt="hero.name"
                   class="hero-avatar"
-                />
+                  :alt="hero.name"
+                  :src="hero.avatar"
+                >
                 <div v-else class="hero-placeholder">
                   {{ hero.name?.substring(0, 2) || "?" }}
                 </div>
@@ -127,9 +126,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
-import { useMessage, NTag } from "naive-ui";
 
 /**
  * 集成英雄字典（游戏ID -> { name, type }）
@@ -318,7 +318,8 @@ const powerRanks = [
 
 // WebSocket连接状态
 const wsStatus = computed(() => {
-  if (!tokenStore.selectedToken) return "disconnected";
+  if (!tokenStore.selectedToken)
+    return "disconnected";
   return tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
 });
 
@@ -387,19 +388,23 @@ const presetTeamRaw = computed(() => tokenStore.gameData?.presetTeam ?? null);
 
 // 统一结构：输出 { useTeamId, teams }
 function normalizePresetTeam(raw) {
-  if (!raw) return { useTeamId: 1, teams: {} };
+  if (!raw)
+    return { useTeamId: 1, teams: {} };
   const root = raw.presetTeamInfo ?? raw;
   const findUseIdRec = (obj) => {
-    if (!obj || typeof obj !== "object") return null;
-    if (typeof obj.useTeamId === "number") return obj.useTeamId;
+    if (!obj || typeof obj !== "object")
+      return null;
+    if (typeof obj.useTeamId === "number")
+      return obj.useTeamId;
     for (const k of Object.keys(obj)) {
       const v = findUseIdRec(obj[k]);
-      if (v) return v;
+      if (v)
+        return v;
     }
     return null;
   };
-  const useTeamId =
-    root.useTeamId ?? root.presetTeamInfo?.useTeamId ?? findUseIdRec(root) ?? 1;
+  const useTeamId
+    = root.useTeamId ?? root.presetTeamInfo?.useTeamId ?? findUseIdRec(root) ?? 1;
 
   const dict = root.presetTeamInfo ?? root;
   const teams = {};
@@ -436,11 +441,13 @@ const presetTeam = computed(() => normalizePresetTeam(presetTeamRaw.value));
 // —— 英雄列表 ——
 const currentTeamHeroes = computed(() => {
   const team = presetTeam.value.teams[currentTeam.value]?.teamInfo;
-  if (!team) return [];
+  if (!team)
+    return [];
   const heroes = [];
   for (const [pos, hero] of Object.entries(team)) {
     const hid = (hero as any)?.heroId ?? (hero as any)?.id;
-    if (!hid) continue;
+    if (!hid)
+      continue;
     const meta = HERO_DICT[Number(hid)];
     heroes.push({
       id: Number(hid),
@@ -472,7 +479,8 @@ const executeGameCommand = async (
     );
   } catch (error) {
     const msg = error?.message ?? String(error);
-    if (description) message.error(`${description}失败：${msg}`);
+    if (description)
+      message.error(`${description}失败：${msg}`);
     throw error;
   }
 };
@@ -487,7 +495,8 @@ const getTeamInfoWithCache = async (force = false) => {
 
   if (!force) {
     const cached = tokenStore.gameData?.presetTeam?.presetTeamInfo;
-    if (cached) return cached;
+    if (cached)
+      return cached;
   }
 
   loading.value = true;
@@ -524,7 +533,8 @@ const updateCurrentTeam = () => {
 
 // —— 交互 ——
 const selectTeam = async (teamId) => {
-  if (switching.value || loading.value) return;
+  if (switching.value || loading.value)
+    return;
   if (!tokenStore.selectedToken) {
     message.warning("请先选择Token");
     return;
@@ -555,7 +565,8 @@ const refreshTeamData = async (force = false) => {
 // —— 角色身份卡方法 ——
 // 格式化战力数值
 const formatPower = (power) => {
-  if (!power || power === 0) return "0";
+  if (!power || power === 0)
+    return "0";
 
   const yi = 100000000; // 1亿
   const wan = 10000; // 1万
@@ -629,9 +640,9 @@ onMounted(async () => {
 // —— 监听WebSocket连接状态变化 ——
 watch(wsStatus, (newStatus, oldStatus) => {
   if (
-    newStatus === "connected" &&
-    oldStatus !== "connected" &&
-    tokenStore.selectedToken
+    newStatus === "connected"
+    && oldStatus !== "connected"
+    && tokenStore.selectedToken
   ) {
     // 延迟一点时间让WebSocket完全就绪
     setTimeout(async () => {

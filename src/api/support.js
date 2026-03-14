@@ -46,6 +46,10 @@ const requestSupport = async ({
 
   for (const base of ENDPOINTS.list) {
     const url = `${base}${endpointSuffix}${toQueryString(query || {})}`;
+
+    // Separate network-level fetch from response processing so that a real
+    // server error is never silently replaced by a fallback-endpoint 404.
+    let response;
     try {
       const headers = { Accept: "application/json" };
       if (body !== null)
@@ -53,24 +57,43 @@ const requestSupport = async ({
       if (token)
         headers.Authorization = `Bearer ${token}`;
 
-      const response = await fetch(url, {
+      response = await fetch(url, {
         method,
         headers,
         credentials: "same-origin",
         body: body !== null ? JSON.stringify(body) : undefined,
       });
-      const payload = await response.json().catch(() => null);
-      if (response.ok)
-        return payload?.data || payload || {};
-      if (response.status === 404) {
-        lastError = new Error("接口不存在");
+    } catch {
+      // Network error – backend unreachable. Try the next endpoint.
+      if (!lastError)
+        lastError = new Error("无法连接到服务器，请确认后端服务已启动");
+      continue;
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (response.ok) {
+      // If the body could not be parsed as JSON (e.g. the Vite dev-server
+      // served its SPA index.html for an unmatched path), do not return this
+      // as a successful response – fall through to the next endpoint.
+      if (payload === null) {
+        if (!lastError)
+          lastError = new Error("接口返回了非 JSON 响应");
         continue;
       }
-      throw new Error(extractErrorMessage(payload, "请求失败"));
+      return payload?.data || payload || {};
     }
-    catch (error) {
-      lastError = error instanceof Error ? error : new Error("请求失败");
+
+    if (response.status === 404) {
+      // Endpoint not found on this host – try the next fallback URL, but do
+      // not overwrite a more specific error already recorded.
+      if (!lastError)
+        lastError = new Error("接口不存在");
+      continue;
     }
+
+    // Any other HTTP error means the endpoint exists and returned a real
+    // error. Surface it immediately without trying further endpoints.
+    throw new Error(extractErrorMessage(payload, "请求失败"));
   }
 
   throw lastError || new Error("服务暂时不可用");

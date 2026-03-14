@@ -1,13 +1,13 @@
 <template>
   <div class="status-card club-car-king">
     <div class="card-header">
-      <img class="status-icon" src="/icons/疯狂赛车.png" alt="疯狂赛车" />
+      <img alt="疯狂赛车" class="status-icon" src="/icons/疯狂赛车.png">
       <div class="status-info">
         <h3>疯狂赛车</h3>
         <p>车辆仓库与品阶</p>
       </div>
       <div class="status-badge" :class="{ active: carList.length > 0 }">
-        <div class="status-dot" />
+        <div class="status-dot"></div>
         <span>{{
           carList.length > 0 ? `共 ${carList.length} 辆` : "暂无数据"
         }}</span>
@@ -18,26 +18,29 @@
       <div class="car-toolbar">
         <n-space size="small">
           <n-button
-            type="primary"
             size="small"
+            type="primary"
             :loading="carLoading"
             @click="fetchCarInfo"
-            >{{ carLoading ? "加载中..." : "刷新数据" }}</n-button
           >
+            {{ carLoading ? "加载中..." : "刷新数据" }}
+          </n-button>
           <n-button
-            size="small"
             secondary
+            size="small"
             :disabled="carLoading || !isConnected"
             @click="smartSendCar"
-            >智能发车</n-button
           >
+            智能发车
+          </n-button>
           <n-button
-            size="small"
             secondary
+            size="small"
             :disabled="carLoading || !isConnected"
             @click="claimAllCars"
-            >一键收车</n-button
           >
+            一键收车
+          </n-button>
           <n-tag size="small" :type="hasFreeRefresh ? 'success' : 'default'">
             {{
               hasFreeRefresh ? `有 ${freeCarsCount} 辆可免费刷新` : "无免费刷新"
@@ -57,56 +60,49 @@
           <div class="car-header">
             <img
               class="car-brand-icon"
-              :src="gradeIcon(c.color)"
               :alt="gradeLabel(c.color)"
-            />
-            <div class="car-badge" :class="'grade-' + (c.color || 0)">
+              :src="gradeIcon(c.color)"
+            >
+            <div class="car-badge" :class="`grade-${c.color || 0}`">
               {{ gradeLabel(c.color) }}
             </div>
             <div class="car-name">
-              {{ c.name || c.carName || "车辆 #" + (c.id || c.key) }}
+              {{ c.name || c.carName || `车辆 #${c.id || c.key}` }}
             </div>
           </div>
           <div class="car-meta">
             <div class="kv">
-              <span class="k">品阶</span
-              ><span class="v"
-                ><span
-                  class="grade-dot"
-                  :class="'grade-' + (c.color || 0)"
-                ></span
-                >{{ gradeLabel(c.color) }}</span
-              >
+              <span class="k">品阶</span><span class="v"><span
+                class="grade-dot"
+                :class="`grade-${c.color || 0}`"
+              ></span>{{ gradeLabel(c.color) }}</span>
             </div>
-            <div class="kv" v-if="c.level != null">
+            <div v-if="c.level != null" class="kv">
               <span class="k">等级</span><span class="v">{{ c.level }}</span>
             </div>
-            <div class="kv" v-if="c.star != null">
+            <div v-if="c.star != null" class="kv">
               <span class="k">星级</span><span class="v">{{ c.star }}</span>
             </div>
             <div class="kv">
-              <span class="k">状态</span
-              ><span class="v">{{
+              <span class="k">状态</span><span class="v">{{
                 Number(c.sendAt || 0) === 0 ? "未发车" : "已发车"
               }}</span>
             </div>
             <div class="kv">
-              <span class="k">帮手</span
-              ><span class="v">{{
+              <span class="k">帮手</span><span class="v">{{
                 Number(c.color || 0) >= 5 ? "可携带" : "—"
               }}</span>
             </div>
-            <div class="kv" v-if="isBigPrize(c.rewards)">
-              <span class="k">奖励</span
-              ><span class="v" style="color: #f59e0b">包含大奖</span>
+            <div v-if="isBigPrize(c.rewards)" class="kv">
+              <span class="k">奖励</span><span class="v" style="color: #f59e0b">包含大奖</span>
             </div>
           </div>
 
           <div class="car-actions">
             <n-button
               size="small"
-              :type="Number(c.refreshCount ?? 0) === 0 ? 'success' : 'warning'"
               :disabled="carLoading || Number(c.sendAt || 0) !== 0"
+              :type="Number(c.refreshCount ?? 0) === 0 ? 'success' : 'warning'"
               @click="refreshCar(c)"
             >
               {{
@@ -124,12 +120,12 @@
               {{ actionLabel(c) }}
             </n-button>
             <n-button
-              size="small"
               quaternary
+              size="small"
               :disabled="
-                carLoading ||
-                Number(c.color || 0) < 5 ||
-                Number(c.sendAt || 0) !== 0
+                carLoading
+                  || Number(c.color || 0) < 5
+                  || Number(c.sendAt || 0) !== 0
               "
               @click="openHelperDialog(c)"
             >
@@ -143,22 +139,22 @@
 
   <!-- 护卫选择弹窗（放置于同一模板中） -->
   <n-modal
-    v-model:show="helperDialogVisible"
     preset="card"
-    title="选择护卫"
     style="width: 520px"
+    title="选择护卫"
+    v-model:show="helperDialogVisible"
   >
     <div class="helper-body">
       <div class="helper-row">
         <span class="label">护卫成员</span>
         <n-select
-          v-model:value="helperSelection"
-          :options="helperOptions"
-          placeholder="选择俱乐部成员"
-          :loading="helperLoading"
           filterable
+          placeholder="选择俱乐部成员"
           style="width: 320px"
-        />
+          v-model:value="helperSelection"
+          :loading="helperLoading"
+          :options="helperOptions"
+        ></n-select>
       </div>
       <div class="tips">说明：次数满 4 的成员不可再被选择。</div>
     </div>
@@ -172,8 +168,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
 
 const tokenStore = useTokenStore();
@@ -193,7 +190,8 @@ onMounted(() => {
   }, 60000);
 });
 onUnmounted(() => {
-  if (nowTimer) clearInterval(nowTimer);
+  if (nowTimer)
+    clearInterval(nowTimer);
 });
 const isAfter20 = computed(() => {
   const d = new Date(nowTs.value);
@@ -209,7 +207,8 @@ const isActivityOpen = computed(() => {
 
 const isConnected = computed(() => {
   const t = tokenStore.selectedToken;
-  if (!t) return false;
+  if (!t)
+    return false;
   return tokenStore.getWebSocketStatus(t.id) === "connected";
 });
 
@@ -229,11 +228,12 @@ const normalizeCars = (raw) => {
   }
 
   // 兜底
-  let arr =
-    body.cars || body.list || body.data || body.carList || body.vehicles || [];
+  let arr
+    = body.cars || body.list || body.data || body.carList || body.vehicles || [];
   if (!Array.isArray(arr) && typeof arr === "object" && arr !== null)
     arr = Object.values(arr);
-  if (Array.isArray(body) && arr.length === 0) arr = body;
+  if (Array.isArray(body) && arr.length === 0)
+    arr = body;
   return (Array.isArray(arr) ? arr : []).map((it, idx) => ({
     key: idx,
     ...it,
@@ -245,8 +245,7 @@ const carList = computed(() => normalizeCars(carRaw.value));
 // 免费刷新信息：每辆车初次刷新免费（refreshCount === 0 表示可免费）
 const freeCarsCount = computed(
   () =>
-    (carList.value || []).filter((c) => Number(c.refreshCount ?? 0) === 0)
-      .length,
+    (carList.value || []).filter((c) => Number(c.refreshCount ?? 0) === 0).length,
 );
 const hasFreeRefresh = computed(() => freeCarsCount.value > 0);
 
@@ -286,19 +285,21 @@ const isBigPrize = (rewards) => {
     { type: 3, itemId: 1022, value: 2500 },
     { type: 3, itemId: 1001, value: 12 },
   ];
-  if (!Array.isArray(rewards)) return false;
+  if (!Array.isArray(rewards))
+    return false;
   return bigPrizes.some((p) =>
     rewards.find(
       (r) =>
-        r.type === p.type &&
-        r.itemId === p.itemId &&
-        Number(r.value || 0) >= p.value,
+        r.type === p.type
+        && r.itemId === p.itemId
+        && Number(r.value || 0) >= p.value,
     ),
   );
 };
 
 const countRacingRefreshTickets = (rewards) => {
-  if (!Array.isArray(rewards)) return 0;
+  if (!Array.isArray(rewards))
+    return 0;
   return rewards.reduce(
     (acc, r) =>
       acc + (r.type === 3 && r.itemId === 35002 ? Number(r.value || 0) : 0),
@@ -349,7 +350,7 @@ const fetchCarInfo = async () => {
       message.success("疯狂赛车数据已更新");
     }
   } catch (e) {
-    message.error("获取车辆数据失败：" + (e.message || "未知错误"));
+    message.error(`获取车辆数据失败：${e.message || "未知错误"}`);
   } finally {
     carLoading.value = false;
   }
@@ -357,7 +358,8 @@ const fetchCarInfo = async () => {
 
 // 初次挂载时，若已连接则尝试拉取
 watch(isConnected, (ok) => {
-  if (ok && !carFetched.value) fetchCarInfo();
+  if (ok && !carFetched.value)
+    fetchCarInfo();
 });
 
 // 刷新品阶（单车）
@@ -421,7 +423,7 @@ const refreshCar = async (car) => {
       );
     } catch (_) {}
   } catch (e) {
-    message.error("刷新失败：" + (e.message || "未知错误"));
+    message.error(`刷新失败：${e.message || "未知错误"}`);
   }
 };
 
@@ -470,9 +472,9 @@ const sendCar = async (car) => {
       // 更新底层 carRaw 数据源，确保后续计算一致
       const root = carRaw.value?.body || carRaw.value || {};
       if (
-        root.roleCar &&
-        root.roleCar.carDataMap &&
-        root.roleCar.carDataMap[car.id]
+        root.roleCar
+        && root.roleCar.carDataMap
+        && root.roleCar.carDataMap[car.id]
       ) {
         root.roleCar.carDataMap[car.id] = {
           ...root.roleCar.carDataMap[car.id],
@@ -480,9 +482,12 @@ const sendCar = async (car) => {
         };
       }
       // 直接更新展示对象关键字段
-      if (updated.sendAt != null) car.sendAt = updated.sendAt;
-      if (updated.color != null) car.color = updated.color;
-      if (updated.refreshCount != null) car.refreshCount = updated.refreshCount;
+      if (updated.sendAt != null)
+        car.sendAt = updated.sendAt;
+      if (updated.color != null)
+        car.color = updated.color;
+      if (updated.refreshCount != null)
+        car.refreshCount = updated.refreshCount;
       message.success("已发车");
     } else {
       // 回退到全量刷新
@@ -490,7 +495,7 @@ const sendCar = async (car) => {
       message.success("已发车");
     }
   } catch (e) {
-    message.error("发车失败：" + (e.message || "未知错误"));
+    message.error(`发车失败：${e.message || "未知错误"}`);
   }
 };
 
@@ -498,7 +503,8 @@ const sendCar = async (car) => {
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const canClaim = (car) => {
   const t = Number(car?.sendAt || 0);
-  if (!t) return false;
+  if (!t)
+    return false;
   const tsMs = t < 1e12 ? t * 1000 : t;
   return nowTs.value - tsMs >= FOUR_HOURS_MS;
 };
@@ -508,8 +514,10 @@ const claimCar = async (car) => {
   const token = tokenStore.selectedToken;
   if (!token || !isConnected.value)
     return message.warning("请先选择 Token 并建立连接");
-  if (!car?.id) return message.warning("未找到车辆ID");
-  if (!canClaim(car)) return message.warning("未到可收车时间（需超过4小时）");
+  if (!car?.id)
+    return message.warning("未找到车辆ID");
+  if (!canClaim(car))
+    return message.warning("未到可收车时间（需超过4小时）");
   try {
     message.info("收车中...");
     const resp = await tokenStore.sendMessageWithPromise(
@@ -523,9 +531,9 @@ const claimCar = async (car) => {
     // 同步底层 map（若存在）
     const root = carRaw.value?.body || carRaw.value || {};
     if (
-      root.roleCar &&
-      root.roleCar.carDataMap &&
-      root.roleCar.carDataMap[car.id]
+      root.roleCar
+      && root.roleCar.carDataMap
+      && root.roleCar.carDataMap[car.id]
     ) {
       root.roleCar.carDataMap[car.id] = {
         ...root.roleCar.carDataMap[car.id],
@@ -534,32 +542,37 @@ const claimCar = async (car) => {
     }
     message.success("收车完成");
   } catch (e) {
-    message.error("收车失败：" + (e.message || "未知错误"));
+    message.error(`收车失败：${e.message || "未知错误"}`);
   }
 };
 
 // 计算距可收车剩余时间（毫秒），负数代表已可收车
 const msUntilClaim = (car) => {
   const t = Number(car?.sendAt || 0);
-  if (!t) return 0;
+  if (!t)
+    return 0;
   const tsMs = t < 1e12 ? t * 1000 : t;
   return tsMs + FOUR_HOURS_MS - nowTs.value;
 };
 
 const formatRemaining = (ms) => {
-  if (ms <= 0) return "0分";
+  if (ms <= 0)
+    return "0分";
   const totalSec = Math.ceil(ms / 1000);
   const hours = Math.floor(totalSec / 3600);
   const minutes = Math.floor((totalSec % 3600) / 60);
-  if (hours > 0) return `${hours}小时${minutes}分`;
+  if (hours > 0)
+    return `${hours}小时${minutes}分`;
   return `${minutes}分`;
 };
 
 // 单按钮动作与状态
 const actionLabel = (car) => {
   const sent = Number(car?.sendAt || 0) !== 0;
-  if (!sent) return "发车";
-  if (canClaim(car)) return "收车";
+  if (!sent)
+    return "发车";
+  if (canClaim(car))
+    return "收车";
   return `收车(剩余${formatRemaining(msUntilClaim(car))})`;
 };
 
@@ -600,7 +613,7 @@ const claimAllCars = async () => {
     await fetchCarInfo();
     message.success("一键收车完成");
   } catch (e) {
-    message.error("一键收车失败：" + (e.message || "未知错误"));
+    message.error(`一键收车失败：${e.message || "未知错误"}`);
   }
 };
 
@@ -613,7 +626,8 @@ const smartSendCar = async () => {
     await fetchCarInfo();
     let tickets = Number(refreshTickets.value || 0);
     for (const car of carList.value) {
-      if (Number(car.sendAt || 0) !== 0) continue;
+      if (Number(car.sendAt || 0) !== 0)
+        continue;
       if (shouldSendCar(car, tickets)) {
         await sendCar(car);
         await new Promise((r) => setTimeout(r, 500));
@@ -621,9 +635,11 @@ const smartSendCar = async () => {
       }
       let shouldRefresh = false;
       const free = Number(car.refreshCount ?? 0) === 0;
-      if (tickets >= 6) shouldRefresh = true;
-      else if (free) shouldRefresh = true;
-      else {
+      if (tickets >= 6) {
+        shouldRefresh = true;
+      } else if (free) {
+        shouldRefresh = true;
+      } else {
         await sendCar(car);
         await new Promise((r) => setTimeout(r, 500));
         continue;
@@ -637,9 +653,11 @@ const smartSendCar = async () => {
           break;
         }
         const freeNow = Number(car.refreshCount ?? 0) === 0;
-        if (tickets >= 6) shouldRefresh = true;
-        else if (freeNow) shouldRefresh = true;
-        else {
+        if (tickets >= 6) {
+          shouldRefresh = true;
+        } else if (freeNow) {
+          shouldRefresh = true;
+        } else {
           await sendCar(car);
           await new Promise((r) => setTimeout(r, 500));
           break;
@@ -649,7 +667,7 @@ const smartSendCar = async () => {
     await fetchCarInfo();
     message.success("智能发车完成");
   } catch (e) {
-    message.error("智能发车失败：" + (e.message || "未知错误"));
+    message.error(`智能发车失败：${e.message || "未知错误"}`);
   }
 };
 
@@ -689,8 +707,8 @@ const openHelperDialog = async (car) => {
       {},
       10000,
     );
-    const map =
-      resp?.body?.memberHelpingCntMap || resp?.memberHelpingCntMap || {};
+    const map
+      = resp?.body?.memberHelpingCntMap || resp?.memberHelpingCntMap || {};
 
     // 生成候选列表（v<4 可选）
     const opts = legionMembers.value.map((m) => {
@@ -704,7 +722,7 @@ const openHelperDialog = async (car) => {
     });
     helperOptions.value = opts;
   } catch (e) {
-    message.error("获取护卫数据失败：" + (e.message || "未知错误"));
+    message.error(`获取护卫数据失败：${e.message || "未知错误"}`);
     helperOptions.value = [];
   } finally {
     helperLoading.value = false;

@@ -3,10 +3,10 @@
     <div class="identity-card embedded">
       <div class="card-header">
         <img
-          src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
           alt="身份牌"
           class="icon"
-        />
+          src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
+        >
         <div class="info">
           <h3>身份牌</h3>
           <p>角色与资源概览</p>
@@ -17,21 +17,19 @@
         <div class="role-profile-content">
           <div class="avatar-container">
             <img
-              :src="roleAvatar"
-              :alt="roleInfo.name || '角色'"
               class="role-avatar"
+              :alt="roleInfo.name || '角色'"
+              :src="roleAvatar"
               @error="handleAvatarError"
-            />
+            >
           </div>
           <div class="role-info-section">
             <div class="role-name">{{ roleInfo.name || "未知角色" }}</div>
             <div class="role-stats">
               <span class="level-text">Lv.{{ roleInfo.level || 1 }}</span>
-              <span class="power-value"
-                >战力 {{ formatPower(roleInfo.power) }}</span
-              >
+              <span class="power-value">战力 {{ formatPower(roleInfo.power) }}</span>
             </div>
-            <div class="activity-week" v-if="getCurrentActivityWeek">
+            <div v-if="getCurrentActivityWeek" class="activity-week">
               本周活动：{{ getCurrentActivityWeek }}
             </div>
           </div>
@@ -42,7 +40,7 @@
         </div>
       </div>
 
-      <div class="resources" :class="{ collapsed: !isExpanded }" v-if="hasRole">
+      <div v-if="hasRole" class="resources" :class="{ collapsed: !isExpanded }">
         <div v-for="res in resList" :key="res.label" class="res-item">
           <span class="label">{{ res.label }}</span>
           <span class="value">{{ res.value }}</span>
@@ -65,10 +63,10 @@
         </div>
         <div class="card-header">
           <img
-            src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
             alt="身份牌"
             class="icon"
-          />
+            src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
+          >
           <div class="info">
             <h3>身份牌</h3>
             <p>角色与战力概览</p>
@@ -83,21 +81,19 @@
           <div class="role-profile-content">
             <div class="avatar-container">
               <img
-                :src="roleAvatar"
-                :alt="roleInfo.name || '角色'"
                 class="role-avatar"
+                :alt="roleInfo.name || '角色'"
+                :src="roleAvatar"
                 @error="handleAvatarError"
-              />
+              >
             </div>
             <div class="role-info-section">
               <div class="role-name">{{ roleInfo.name || "未知角色" }}</div>
               <div class="role-stats">
                 <span class="level-text">Lv.{{ roleInfo.level || 1 }}</span>
-                <span class="power-value"
-                  >战力 {{ formatPower(roleInfo.power) }}</span
-                >
+                <span class="power-value">战力 {{ formatPower(roleInfo.power) }}</span>
               </div>
-              <div class="activity-week" v-if="getCurrentActivityWeek">
+              <div v-if="getCurrentActivityWeek" class="activity-week">
                 本周活动：{{ getCurrentActivityWeek }}
               </div>
             </div>
@@ -106,7 +102,7 @@
               <div class="rank-title">{{ rankInfo?.title }}</div>
             </div>
           </div>
-          <div class="glow-border" />
+          <div class="glow-border"></div>
         </div>
         <div v-else class="loading">正在获取角色信息...</div>
       </div>
@@ -115,24 +111,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
+const props = defineProps<{ visible?: boolean; embedded?: boolean }>();
+
+const emit = defineEmits(["close"]);
 
 const tokenStore = useTokenStore();
 
-const props = defineProps<{ visible?: boolean; embedded?: boolean }>();
-const emit = defineEmits(["close"]);
 const isExpanded = ref(false);
 
 const wsStatus = computed(() => {
-  if (!tokenStore.selectedToken) return "disconnected";
+  if (!tokenStore.selectedToken)
+    return "disconnected";
   return tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
 });
 
 const roleInfo = computed(() => {
   const gameData = tokenStore.gameData as any;
   const role = gameData?.roleInfo?.role;
-  if (!role) return {};
+  if (!role)
+    return {};
   return {
     roleId: role.roleId,
     name: role.name,
@@ -240,11 +241,14 @@ const rankInfo = computed(() => {
 });
 
 const formatPower = (power: number) => {
-  if (!power) return "0";
+  if (!power)
+    return "0";
   const yi = 100_000_000;
   const wan = 10_000;
-  if (power >= yi) return (power / yi).toFixed(1) + "亿";
-  if (power >= wan) return (power / wan).toFixed(1) + "万";
+  if (power >= yi)
+    return `${(power / yi).toFixed(1)}亿`;
+  if (power >= wan)
+    return `${(power / wan).toFixed(1)}万`;
   return power.toLocaleString();
 };
 
@@ -252,8 +256,10 @@ const formatNumber = (num: number) => {
   const n = Number(num || 0);
   const yi = 100_000_000;
   const wan = 10_000;
-  if (n >= yi) return (n / yi).toFixed(1) + "亿";
-  if (n >= wan) return (n / wan).toFixed(1) + "万";
+  if (n >= yi)
+    return `${(n / yi).toFixed(1)}亿`;
+  if (n >= wan)
+    return `${(n / wan).toFixed(1)}万`;
   return n.toLocaleString();
 };
 
@@ -262,18 +268,20 @@ const diamond = computed(() => (roleInfo.value as any).diamond ?? 0);
 
 // ——— 从 items 中解析数量（优先）———
 const getItemCount = (items: any, id: number): number | null => {
-  if (!items) return null;
+  if (!items)
+    return null;
   // 数组结构：[{id/ itemId, num/count/quantity}, ...]
   if (Array.isArray(items)) {
     const found = items.find(
       (it) => Number((it as any).id ?? (it as any).itemId) === id,
     );
-    if (!found) return 0;
+    if (!found)
+      return 0;
     return Number(
-      (found as any).num ??
-        (found as any).count ??
-        (found as any).quantity ??
-        0,
+      (found as any).num
+      ?? (found as any).count
+      ?? (found as any).quantity
+      ?? 0,
     );
   }
   // 对象结构：{ '1011': 3 } 或 { '1011': { num:3 } }
@@ -283,20 +291,23 @@ const getItemCount = (items: any, id: number): number | null => {
     const match = Object.values(items as any).find(
       (v: any) => Number(v?.itemId ?? v?.id) === id,
     );
-    if (match)
+    if (match) {
       return Number(
-        (match as any).num ??
-          (match as any).count ??
-          (match as any).quantity ??
-          0,
+        (match as any).num
+        ?? (match as any).count
+        ?? (match as any).quantity
+        ?? 0,
       );
+    }
     return 0;
   }
-  if (typeof node === "number") return Number(node);
-  if (typeof node === "object")
+  if (typeof node === "number")
+    return Number(node);
+  if (typeof node === "object") {
     return Number(
       (node as any).num ?? (node as any).count ?? (node as any).quantity ?? 0,
     );
+  }
   return Number(node) || 0;
 };
 
@@ -314,7 +325,7 @@ const jadeFromItems = computed(() => getItemCount(items.value, 1023));
 const whiteJadeFromItems = computed(() => getItemCount(items.value, 1022));
 const advanceStoneFromItems = computed(() => getItemCount(items.value, 1003));
 const DanFromItems = computed(() => getItemCount(items.value, 1017));
-//10002蓝玉 10003红玉 10101四圣碎片
+// 10002蓝玉 10003红玉 10101四圣碎片
 const blueJadeFromItems = computed(() => getItemCount(items.value, 10002));
 const redJadeFromItems = computed(() => getItemCount(items.value, 10003));
 const fourSaintFragmentFromItems = computed(() =>
@@ -365,41 +376,44 @@ const cheerCoinFromItems = computed(() => getItemCount(items.value, 2101)); // �
 
 const getCurrentActivityWeek = computed(() => {
   const now = new Date();
-  const start = new Date('2025-12-12T12:00:00'); // 起始时间：黑市周开始
+  const start = new Date("2025-12-12T12:00:00"); // 起始时间：黑市周开始
   const weekDuration = 7 * 24 * 60 * 60 * 1000; // 一周毫秒数
   const cycleDuration = 3 * weekDuration; // 三周期毫秒数
-  
+
   const elapsed = now - start;
-  if (elapsed < 0) return null; // 活动开始前
-  
+  if (elapsed < 0)
+    return null; // 活动开始前
+
   const cyclePosition = elapsed % cycleDuration;
-  
+
   if (cyclePosition < weekDuration) {
-    return '黑市周';
+    return "黑市周";
   } else if (cyclePosition < 2 * weekDuration) {
-    return '招募周';
+    return "招募周";
   } else {
-    return '宝箱周';
+    return "宝箱周";
   }
 });
 
 // 兼容旧字段（fishing.*）作为回退
 const normalRod = computed(() => {
   const fromItems = normalRodFromItems.value;
-  if (fromItems !== null && fromItems !== undefined) return fromItems;
+  if (fromItems !== null && fromItems !== undefined)
+    return fromItems;
   return (
-    (roleInfo.value as any)?.fishing?.normalRod ??
-    (roleInfo.value as any)?.fishing?.rod ??
-    null
+    (roleInfo.value as any)?.fishing?.normalRod
+    ?? (roleInfo.value as any)?.fishing?.rod
+    ?? null
   );
 });
 const goldRod = computed(() => {
   const fromItems = goldRodFromItems.value;
-  if (fromItems !== null && fromItems !== undefined) return fromItems;
+  if (fromItems !== null && fromItems !== undefined)
+    return fromItems;
   return (
-    (roleInfo.value as any)?.fishing?.goldRod ??
-    (roleInfo.value as any)?.fishing?.vipRod ??
-    null
+    (roleInfo.value as any)?.fishing?.goldRod
+    ?? (roleInfo.value as any)?.fishing?.vipRod
+    ?? null
   );
 });
 const display = (n: number | null | undefined) =>
@@ -657,16 +671,16 @@ const initializeAvatar = () => {
     roleAvatar.value = (roleInfo.value as any).headImg;
   } else {
     if (!selectedDefaultAvatar.value) {
-      const key =
-        (roleInfo.value as any).roleId ||
-        (roleInfo.value as any).name ||
-        "default";
+      const key
+        = (roleInfo.value as any).roleId
+          || (roleInfo.value as any).name
+          || "default";
       const hash = Array.from(String(key)).reduce(
         (acc, ch) => acc + ch.charCodeAt(0),
         0,
       );
-      selectedDefaultAvatar.value =
-        defaultAvatars[hash % defaultAvatars.length]!;
+      selectedDefaultAvatar.value
+        = defaultAvatars[hash % defaultAvatars.length]!;
     }
     roleAvatar.value = selectedDefaultAvatar.value;
   }

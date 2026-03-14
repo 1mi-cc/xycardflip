@@ -10,54 +10,24 @@ const config = antfu({
     "style/arrow-parens": ["error", "always"],
     "unused-imports/no-unused-vars": "warn",
     "unused-imports/no-unused-imports": "warn",
-    "perfectionist/sort-imports": ["off"],
-    "node/prefer-global/process": ["off"],
-    "import/order": ["error", {
-      "groups": [
+    "perfectionist/sort-imports": ["warn", {
+      type: "natural",
+      order: "asc",
+      groups: [
         "builtin",
         "external",
         "internal",
-        "type",
-        "sibling",
         "parent",
+        "sibling",
         "index",
         "object",
+        "type",
         "unknown",
       ],
-      "newlines-between": "always",
-      "distinctGroup": true,
-      "pathGroups": [
-        {
-          pattern: "@capacitor/**",
-          group: "external",
-          position: "before",
-        },
-        {
-          pattern: "@arco-design/**",
-          group: "external",
-          position: "before",
-        },
-        {
-          pattern: "#/**",
-          group: "external",
-          position: "after",
-        },
-        {
-          pattern: "@@/**",
-          group: "external",
-          position: "after",
-        },
-        {
-          pattern: "@/**",
-          group: "external",
-          position: "after",
-        },
-      ],
-      "pathGroupsExcludedImportTypes": ["builtin"],
-      "alphabetize": {
-        order: "asc",
-      },
+      newlinesBetween: "always",
+      internalPattern: ["^@/", "^@components/", "^@views/", "^@utils/", "^@stores/", "^@api/", "^@assets/"],
     }],
+    "node/prefer-global/process": ["off"],
     "ts/no-use-before-define": ["off"],
     "ts/array-callback-return": ["off"],
     "ts/no-namespace": ["warn", {

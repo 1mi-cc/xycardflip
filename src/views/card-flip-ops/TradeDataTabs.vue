@@ -1,12 +1,12 @@
 <template>
   <n-tabs
-    :value="activeTab"
-    type="line"
     animated
+    type="line"
+    :value="activeTab"
     @update:value="value => $emit('update:activeTab', value)"
   >
     <n-tab-pane name="opportunities" tab="待审核机会">
-      <n-card :bordered="false" class="table-card">
+      <n-card class="table-card" :bordered="false">
         <div class="tab-panel-head">
           <div>
             <div class="section-title">待审核机会</div>
@@ -19,7 +19,7 @@
 
         <n-spin :show="loading || listsLoading">
           <div v-if="opportunities.length === 0" class="empty-wrap">
-            <n-empty description="暂无待审核机会" />
+            <n-empty description="暂无待审核机会"></n-empty>
           </div>
 
           <n-table v-else striped class="ops-table">
@@ -57,8 +57,8 @@
                       审批买入
                     </n-button>
                     <n-button
-                      size="small"
                       tertiary
+                      size="small"
                       type="error"
                       @click="$emit('reject', item)"
                     >
@@ -74,7 +74,7 @@
     </n-tab-pane>
 
     <n-tab-pane name="blockedRisk" tab="风控拦截">
-      <n-card :bordered="false" class="table-card">
+      <n-card class="table-card" :bordered="false">
         <div class="tab-panel-head">
           <div>
             <div class="section-title">风控拦截</div>
@@ -88,27 +88,27 @@
         <n-spin :show="loading || listsLoading">
           <div class="table-toolbar">
             <n-input-number
-              :value="blockedRiskThreshold"
-              :min="0"
-              :max="100"
-              :step="1"
-              style="width: 180px"
               placeholder="复核风险阈值"
+              style="width: 180px"
+              :max="100"
+              :min="0"
+              :step="1"
+              :value="blockedRiskThreshold"
               @update:value="value => $emit('update:blockedRiskThreshold', value)"
-            />
+            ></n-input-number>
             <n-button
               type="primary"
-              :loading="blockedBatchLoading"
               :disabled="blockedOpportunities.length === 0"
+              :loading="blockedBatchLoading"
               @click="$emit('sendBlockedBatchToReview')"
             >
               阈值内批量复核
             </n-button>
             <n-button
-              type="error"
               tertiary
-              :loading="blockedRejectBatchLoading"
+              type="error"
               :disabled="blockedOpportunities.length === 0"
+              :loading="blockedRejectBatchLoading"
               @click="$emit('rejectBlockedBatch')"
             >
               一键忽略
@@ -116,7 +116,7 @@
           </div>
 
           <div v-if="blockedOpportunities.length === 0" class="empty-wrap">
-            <n-empty description="暂无风控拦截机会" />
+            <n-empty description="暂无风控拦截机会"></n-empty>
           </div>
 
           <n-table v-else striped class="ops-table">
@@ -147,9 +147,9 @@
                 <td>
                   <n-space
                     v-if="item.risk.reasons.length > 0"
+                    wrap
                     class="risk-reason-list"
                     size="small"
-                    wrap
                   >
                     <n-tag
                       v-for="reason in item.risk.reasons"
@@ -175,8 +175,8 @@
                       申请复核
                     </n-button>
                     <n-button
-                      size="small"
                       tertiary
+                      size="small"
                       type="error"
                       @click="$emit('reject', item)"
                     >
@@ -192,7 +192,7 @@
     </n-tab-pane>
 
     <n-tab-pane name="activeTrades" tab="进行中交易">
-      <n-card :bordered="false" class="table-card">
+      <n-card class="table-card" :bordered="false">
         <div class="tab-panel-head">
           <div>
             <div class="section-title">进行中交易</div>
@@ -205,7 +205,7 @@
 
         <n-spin :show="loading || listsLoading">
           <div v-if="activeTrades.length === 0" class="empty-wrap">
-            <n-empty description="暂无进行中交易" />
+            <n-empty description="暂无进行中交易"></n-empty>
           </div>
 
           <n-table v-else striped class="ops-table">
@@ -327,8 +327,8 @@
                         实盘卖出
                       </n-button>
                       <n-button
-                        size="small"
                         tertiary
+                        size="small"
                         :loading="pricingLoadingTradeId === trade.trade_id && pricingAction === 'preview'"
                         @click="$emit('previewTradePricing', trade)"
                       >
@@ -353,7 +353,7 @@
     </n-tab-pane>
 
     <n-tab-pane name="soldTrades" tab="已卖出记录">
-      <n-card :bordered="false" class="table-card">
+      <n-card class="table-card" :bordered="false">
         <div class="tab-panel-head">
           <div>
             <div class="section-title">已卖出记录</div>
@@ -364,7 +364,7 @@
 
         <n-spin :show="loading || listsLoading">
           <div v-if="soldTrades.length === 0" class="empty-wrap">
-            <n-empty description="暂无已卖出记录" />
+            <n-empty description="暂无已卖出记录"></n-empty>
           </div>
 
           <n-table v-else striped class="ops-table">
@@ -398,7 +398,7 @@
     </n-tab-pane>
 
     <n-tab-pane name="executionLogs" tab="执行日志">
-      <n-card :bordered="false" class="table-card">
+      <n-card class="table-card" :bordered="false">
         <div class="tab-panel-head">
           <div>
             <div class="section-title">执行日志</div>
@@ -410,36 +410,36 @@
         <n-spin :show="loading || executionLogsLoading">
           <div class="table-toolbar">
             <n-input
-              :value="executionLogFilters.trade_id"
               clearable
               placeholder="交易 ID"
               style="width: 120px"
+              :value="executionLogFilters.trade_id"
               @update:value="value => updateLogFilter('trade_id', value)"
-            />
+            ></n-input>
             <n-select
-              :value="executionLogFilters.action"
+              style="width: 140px"
               :options="executionActionOptions"
-              style="width: 140px"
+              :value="executionLogFilters.action"
               @update:value="value => updateLogFilter('action', value)"
-            />
+            ></n-select>
             <n-select
-              :value="executionLogFilters.provider"
+              style="width: 140px"
               :options="executionProviderOptions"
-              style="width: 140px"
+              :value="executionLogFilters.provider"
               @update:value="value => updateLogFilter('provider', value)"
-            />
+            ></n-select>
             <n-select
-              :value="executionLogFilters.mode"
+              style="width: 140px"
               :options="executionModeOptions"
-              style="width: 140px"
+              :value="executionLogFilters.mode"
               @update:value="value => updateLogFilter('mode', value)"
-            />
+            ></n-select>
             <n-select
-              :value="executionLogFilters.result"
-              :options="executionResultOptions"
               style="width: 140px"
+              :options="executionResultOptions"
+              :value="executionLogFilters.result"
               @update:value="value => updateLogFilter('result', value)"
-            />
+            ></n-select>
             <n-button
               size="small"
               type="primary"
@@ -448,23 +448,23 @@
             >
               刷新日志
             </n-button>
-            <n-button size="small" tertiary @click="$emit('resetExecutionLogFilters')">
+            <n-button tertiary size="small" @click="$emit('resetExecutionLogFilters')">
               重置筛选
             </n-button>
 
             <n-select
-              :value="executionRetryAction"
-              :options="executionRetryActionOptions"
               style="width: 140px"
+              :options="executionRetryActionOptions"
+              :value="executionRetryAction"
               @update:value="value => $emit('update:executionRetryAction', value)"
-            />
+            ></n-select>
             <n-input-number
-              :value="executionRetryLimit"
-              :min="1"
-              :max="200"
               style="width: 120px"
+              :max="200"
+              :min="1"
+              :value="executionRetryLimit"
               @update:value="value => $emit('update:executionRetryLimit', value)"
-            />
+            ></n-input-number>
             <n-switch
               :value="executionRetryDryRun"
               @update:value="value => $emit('update:executionRetryDryRun', value)"
@@ -490,10 +490,10 @@
           </div>
 
           <div v-if="executionLogs.length === 0" class="empty-wrap">
-            <n-empty description="暂无执行日志" />
+            <n-empty description="暂无执行日志"></n-empty>
           </div>
 
-          <n-table v-else striped size="small" class="ops-table">
+          <n-table v-else striped class="ops-table" size="small">
             <thead>
               <tr>
                 <th>时间</th>

@@ -1,13 +1,14 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { computed, ref } from "vue";
+
 import {
-  getUserToken as dbGetUserToken,
-  setUserToken as dbSetUserToken,
-  clearUserToken as dbClearUserToken,
-  getAllGameTokens as dbGetAllGameTokens,
-  putGameToken as dbPutGameToken,
-  deleteGameToken as dbDeleteGameToken,
   clearGameTokens as dbClearGameTokens,
+  clearUserToken as dbClearUserToken,
+  deleteGameToken as dbDeleteGameToken,
+  getAllGameTokens as dbGetAllGameTokens,
+  getUserToken as dbGetUserToken,
+  putGameToken as dbPutGameToken,
+  setUserToken as dbSetUserToken,
   migrateFromLocalStorageIfNeeded,
 } from "@/utils/tokenDb";
 
@@ -200,13 +201,13 @@ export const useLocalTokenStore = defineStore("localToken", () => {
 
       // 构建WebSocket URL
       const baseWsUrl = "wss://xxz-xyzw.hortorgames.com/agent";
-      const wsUrl =
-        customWsUrl ||
-        WsAgent.buildUrl(baseWsUrl, {
-          p: actualToken,
-          e: "x",
-          lang: "chinese",
-        });
+      const wsUrl
+        = customWsUrl
+          || WsAgent.buildUrl(baseWsUrl, {
+            p: actualToken,
+            e: "x",
+            lang: "chinese",
+          });
 
       // 保存连接信息
       wsConnections.value[roleId] = {
@@ -270,8 +271,8 @@ export const useLocalTokenStore = defineStore("localToken", () => {
       }
       // 如果是旧的WebSocket实例
       else if (
-        connection.connection &&
-        typeof connection.connection.close === "function"
+        connection.connection
+        && typeof connection.connection.close === "function"
       ) {
         connection.connection.close();
       }
@@ -343,7 +344,7 @@ export const useLocalTokenStore = defineStore("localToken", () => {
         // 降噪
         return response;
       } else {
-        throw new Error(`未知的游戏命令: ${commandName}`);
+        throw new TypeError(`未知的游戏命令: ${commandName}`);
       }
     } catch (error) {
       console.error(`发送游戏命令失败 [${roleId}] ${commandName}:`, error);
@@ -444,7 +445,8 @@ export const useLocalTokenStore = defineStore("localToken", () => {
         dbGetAllGameTokens(),
       ]);
 
-      if (dbUser) userToken.value = dbUser;
+      if (dbUser)
+        userToken.value = dbUser;
       gameTokens.value = dbTokens || {};
 
       // 清理过期token（会同步更新 DB）

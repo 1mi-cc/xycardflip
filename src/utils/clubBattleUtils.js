@@ -34,7 +34,7 @@ export function getLastSaturday() {
     const firstDayOfWeek = firstDay.getDay();
 
     // 计算本月第一个周日的日期
-    let firstSunday = new Date(year, month, 1);
+    const firstSunday = new Date(year, month, 1);
     if (firstDayOfWeek === 0) {
       // 本月第一天就是周日
       firstSunday.setDate(1);

@@ -1,8 +1,8 @@
-﻿<template>
+<template>
   <div class="admin-shell" :class="{ collapsed: isSidebarCollapsed }">
     <aside class="sidebar">
       <div class="logo-wrap">
-        <img src="/icons/xiaoyugan.png" alt="XYZW" class="brand-logo" />
+        <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
         <span v-if="!isSidebarCollapsed" class="brand-text">XYZW Admin</span>
       </div>
 
@@ -11,14 +11,14 @@
           <router-link
             v-for="item in flatNavItems"
             :key="item.path"
-            :to="item.path"
-            class="side-link side-link-collapsed"
             active-class="active"
+            class="side-link side-link-collapsed"
+            :to="item.path"
           >
             <n-tooltip placement="right" trigger="hover">
               <template #trigger>
                 <n-icon class="side-icon">
-                  <component :is="item.icon" />
+                  <component :is="item.icon"></component>
                 </n-icon>
               </template>
               {{ item.label }}
@@ -31,12 +31,12 @@
             <button class="group-header" @click="toggleGroup(group.key)">
               <div class="group-title-wrap">
                 <n-icon class="side-icon">
-                  <component :is="group.icon" />
+                  <component :is="group.icon"></component>
                 </n-icon>
                 <span>{{ group.label }}</span>
               </div>
               <n-icon class="group-arrow" :class="{ open: isGroupExpanded(group.key) }">
-                <ChevronDown />
+                <ChevronDown></ChevronDown>
               </n-icon>
             </button>
 
@@ -44,12 +44,12 @@
               <template v-for="item in group.children" :key="item.path || `${group.key}-${item.label}`">
                 <router-link
                   v-if="!item.children || !item.children.length"
-                  :to="item.path"
-                  class="side-link side-link-child"
                   active-class="active"
+                  class="side-link side-link-child"
+                  :to="item.path"
                 >
                   <n-icon class="side-icon">
-                    <component :is="item.icon" />
+                    <component :is="item.icon"></component>
                   </n-icon>
                   <span>{{ item.label }}</span>
                 </router-link>
@@ -57,7 +57,7 @@
                 <div v-else class="subtree-wrap">
                   <div class="side-link side-link-parent">
                     <n-icon class="side-icon">
-                      <component :is="item.icon" />
+                      <component :is="item.icon"></component>
                     </n-icon>
                     <span>{{ item.label }}</span>
                   </div>
@@ -65,12 +65,12 @@
                   <router-link
                     v-for="child in item.children"
                     :key="child.path"
-                    :to="child.path"
-                    class="side-link side-link-grandchild"
                     active-class="active"
+                    class="side-link side-link-grandchild"
+                    :to="child.path"
                   >
                     <n-icon class="side-icon">
-                      <component :is="child.icon" />
+                      <component :is="child.icon"></component>
                     </n-icon>
                     <span>{{ child.label }}</span>
                   </router-link>
@@ -86,27 +86,27 @@
       <header class="topbar">
         <div class="topbar-left">
           <button class="icon-btn mobile-only" @click="isMobileMenuOpen = true">
-            <n-icon><Menu /></n-icon>
+            <n-icon><Menu></Menu></n-icon>
           </button>
           <button class="icon-btn desktop-only" @click="toggleSidebar">
-            <n-icon><Menu /></n-icon>
+            <n-icon><Menu></Menu></n-icon>
           </button>
           <div class="page-title">{{ currentPageTitle }}</div>
         </div>
 
         <div class="topbar-right">
-          <n-tag size="small" type="info" class="role-pill">
+          <n-tag class="role-pill" size="small" type="info">
             {{ currentRoleLabel }}
           </n-tag>
-          <n-tag size="small" :bordered="false" class="perm-pill">
+          <n-tag class="perm-pill" size="small" :bordered="false">
             {{ permissionSourceLabel }}
           </n-tag>
-          <ThemeToggle />
+          <ThemeToggle></ThemeToggle>
           <n-dropdown :options="userMenuOptions" @select="handleUserAction">
             <div class="user-info">
-              <n-avatar src="" size="small" fallback-src="/icons/xiaoyugan.png" />
+              <n-avatar fallback-src="/icons/xiaoyugan.png" size="small" src=""></n-avatar>
               <span class="username">{{ authDisplayName }}</span>
-              <n-icon><ChevronDown /></n-icon>
+              <n-icon><ChevronDown></ChevronDown></n-icon>
             </div>
           </n-dropdown>
         </div>
@@ -132,7 +132,7 @@
           >
             <span class="tag-text">{{ tag.title }}</span>
             <n-icon v-if="!tag.affix" class="tag-close" @click.stop="closeTag(tag)">
-              <Close />
+              <Close></Close>
             </n-icon>
           </button>
         </div>
@@ -142,26 +142,26 @@
         </n-dropdown>
 
         <n-dropdown
+          placement="bottom-start"
           trigger="manual"
+          :options="tagContextMenuOptions"
           :show="tagContextMenuShow"
           :x="tagContextMenuX"
           :y="tagContextMenuY"
-          :options="tagContextMenuOptions"
-          placement="bottom-start"
           @select="handleTagContextAction"
-        />
+        ></n-dropdown>
       </div>
 
       <main class="page-container">
-        <router-view :key="routeViewKey" />
+        <router-view :key="routeViewKey"></router-view>
       </main>
     </div>
 
     <n-drawer
-      v-model:show="isMobileMenuOpen"
-      placement="left"
-      :width="260"
       class="mobile-drawer"
+      placement="left"
+      v-model:show="isMobileMenuOpen"
+      :width="260"
     >
       <div class="drawer-menu">
         <div v-for="group in navGroups" :key="`drawer-${group.key}`" class="drawer-group">
@@ -169,13 +169,13 @@
           <template v-for="item in group.children" :key="item.path || `drawer-${group.key}-${item.label}`">
             <router-link
               v-if="!item.children || !item.children.length"
-              :to="item.path"
-              class="drawer-item"
               active-class="active"
+              class="drawer-item"
+              :to="item.path"
               @click="isMobileMenuOpen = false"
             >
               <n-icon class="side-icon">
-                <component :is="item.icon" />
+                <component :is="item.icon"></component>
               </n-icon>
               <span>{{ item.label }}</span>
             </router-link>
@@ -185,13 +185,13 @@
               <router-link
                 v-for="child in item.children"
                 :key="child.path"
-                :to="child.path"
-                class="drawer-item drawer-item-child"
                 active-class="active"
+                class="drawer-item drawer-item-child"
+                :to="child.path"
                 @click="isMobileMenuOpen = false"
               >
                 <n-icon class="side-icon">
-                  <component :is="child.icon" />
+                  <component :is="child.icon"></component>
                 </n-icon>
                 <span>{{ child.label }}</span>
               </router-link>
@@ -204,9 +204,6 @@
 </template>
 
 <script setup>
-import { selectedToken, useTokenStore } from "@/stores/tokenStore";
-import { useAuthStore } from "@/stores/auth";
-import ThemeToggle from "@/components/Common/ThemeToggle.vue";
 import {
   ChatbubbleEllipsesSharp,
   ChevronDown,
@@ -219,9 +216,13 @@ import {
   Settings,
   TrendingUp,
 } from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useMessage } from "naive-ui";
+
+import ThemeToggle from "@/components/Common/ThemeToggle.vue";
+import { useAuthStore } from "@/stores/auth";
+import { selectedToken, useTokenStore } from "@/stores/tokenStore";
 
 const SIDEBAR_COLLAPSE_KEY = "xyzw_layout_sidebar_collapsed_v1";
 const SIDEBAR_GROUPS_KEY = "xyzw_layout_sidebar_groups_v1";
@@ -381,14 +382,14 @@ const containsPathInItems = (items = [], targetPath = "") => {
 
 const navGroups = computed(() => {
   return rawNavGroups
-    .map(group => ({
+    .map((group) => ({
       ...group,
       children: filterNavItemsByPermission(group.children),
     }))
-    .filter(group => group.children.length > 0);
+    .filter((group) => group.children.length > 0);
 });
 
-const flatNavItems = computed(() => navGroups.value.flatMap(group => flattenNavLeafItems(group.children)));
+const flatNavItems = computed(() => navGroups.value.flatMap((group) => flattenNavLeafItems(group.children)));
 
 const tagActionOptions = computed(() => ([
   { label: "刷新当前", key: "refreshCurrent" },
@@ -405,7 +406,7 @@ const tagContextMenuOptions = computed(() => {
     { label: "刷新页面", key: "refresh" },
   ];
 
-  const isDefaultAffix = defaultAffixTags.some(item => item.path === tag.path);
+  const isDefaultAffix = defaultAffixTags.some((item) => item.path === tag.path);
   if (!isDefaultAffix) {
     options.push({
       label: tag.affix ? "取消固定" : "固定标签",
@@ -423,14 +424,14 @@ const tagContextMenuOptions = computed(() => {
   return options;
 });
 
-const normalizePath = path => (path || "").split("?")[0];
+const normalizePath = (path) => (path || "").split("?")[0];
 
 const toStringArray = (value) => {
   if (!Array.isArray(value))
     return [];
   return value
-    .filter(item => typeof item === "string")
-    .map(item => item.trim())
+    .filter((item) => typeof item === "string")
+    .map((item) => item.trim())
     .filter(Boolean);
 };
 
@@ -490,8 +491,7 @@ const resolvePermissionsFromStorage = () => {
     const list = toStringArray(savedPermissions);
     if (list.length)
       return list;
-  }
-  catch {
+  } catch {
     // ignore local parse error
   }
 
@@ -506,8 +506,7 @@ const resolvePermissionsFromStorage = () => {
     ];
     if (fromUser.length)
       return [...new Set(fromUser)];
-  }
-  catch {
+  } catch {
     // ignore local parse error
   }
   return [];
@@ -539,13 +538,11 @@ const fetchRemotePermissions = async () => {
         if (perms.length) {
           return perms;
         }
-      }
-      catch {
+      } catch {
         // keep probing next endpoint
       }
     }
-  }
-  finally {
+  } finally {
     permissionFetchInFlight.value = false;
   }
   return [];
@@ -591,7 +588,7 @@ const sortVisitedTags = () => {
 
     return a.index - b.index;
   });
-  visitedTags.value = withIndex.map(item => item.tag);
+  visitedTags.value = withIndex.map((item) => item.tag);
 };
 
 const findNavItemByPath = (path) => {
@@ -677,7 +674,7 @@ const permissionSourceLabel = computed(() => {
   return "权限来源: 默认";
 });
 
-const isTagActive = tag => normalizePath(route.path) === tag.path;
+const isTagActive = (tag) => normalizePath(route.path) === tag.path;
 
 const persistSidebarState = () => {
   localStorage.setItem(SIDEBAR_COLLAPSE_KEY, String(isSidebarCollapsed.value));
@@ -703,8 +700,7 @@ const ensureAffixTags = (tags) => {
         path: normalizedPath,
         affix: Boolean(tag.affix),
       });
-    }
-    else {
+    } else {
       const base = map.get(normalizedPath);
       map.set(normalizedPath, {
         ...base,
@@ -729,12 +725,12 @@ const ensureAffixTags = (tags) => {
       return aDefault - bDefault;
     return a.index - b.index;
   });
-  return withIndex.map(item => item.tag);
+  return withIndex.map((item) => item.tag);
 };
 
 const ensureExpandedGroupForPath = (path) => {
   const normalizedPath = normalizePath(path);
-  const group = navGroups.value.find(g => containsPathInItems(g.children, normalizedPath));
+  const group = navGroups.value.find((g) => containsPathInItems(g.children, normalizedPath));
   if (group && !expandedGroupKeys.value.includes(group.key)) {
     expandedGroupKeys.value = [...expandedGroupKeys.value, group.key];
     persistSidebarState();
@@ -747,15 +743,14 @@ const addVisitedTag = (path, title, affix = false) => {
     return;
 
   const nextTitle = String(title || findNavItemByPath(normalizedPath)?.label || normalizedPath);
-  const idx = visitedTags.value.findIndex(tag => tag.path === normalizedPath);
+  const idx = visitedTags.value.findIndex((tag) => tag.path === normalizedPath);
   if (idx >= 0) {
     visitedTags.value[idx] = {
       ...visitedTags.value[idx],
       title: nextTitle,
       affix: visitedTags.value[idx].affix || affix,
     };
-  }
-  else {
+  } else {
     visitedTags.value.push({
       title: nextTitle,
       path: normalizedPath,
@@ -766,7 +761,7 @@ const addVisitedTag = (path, title, affix = false) => {
   sortVisitedTags();
 
   if (visitedTags.value.length > 20) {
-    const removableIndex = visitedTags.value.findIndex(tag => !tag.affix);
+    const removableIndex = visitedTags.value.findIndex((tag) => !tag.affix);
     if (removableIndex >= 0)
       visitedTags.value.splice(removableIndex, 1);
   }
@@ -777,7 +772,7 @@ const addVisitedTag = (path, title, affix = false) => {
 const addCurrentRouteTag = () => {
   const path = normalizePath(route.path);
   const title = currentPageTitle.value;
-  const isAffix = defaultAffixTags.some(tag => tag.path === path);
+  const isAffix = defaultAffixTags.some((tag) => tag.path === path);
   addVisitedTag(path, title, isAffix);
   ensureExpandedGroupForPath(path);
 };
@@ -812,7 +807,7 @@ const closeTag = (tag) => {
   if (tag.affix)
     return;
 
-  const index = visitedTags.value.findIndex(item => item.path === tag.path);
+  const index = visitedTags.value.findIndex((item) => item.path === tag.path);
   if (index < 0)
     return;
 
@@ -828,7 +823,7 @@ const closeTag = (tag) => {
 
 const closeOtherTags = (targetPath = normalizePath(route.path)) => {
   const normalizedPath = normalizePath(targetPath);
-  visitedTags.value = visitedTags.value.filter(tag => tag.affix || tag.path === normalizedPath);
+  visitedTags.value = visitedTags.value.filter((tag) => tag.affix || tag.path === normalizedPath);
   sortVisitedTags();
   persistTags();
 };
@@ -845,11 +840,11 @@ const toggleTagAffix = (tag, affix) => {
     return;
 
   const normalizedPath = normalizePath(tag.path);
-  const isDefaultAffix = defaultAffixTags.some(item => item.path === normalizedPath);
+  const isDefaultAffix = defaultAffixTags.some((item) => item.path === normalizedPath);
   if (isDefaultAffix && affix === false)
     return;
 
-  const idx = visitedTags.value.findIndex(item => item.path === normalizedPath);
+  const idx = visitedTags.value.findIndex((item) => item.path === normalizedPath);
   if (idx < 0)
     return;
 
@@ -924,13 +919,12 @@ const toggleSidebar = () => {
   persistSidebarState();
 };
 
-const isGroupExpanded = key => expandedGroupKeys.value.includes(key);
+const isGroupExpanded = (key) => expandedGroupKeys.value.includes(key);
 
 const toggleGroup = (key) => {
   if (isGroupExpanded(key)) {
-    expandedGroupKeys.value = expandedGroupKeys.value.filter(item => item !== key);
-  }
-  else {
+    expandedGroupKeys.value = expandedGroupKeys.value.filter((item) => item !== key);
+  } else {
     expandedGroupKeys.value = [...expandedGroupKeys.value, key];
   }
   persistSidebarState();
@@ -967,18 +961,17 @@ onMounted(async () => {
     isSidebarCollapsed.value = savedCollapsed === "true";
   }
 
-  const allGroupKeys = navGroups.value.map(group => group.key);
+  const allGroupKeys = navGroups.value.map((group) => group.key);
 
   try {
     const savedGroupsRaw = localStorage.getItem(SIDEBAR_GROUPS_KEY);
     if (savedGroupsRaw) {
       const savedGroups = JSON.parse(savedGroupsRaw);
       if (Array.isArray(savedGroups) && savedGroups.length) {
-        expandedGroupKeys.value = savedGroups.filter(groupKey => allGroupKeys.includes(groupKey));
+        expandedGroupKeys.value = savedGroups.filter((groupKey) => allGroupKeys.includes(groupKey));
       }
     }
-  }
-  catch {
+  } catch {
     expandedGroupKeys.value = allGroupKeys;
   }
 
@@ -991,12 +984,10 @@ onMounted(async () => {
     if (savedTagsRaw) {
       const savedTags = JSON.parse(savedTagsRaw);
       visitedTags.value = ensureAffixTags(Array.isArray(savedTags) ? savedTags : []);
-    }
-    else {
+    } else {
       visitedTags.value = [...defaultAffixTags];
     }
-  }
-  catch {
+  } catch {
     visitedTags.value = [...defaultAffixTags];
   }
 
@@ -1037,9 +1028,9 @@ watch(
 );
 
 watch(navGroups, (groups) => {
-  const allowedKeys = new Set(groups.map(group => group.key));
-  const filtered = expandedGroupKeys.value.filter(key => allowedKeys.has(key));
-  expandedGroupKeys.value = filtered.length ? filtered : groups.map(group => group.key);
+  const allowedKeys = new Set(groups.map((group) => group.key));
+  const filtered = expandedGroupKeys.value.filter((key) => allowedKeys.has(key));
+  expandedGroupKeys.value = filtered.length ? filtered : groups.map((group) => group.key);
   persistSidebarState();
 }, { deep: true });
 </script>

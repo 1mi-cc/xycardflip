@@ -7,20 +7,20 @@
         <p>用于兜底处理失败执行记录，既支持后台循环，也支持人工补跑一次。</p>
         <div class="service-tags">
           <n-tag
-            :type="executionRetryServiceStatus.running ? 'success' : 'default'"
             size="small"
+            :type="executionRetryServiceStatus.running ? 'success' : 'default'"
           >
             {{ executionRetryServiceStatus.running ? "运行中" : "已停止" }}
           </n-tag>
           <n-tag
-            :type="executionRetryServiceStatus.enabled ? 'info' : 'warning'"
             size="small"
+            :type="executionRetryServiceStatus.enabled ? 'info' : 'warning'"
           >
             {{ executionRetryServiceStatus.enabled ? "已启用" : "未启用" }}
           </n-tag>
           <n-tag
-            :type="executionRetryServiceStatus.dry_run ? 'warning' : 'error'"
             size="small"
+            :type="executionRetryServiceStatus.dry_run ? 'warning' : 'error'"
           >
             {{ executionRetryServiceStatus.dry_run ? "默认 dry-run" : "默认 live" }}
           </n-tag>
@@ -31,23 +31,23 @@
         <n-button
           size="small"
           type="primary"
-          :loading="executionRetryServiceActionLoading === 'start'"
           :disabled="!canOperate"
+          :loading="executionRetryServiceActionLoading === 'start'"
           @click="$emit('startExecutionRetryService')"
         >
           启动
         </n-button>
         <n-button
           size="small"
-          :loading="executionRetryServiceActionLoading === 'stop'"
           :disabled="!canOperate"
+          :loading="executionRetryServiceActionLoading === 'stop'"
           @click="$emit('stopExecutionRetryService')"
         >
           停止
         </n-button>
         <n-button
-          size="small"
           tertiary
+          size="small"
           :loading="executionRetryServiceStatusLoading"
           @click="$emit('loadExecutionRetryServiceStatus')"
         >
@@ -98,19 +98,19 @@
       <div class="section-subtitle">常用于发布后兜底，默认参数沿用服务配置。</div>
       <n-space wrap>
         <n-select
-          :value="executionRetryServiceAction"
-          :options="executionRetryActionOptions"
           style="width: 150px"
+          :options="executionRetryActionOptions"
+          :value="executionRetryServiceAction"
           @update:value="value => $emit('update:executionRetryServiceAction', value)"
-        />
+        ></n-select>
         <n-input-number
-          :value="executionRetryServiceRunLimit"
-          :min="0"
-          :max="200"
-          style="width: 130px"
           placeholder="重试条数"
+          style="width: 130px"
+          :max="200"
+          :min="0"
+          :value="executionRetryServiceRunLimit"
           @update:value="value => $emit('update:executionRetryServiceRunLimit', value)"
-        />
+        ></n-input-number>
         <n-switch
           :value="executionRetryServiceDryRun"
           @update:value="value => $emit('update:executionRetryServiceDryRun', value)"
@@ -144,7 +144,7 @@
 
     <div v-if="canOperate" class="service-section">
       <n-collapse>
-        <n-collapse-item title="服务参数" name="retry-quick-tune">
+        <n-collapse-item name="retry-quick-tune" title="服务参数">
           <n-space wrap>
             <n-button-group size="small">
               <n-button
@@ -180,29 +180,29 @@
 
             <n-button-group size="small">
               <n-button
-                :type="executionRetryServiceStatus.action === 'all' ? 'primary' : 'default'"
                 :loading="executionRetryConfigLoading"
+                :type="executionRetryServiceStatus.action === 'all' ? 'primary' : 'default'"
                 @click="$emit('setExecutionRetryDefaultAction', 'all')"
               >
                 全部
               </n-button>
               <n-button
-                :type="executionRetryServiceStatus.action === 'buy' ? 'primary' : 'default'"
                 :loading="executionRetryConfigLoading"
+                :type="executionRetryServiceStatus.action === 'buy' ? 'primary' : 'default'"
                 @click="$emit('setExecutionRetryDefaultAction', 'buy')"
               >
                 买入
               </n-button>
               <n-button
-                :type="executionRetryServiceStatus.action === 'list' ? 'primary' : 'default'"
                 :loading="executionRetryConfigLoading"
+                :type="executionRetryServiceStatus.action === 'list' ? 'primary' : 'default'"
                 @click="$emit('setExecutionRetryDefaultAction', 'list')"
               >
                 上架
               </n-button>
               <n-button
-                :type="executionRetryServiceStatus.action === 'sell' ? 'primary' : 'default'"
                 :loading="executionRetryConfigLoading"
+                :type="executionRetryServiceStatus.action === 'sell' ? 'primary' : 'default'"
                 @click="$emit('setExecutionRetryDefaultAction', 'sell')"
               >
                 卖出
@@ -211,8 +211,8 @@
 
             <n-button
               size="small"
-              :type="executionRetryServiceStatus.dry_run ? 'warning' : 'error'"
               :loading="executionRetryConfigLoading"
+              :type="executionRetryServiceStatus.dry_run ? 'warning' : 'error'"
               @click="$emit('toggleExecutionRetryFlag', 'dry_run')"
             >
               默认模式：{{ executionRetryServiceStatus.dry_run ? "dry-run" : "live" }}
@@ -220,8 +220,8 @@
 
             <n-button
               size="small"
-              :type="executionRetryServiceStatus.force ? 'primary' : 'default'"
               :loading="executionRetryConfigLoading"
+              :type="executionRetryServiceStatus.force ? 'primary' : 'default'"
               @click="$emit('toggleExecutionRetryFlag', 'force')"
             >
               默认强制：{{ executionRetryServiceStatus.force ? "开" : "关" }}

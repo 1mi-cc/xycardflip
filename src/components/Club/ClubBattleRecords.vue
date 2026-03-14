@@ -5,25 +5,25 @@
       <div class="inline-header">
         <div class="inline-title">俱乐部盐场战绩</div>
         <div class="header-actions">
-          <a-date-picker v-model:value="queryDate" @change="fetchBattleRecordsByDate" valueFormat="YYYY/MM/DD" :disabled-date="disabledDate"/>
+          <a-date-picker value-format="YYYY/MM/DD" v-model:value="queryDate" :disabled-date="disabledDate" @change="fetchBattleRecordsByDate"></a-date-picker>
           <n-button size="small" :disabled="loading" @click="handleRefresh">
             <template #icon>
               <n-icon>
-                <Refresh />
+                <Refresh></Refresh>
               </n-icon>
             </template>
             刷新
           </n-button>
         </div>
         <div class="header-actions">
-          <n-checkbox-group v-model:value="exportmethod" name="group-exportmethod" size="small">
-          <n-checkbox value="1">表格导出</n-checkbox>
-          <n-checkbox value="2">图片导出</n-checkbox>
-          </n-checkbox-group>
-          <n-button type="primary" size="small" :disabled="!battleRecords || loading" @click="handleExport">
+          <NCheckboxGroup name="group-exportmethod" size="small" v-model:value="exportmethod">
+            <NCheckbox value="1">表格导出</NCheckbox>
+            <NCheckbox value="2">图片导出</NCheckbox>
+          </NCheckboxGroup>
+          <n-button size="small" type="primary" :disabled="!battleRecords || loading" @click="handleExport">
             <template #icon>
               <n-icon>
-                <Copy />
+                <Copy></Copy>
               </n-icon>
             </template>
             导出
@@ -40,19 +40,23 @@
         </div>
 
         <!-- 战绩列表 -->
-        <div v-else-if="battleRecords && battleRecords.roleDetailsList" ref="exportDom" class="records-list">
+        <div ref="exportDom" v-else-if="battleRecords && battleRecords.roleDetailsList" class="records-list">
           <div class="records-info">
             <n-tag type="info">查询日期: {{ queryDate }}</n-tag>
             <n-tag type="success">总成员: {{ battleRecords.roleDetailsList.length }}</n-tag>
-            
           </div>
 
           <div v-for="(member, index) in battleRecords.roleDetailsList" :key="member.roleId" class="member-card">
             <div class="member-header">
               <div class="member-info">
                 <div class="ranking-number">{{ index + 1 }}</div>
-                <img v-if="member.headImg" :src="member.headImg" :alt="member.name" class="member-avatar"
-                  @error="handleImageError">
+                <img
+                  v-if="member.headImg"
+                  class="member-avatar"
+                  :alt="member.name"
+                  :src="member.headImg"
+                  @error="handleImageError"
+                >
                 <div v-else class="member-avatar-placeholder">{{ member.name?.charAt(0) || '?' }}</div>
                 <span class="member-name">{{ member.name }}</span>
               </div>
@@ -60,14 +64,14 @@
                 <span class="stat-inline win">击杀 {{ member.winCnt || 0 }}</span>
                 <span class="stat-inline loss">死亡 {{ member.loseCnt || 0 }}</span>
                 <span class="stat-inline siege">攻城 {{ member.buildingCnt || 0 }}</span>
-                <span class="stat-inline KD">K/D {{ parseFloat((member.winCnt && member.loseCnt ? member.winCnt/member.loseCnt : 0.00)).toFixed(2) }}</span>
+                <span class="stat-inline KD">K/D {{ parseFloat((member.winCnt && member.loseCnt ? member.winCnt / member.loseCnt : 0.00)).toFixed(2) }}</span>
                 <span class="stat-inline Sscore">复活丹 {{ Math.max(member.loseCnt - 6, 0) || 0 }}</span>
               </div>
-              <n-button text size="small" class="details-button" @click="toggleMemberDetails(member.roleId)">
+              <n-button text class="details-button" size="small" @click="toggleMemberDetails(member.roleId)">
                 <template #icon>
                   <n-icon>
-                    <ChevronDown v-if="!expandedMembers.has(member.roleId)" />
-                    <ChevronUp v-else />
+                    <ChevronDown v-if="!expandedMembers.has(member.roleId)"></ChevronDown>
+                    <ChevronUp v-else></ChevronUp>
                   </n-icon>
                 </template>
               </n-button>
@@ -77,23 +81,41 @@
             <n-collapse-transition :show="expandedMembers.has(member.roleId)">
               <div class="battle-details">
                 <div v-if="member.targetRoleList && member.targetRoleList.length > 0" class="battles-list">
-                  <div v-for="(battle, index) in member.targetRoleList" :key="index" class="battle-item"
-                    :class="getBattleClass(battle)">
+                  <div
+                    v-for="(battle, index) in member.targetRoleList"
+                    :key="index"
+                    class="battle-item"
+                    :class="getBattleClass(battle)"
+                  >
                     <div class="battle-participants">
                       <div class="participant attacker">
-                        <img v-if="battle.roleInfo?.headImg" :src="battle.roleInfo.headImg" :alt="battle.roleInfo.name"
-                          class="participant-avatar" @error="handleImageError">
+                        <img
+                          v-if="battle.roleInfo?.headImg"
+                          class="participant-avatar"
+                          :alt="battle.roleInfo.name"
+                          :src="battle.roleInfo.headImg"
+                          @error="handleImageError"
+                        >
                         <span class="participant-name">{{ battle.roleInfo?.name || '未知' }}</span>
                       </div>
                       <div class="battle-vs">
-                        <n-tag :type="battle.attackType === 0 ? 'warning' : 'info'" size="small">{{
-                          parseAttackType(battle.attackType) }}</n-tag>
-                        <n-tag :type="battle.newWinFlag === 2 ? 'success' : 'error'" size="small">{{
-                          parseBattleResult(battle.newWinFlag) }}</n-tag>
+                        <n-tag size="small" :type="battle.attackType === 0 ? 'warning' : 'info'">
+                          {{
+                            parseAttackType(battle.attackType) }}
+                        </n-tag>
+                        <n-tag size="small" :type="battle.newWinFlag === 2 ? 'success' : 'error'">
+                          {{
+                            parseBattleResult(battle.newWinFlag) }}
+                        </n-tag>
                       </div>
                       <div class="participant defender">
-                        <img v-if="battle.targetRoleInfo?.headImg" :src="battle.targetRoleInfo.headImg"
-                          :alt="battle.targetRoleInfo.name" class="participant-avatar" @error="handleImageError">
+                        <img
+                          v-if="battle.targetRoleInfo?.headImg"
+                          class="participant-avatar"
+                          :alt="battle.targetRoleInfo.name"
+                          :src="battle.targetRoleInfo.headImg"
+                          @error="handleImageError"
+                        >
                         <span class="participant-name">{{ battle.targetRoleInfo?.name || '未知' }}</span>
                       </div>
                     </div>
@@ -101,7 +123,7 @@
                   </div>
                 </div>
                 <div v-else class="no-battles">
-                  <n-empty description="暂无战斗记录" size="small" />
+                  <n-empty description="暂无战斗记录" size="small"></n-empty>
                 </div>
               </div>
             </n-collapse-transition>
@@ -113,7 +135,7 @@
           <n-empty description="暂无战绩数据" size="large">
             <template #icon>
               <n-icon>
-                <DocumentText />
+                <DocumentText></DocumentText>
               </n-icon>
             </template>
           </n-empty>
@@ -122,31 +144,37 @@
     </div>
 
     <!-- Modal 模式 -->
-    <n-modal v-else v-model:show="showModal" preset="card" title="俱乐部盐场战绩" style="width: 90%; max-width: 800px"
-      @after-leave="handleClose">
+    <n-modal
+      v-else
+      preset="card"
+      style="width: 90%; max-width: 800px"
+      title="俱乐部盐场战绩"
+      v-model:show="showModal"
+      @after-leave="handleClose"
+    >
       <template #header-extra>
         <div class="header-actions">
-          <a-date-picker v-model:value="queryDate" @change="fetchBattleRecordsByDate" valueFormat="YYYY/MM/DD" :disabled-date="disabledDate"/>
+          <a-date-picker value-format="YYYY/MM/DD" v-model:value="queryDate" :disabled-date="disabledDate" @change="fetchBattleRecordsByDate"></a-date-picker>
           <n-button size="small" :disabled="loading" @click="handleRefresh">
             <template #icon>
               <n-icon>
-                <Refresh />
+                <Refresh></Refresh>
               </n-icon>
             </template>
             刷新
           </n-button>
-          <n-button type="primary" size="small" :disabled="!battleRecords || loading" @click="handleExport">
+          <n-button size="small" type="primary" :disabled="!battleRecords || loading" @click="handleExport">
             <template #icon>
               <n-icon>
-                <Copy />
+                <Copy></Copy>
               </n-icon>
             </template>
             导出
           </n-button>
-          <n-checkbox-group v-model:value="exportmethod" name="group-exportmethod" size="small">
-          <n-checkbox value="1">表格导出</n-checkbox>
-          <n-checkbox value="2">图片导出</n-checkbox>
-          </n-checkbox-group>
+          <NCheckboxGroup name="group-exportmethod" size="small" v-model:value="exportmethod">
+            <NCheckbox value="1">表格导出</NCheckbox>
+            <NCheckbox value="2">图片导出</NCheckbox>
+          </NCheckboxGroup>
         </div>
       </template>
 
@@ -159,7 +187,7 @@
         </div>
 
         <!-- 战绩列表 -->
-        <div v-else-if="battleRecords && battleRecords.roleDetailsList" ref="exportDom" class="records-list">
+        <div ref="exportDom" v-else-if="battleRecords && battleRecords.roleDetailsList" class="records-list">
           <div class="records-info">
             <n-tag type="info">查询日期: {{ queryDate }}</n-tag>
             <n-tag type="success">总成员: {{ battleRecords.roleDetailsList.length }}</n-tag>
@@ -169,8 +197,13 @@
             <div class="member-header">
               <div class="member-info">
                 <div class="ranking-number">{{ index + 1 }}</div>
-                <img v-if="member.headImg" :src="member.headImg" :alt="member.name" class="member-avatar"
-                  @error="handleImageError">
+                <img
+                  v-if="member.headImg"
+                  class="member-avatar"
+                  :alt="member.name"
+                  :src="member.headImg"
+                  @error="handleImageError"
+                >
                 <div v-else class="member-avatar-placeholder">{{ member.name?.charAt(0) || '?' }}</div>
                 <span class="member-name">{{ member.name }}</span>
               </div>
@@ -178,14 +211,14 @@
                 <span class="stat-inline win">击杀 {{ member.winCnt || 0 }}</span>
                 <span class="stat-inline loss">死亡 {{ member.loseCnt || 0 }}</span>
                 <span class="stat-inline siege">攻城 {{ member.buildingCnt || 0 }}</span>
-                <span class="stat-inline KD">K/D {{ parseFloat((member.winCnt && member.loseCnt ? member.winCnt/member.loseCnt : 0.00)).toFixed(2) }}</span>
+                <span class="stat-inline KD">K/D {{ parseFloat((member.winCnt && member.loseCnt ? member.winCnt / member.loseCnt : 0.00)).toFixed(2) }}</span>
                 <span class="stat-inline Sscore">复活丹 {{ Math.max(member.loseCnt - 6, 0) || 0 }}</span>
               </div>
-              <n-button text size="small" class="details-button" @click="toggleMemberDetails(member.roleId)">
+              <n-button text class="details-button" size="small" @click="toggleMemberDetails(member.roleId)">
                 <template #icon>
                   <n-icon>
-                    <ChevronDown v-if="!expandedMembers.has(member.roleId)" />
-                    <ChevronUp v-else />
+                    <ChevronDown v-if="!expandedMembers.has(member.roleId)"></ChevronDown>
+                    <ChevronUp v-else></ChevronUp>
                   </n-icon>
                 </template>
               </n-button>
@@ -195,23 +228,41 @@
             <n-collapse-transition :show="expandedMembers.has(member.roleId)">
               <div class="battle-details">
                 <div v-if="member.targetRoleList && member.targetRoleList.length > 0" class="battles-list">
-                  <div v-for="(battle, index) in member.targetRoleList" :key="index" class="battle-item"
-                    :class="getBattleClass(battle)">
+                  <div
+                    v-for="(battle, index) in member.targetRoleList"
+                    :key="index"
+                    class="battle-item"
+                    :class="getBattleClass(battle)"
+                  >
                     <div class="battle-participants">
                       <div class="participant attacker">
-                        <img v-if="battle.roleInfo?.headImg" :src="battle.roleInfo.headImg" :alt="battle.roleInfo.name"
-                          class="participant-avatar" @error="handleImageError">
+                        <img
+                          v-if="battle.roleInfo?.headImg"
+                          class="participant-avatar"
+                          :alt="battle.roleInfo.name"
+                          :src="battle.roleInfo.headImg"
+                          @error="handleImageError"
+                        >
                         <span class="participant-name">{{ battle.roleInfo?.name || '未知' }}</span>
                       </div>
                       <div class="battle-vs">
-                        <n-tag :type="battle.attackType === 0 ? 'warning' : 'info'" size="small">{{
-                          parseAttackType(battle.attackType) }}</n-tag>
-                        <n-tag :type="battle.newWinFlag === 2 ? 'success' : 'error'" size="small">{{
-                          parseBattleResult(battle.newWinFlag) }}</n-tag>
+                        <n-tag size="small" :type="battle.attackType === 0 ? 'warning' : 'info'">
+                          {{
+                            parseAttackType(battle.attackType) }}
+                        </n-tag>
+                        <n-tag size="small" :type="battle.newWinFlag === 2 ? 'success' : 'error'">
+                          {{
+                            parseBattleResult(battle.newWinFlag) }}
+                        </n-tag>
                       </div>
                       <div class="participant defender">
-                        <img v-if="battle.targetRoleInfo?.headImg" :src="battle.targetRoleInfo.headImg"
-                          :alt="battle.targetRoleInfo.name" class="participant-avatar" @error="handleImageError">
+                        <img
+                          v-if="battle.targetRoleInfo?.headImg"
+                          class="participant-avatar"
+                          :alt="battle.targetRoleInfo.name"
+                          :src="battle.targetRoleInfo.headImg"
+                          @error="handleImageError"
+                        >
                         <span class="participant-name">{{ battle.targetRoleInfo?.name || '未知' }}</span>
                       </div>
                     </div>
@@ -219,7 +270,7 @@
                   </div>
                 </div>
                 <div v-else class="no-battles">
-                  <n-empty description="暂无战斗记录" size="small" />
+                  <n-empty description="暂无战斗记录" size="small"></n-empty>
                 </div>
               </div>
             </n-collapse-transition>
@@ -231,7 +282,7 @@
           <n-empty description="暂无战绩数据" size="large">
             <template #icon>
               <n-icon>
-                <DocumentText />
+                <DocumentText></DocumentText>
               </n-icon>
             </template>
           </n-empty>
@@ -242,195 +293,193 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useMessage, NCheckboxGroup, NCheckbox } from 'naive-ui'
-import { useTokenStore } from '@/stores/tokenStore'
-import html2canvas from 'html2canvas';
 import {
-  Trophy,
-  Refresh,
-  Copy,
   ChevronDown,
   ChevronUp,
-  DocumentText
-} from '@vicons/ionicons5'
+  Copy,
+  DocumentText,
+  Refresh,
+} from "@vicons/ionicons5";
+import html2canvas from "html2canvas";
+import { NCheckbox, NCheckboxGroup, useMessage } from "naive-ui";
+import { computed, onMounted, ref } from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
 import {
-  getLastSaturday,
-  formatTimestamp,
-  parseBattleResult,
-  parseAttackType,
   formatBattleRecordsForExport,
-  copyToClipboard
-} from '@/utils/clubBattleUtils'
+  formatTimestamp,
+  getLastSaturday,
+  parseAttackType,
+  parseBattleResult,
+} from "@/utils/clubBattleUtils";
 
 const props = defineProps({
   visible: {
     type: Boolean,
-    default: false
+    default: false,
   },
   inline: {
     type: Boolean,
-    default: false
-  }
-})
+    default: false,
+  },
+});
 
+const emit = defineEmits(["update:visible"]);
 const exportmethod = ref([]);
 const exportDom = ref(null);
-const emit = defineEmits(['update:visible'])
-
-const message = useMessage()
-const tokenStore = useTokenStore()
+const message = useMessage();
+const tokenStore = useTokenStore();
 
 const showModal = computed({
   get: () => props.visible,
-  set: (val) => emit('update:visible', val)
-})
+  set: (val) => emit("update:visible", val),
+});
 
-const loading = ref(false)
-const battleRecords = ref(null)
-const expandedMembers = ref(new Set())
-const queryDate = ref('')
-
+const loading = ref(false);
+const battleRecords = ref(null);
+const expandedMembers = ref(new Set());
+const queryDate = ref("");
 
 const legionMatch = ref({
-  isRegistered: false
-})
+  isRegistered: false,
+});
 
 // 格式化战力
 const formatPower = (power) => {
-  if (!power) return '0'
+  if (!power)
+    return "0";
   if (power >= 100000000) {
-    return (power / 100000000).toFixed(2) + '亿'
+    return `${(power / 100000000).toFixed(2)}亿`;
   }
   if (power >= 10000) {
-    return (power / 10000).toFixed(2) + '万'
+    return `${(power / 10000).toFixed(2)}万`;
   }
-  return power.toString()
-}
+  return power.toString();
+};
 
 // 获取战斗样式类
 const getBattleClass = (battle) => {
-  const classes = []
+  const classes = [];
   if (battle.newWinFlag === 2) {
-    classes.push('battle-win')
+    classes.push("battle-win");
   } else {
-    classes.push('battle-loss')
+    classes.push("battle-loss");
   }
   if (battle.attackType === 0) {
-    classes.push('battle-attack')
+    classes.push("battle-attack");
   } else {
-    classes.push('battle-defend')
+    classes.push("battle-defend");
   }
-  return classes.join(' ')
-}
+  return classes.join(" ");
+};
 
 // 切换成员详情展开状态
 const toggleMemberDetails = (roleId) => {
   if (expandedMembers.value.has(roleId)) {
-    expandedMembers.value.delete(roleId)
+    expandedMembers.value.delete(roleId);
   } else {
-    expandedMembers.value.add(roleId)
+    expandedMembers.value.add(roleId);
   }
-}
+};
 
 // 处理图片加载错误
 const handleImageError = (event) => {
-  event.target.style.display = 'none'
-}
+  event.target.style.display = "none";
+};
 
-const disabledDate = current => {
-  return (current.getDay() != 6 && current.getDay() != 0) || current > Date.now()
-}
+const disabledDate = (current) => {
+  return (current.getDay() != 6 && current.getDay() != 0) || current > Date.now();
+};
 
-//日期选择时调用查询战绩方法
-const fetchBattleRecordsByDate = (val)=>{
-  if(undefined != val){
-    queryDate.value = val
-  }else{
+// 日期选择时调用查询战绩方法
+const fetchBattleRecordsByDate = (val) => {
+  if (undefined != val) {
+    queryDate.value = val;
+  } else {
     queryDate.value = getLastSaturday();
   }
   fetchBattleRecords();
-} 
+};
 
 // 查询战绩
-  const fetchBattleRecords = async () => {
-    if (!tokenStore.selectedToken) {
-      message.warning('请先选择游戏角色')
-      return
-    }
-
-    const tokenId = tokenStore.selectedToken.id
-
-    // 检查WebSocket连接
-    const wsStatus = tokenStore.getWebSocketStatus(tokenId)
-    if (wsStatus !== 'connected') {
-      message.error('WebSocket未连接，无法查询战绩')
-      return
-    }
-
-    loading.value = true
-
-    try {
-      const result = await tokenStore.sendMessageWithPromise(
-        tokenId,
-        'legionwar_getdetails',
-        { date: queryDate.value },
-        10000
-      )
-
-      if (result && result.roleDetailsList) {
-        // 按击杀数从高到低排序
-        const sortedRoleDetailsList = [...result.roleDetailsList].sort((a, b) => {
-          return (b.winCnt || 0) - (a.winCnt || 0)
-        })
-        battleRecords.value = {
-          ...result,
-          roleDetailsList: sortedRoleDetailsList
-        }
-        message.success('战绩加载成功，已按击杀数从高到低排序')
-      } else {
-        battleRecords.value = null
-        message.warning('未查询到战绩数据')
-      }
-    } catch (error) {
-      console.error('查询战绩失败:', error)
-      message.error(`查询失败: ${error.message}`)
-      battleRecords.value = null
-    } finally {
-      loading.value = false
-    }
+const fetchBattleRecords = async () => {
+  if (!tokenStore.selectedToken) {
+    message.warning("请先选择游戏角色");
+    return;
   }
+
+  const tokenId = tokenStore.selectedToken.id;
+
+  // 检查WebSocket连接
+  const wsStatus = tokenStore.getWebSocketStatus(tokenId);
+  if (wsStatus !== "connected") {
+    message.error("WebSocket未连接，无法查询战绩");
+    return;
+  }
+
+  loading.value = true;
+
+  try {
+    const result = await tokenStore.sendMessageWithPromise(
+      tokenId,
+      "legionwar_getdetails",
+      { date: queryDate.value },
+      10000,
+    );
+
+    if (result && result.roleDetailsList) {
+      // 按击杀数从高到低排序
+      const sortedRoleDetailsList = [...result.roleDetailsList].sort((a, b) => {
+        return (b.winCnt || 0) - (a.winCnt || 0);
+      });
+      battleRecords.value = {
+        ...result,
+        roleDetailsList: sortedRoleDetailsList,
+      };
+      message.success("战绩加载成功，已按击杀数从高到低排序");
+    } else {
+      battleRecords.value = null;
+      message.warning("未查询到战绩数据");
+    }
+  } catch (error) {
+    console.error("查询战绩失败:", error);
+    message.error(`查询失败: ${error.message}`);
+    battleRecords.value = null;
+  } finally {
+    loading.value = false;
+  }
+};
 
 // 刷新战绩
 const handleRefresh = () => {
-  fetchBattleRecords()
-}
+  fetchBattleRecords();
+};
 
 // 导出战绩
 const handleExport = async () => {
   if (!battleRecords.value || !battleRecords.value.roleDetailsList) {
-    message.warning('没有可导出的数据')
-    return
+    message.warning("没有可导出的数据");
+    return;
   }
 
   try {
-    if (exportmethod.value.includes('1')) {
-      const exportText = await formatBattleRecordsForExport(battleRecords.value.roleDetailsList, queryDate.value)
+    if (exportmethod.value.includes("1")) {
+      const exportText = await formatBattleRecordsForExport(battleRecords.value.roleDetailsList, queryDate.value);
     }
-    if (exportmethod.value.includes('2')) {
-      exportToImage()
+    if (exportmethod.value.includes("2")) {
+      exportToImage();
     }
-    message.success('导出成功')
+    message.success("导出成功");
   } catch (error) {
-    console.error('导出失败:', error)
-    message.error('导出失败，请重试')
+    console.error("导出失败:", error);
+    message.error("导出失败，请重试");
   }
-}
+};
 
 const exportToImage = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert('未找到要导出的DOM元素');
+    alert("未找到要导出的DOM元素");
     return;
   }
 
@@ -439,44 +488,44 @@ const exportToImage = async () => {
     const canvas = await html2canvas(exportDom.value, {
       scale: 2, // 放大2倍，解决图片模糊问题
       useCORS: true, // 允许跨域图片（若DOM内有远程图片，需开启）
-      backgroundColor: '#ffffff', // 避免透明背景（默认透明）
-      logging: false // 关闭控制台日志
+      backgroundColor: "#ffffff", // 避免透明背景（默认透明）
+      logging: false, // 关闭控制台日志
     });
 
     // 6. Canvas转图片链接（支持PNG/JPG）
-    const imgUrl = canvas.toDataURL('image/png'); // 若要JPG，改为'image/jpeg'
+    const imgUrl = canvas.toDataURL("image/png"); // 若要JPG，改为'image/jpeg'
 
     // 7. 创建下载链接，触发浏览器下载
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = imgUrl;
-    console.log()
-    link.download = queryDate.value.replace("/",'年').replace("/",'月')+'日盐场战报.png'; // 下载文件名
+    console.log();
+    link.download = `${queryDate.value.replace("/", "年").replace("/", "月")}日盐场战报.png`; // 下载文件名
     document.body.appendChild(link);
     link.click(); // 触发点击下载
     document.body.removeChild(link); // 下载后清理DOM
   } catch (err) {
-    console.error('DOM转图片失败：', err);
-    alert('导出图片失败，请重试');
+    console.error("DOM转图片失败：", err);
+    alert("导出图片失败，请重试");
   }
 };
 
 // 关闭弹窗
 const handleClose = () => {
-  expandedMembers.value.clear()
-}
+  expandedMembers.value.clear();
+};
 
 // 暴露方法给父组件
 defineExpose({
-  fetchBattleRecords
-})
+  fetchBattleRecords,
+});
 
 // Inline 模式：挂载后自动拉取
 onMounted(() => {
   if (props.inline) {
-    queryDate.value = getLastSaturday()
-    fetchBattleRecords()
+    queryDate.value = getLastSaturday();
+    fetchBattleRecords();
   }
-})
+});
 </script>
 
 <style scoped lang="scss">
@@ -655,7 +704,7 @@ onMounted(() => {
     background: rgba(245, 158, 11, 0.1);
     color: #d97706;
   }
-  
+
   &.KD {
     background: rgba(151, 151, 151, 0.1);
     color: #858585;

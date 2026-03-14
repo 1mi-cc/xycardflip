@@ -1,132 +1,127 @@
-﻿<template>
+<template>
   <div class="card-flip-page">
     <OpsOverviewHeader
-      :role-tag-text="roleTagText"
-      :role-tag-type="roleTagType"
-      :is-viewer="isViewer"
-      :can-operate="canOperate"
-      :can-maintain="canMaintain"
-      :can-batch-apply-pricing="canBatchApplyPricing"
-      :scan-limit="scanLimit"
-      :pricing-mode="pricingMode"
-      :pricing-mode-options="pricingModeOptions"
-      :scan-loading="scanLoading"
-      :simulation-training-loading="simulationTrainingLoading"
-      :cookie-refresh-loading="cookieRefreshLoading"
       :batch-pricing-loading="batchPricingLoading"
-      :loading="loading"
+      :can-batch-apply-pricing="canBatchApplyPricing"
+      :can-maintain="canMaintain"
+      :can-operate="canOperate"
+      :cookie-refresh-loading="cookieRefreshLoading"
       :data-integrity-alert="dataIntegrityAlert"
       :guard-alert="guardAlert"
-      :metrics="metrics"
       :blocked-count="blockedOpportunities.length"
+      :is-viewer="isViewer"
+      :loading="loading"
+      :metrics="metrics"
+      :pricing-mode="pricingMode"
+      :pricing-mode-options="pricingModeOptions"
+      :role-tag-text="roleTagText"
+      :role-tag-type="roleTagType"
+      :scan-limit="scanLimit"
+      :scan-loading="scanLoading"
+      :simulation-training-loading="simulationTrainingLoading"
       :to-money="toMoney"
-      @update:scan-limit="scanLimit = $event"
-      @update:pricing-mode="pricingMode = $event"
+      @apply-batch-reprice="applyBatchReprice"
+      @preview-batch-reprice="previewBatchReprice"
+      @refresh="loadData"
+      @refresh-cookie="refreshCookie"
       @run-scan="runScan"
       @run-simulation-training="runSimulationTraining"
-      @refresh-cookie="refreshCookie"
-      @preview-batch-reprice="previewBatchReprice"
-      @apply-batch-reprice="applyBatchReprice"
-      @refresh="loadData"
-    />
+      @update:pricing-mode="pricingMode = $event"
+      @update:scan-limit="scanLimit = $event"
+    ></OpsOverviewHeader>
 
     <AutomationControlPanel
-      :automation-status="automationStatus"
-      :automation-status-loading="automationStatusLoading"
       :automation-action-loading="automationActionLoading"
-      :monitor-action-loading="monitorActionLoading"
-      :can-operate="canOperate"
-      :can-maintain="canMaintain"
-      :automation-include-monitor="automationIncludeMonitor"
-      :automation-include-scan="automationIncludeScan"
+      :automation-autotrade-limit="automationAutotradeLimit"
+      :automation-force="automationForce"
+      :automation-execution-retry-limit="automationExecutionRetryLimit"
       :automation-include-autotrade="automationIncludeAutotrade"
       :automation-include-execution-retry="automationIncludeExecutionRetry"
-      :automation-force="automationForce"
+      :automation-include-monitor="automationIncludeMonitor"
+      :automation-include-scan="automationIncludeScan"
       :automation-scan-limit="automationScanLimit"
-      :automation-autotrade-limit="automationAutotradeLimit"
-      :automation-execution-retry-limit="automationExecutionRetryLimit"
-      :monitor-stop-reason="monitorStopReason"
+      :automation-status="automationStatus"
+      :automation-status-loading="automationStatusLoading"
+      :can-maintain="canMaintain"
+      :can-operate="canOperate"
+      :monitor-action-loading="monitorActionLoading"
       :monitor-cookie-status-hint="monitorCookieStatusHint"
-      @update:automation-include-monitor="automationIncludeMonitor = $event"
-      @update:automation-include-scan="automationIncludeScan = $event"
-      @update:automation-include-autotrade="automationIncludeAutotrade = $event"
-      @update:automation-include-execution-retry="
-        automationIncludeExecutionRetry = $event
-      "
-      @update:automation-force="automationForce = $event"
-      @update:automation-scan-limit="automationScanLimit = $event"
+      :monitor-stop-reason="monitorStopReason"
+      @load-automation-status="loadAutomationStatus"
+      @restart-monitor="restartMonitorFromAutomation"
+      @run-automation-once="runAutomationOnce"
+      @reset-monitor-circuit="resetMonitorCircuit"
+      @start-automation="startAutomation"
+      @stop-automation="stopAutomation"
       @update:automation-autotrade-limit="automationAutotradeLimit = $event"
       @update:automation-execution-retry-limit="
         automationExecutionRetryLimit = $event
       "
-      @start-automation="startAutomation"
-      @stop-automation="stopAutomation"
-      @load-automation-status="loadAutomationStatus"
-      @run-automation-once="runAutomationOnce"
-      @restart-monitor="restartMonitorFromAutomation"
-      @reset-monitor-circuit="resetMonitorCircuit"
-    />
+      @update:automation-force="automationForce = $event"
+      @update:automation-include-autotrade="automationIncludeAutotrade = $event"
+      @update:automation-include-execution-retry="
+        automationIncludeExecutionRetry = $event
+      "
+      @update:automation-include-monitor="automationIncludeMonitor = $event"
+      @update:automation-include-scan="automationIncludeScan = $event"
+      @update:automation-scan-limit="automationScanLimit = $event"
+    ></AutomationControlPanel>
 
     <AutotradePanel
-      :autotrade-status="autotradeStatus"
-      :execution-status="executionStatus"
-      :autotrade-status-loading="autotradeStatusLoading"
       :autotrade-action-loading="autotradeActionLoading"
       :autotrade-config-loading="autotradeConfigLoading"
-      :execution-config-loading="executionConfigLoading"
-      :can-operate="canOperate"
-      :autotrade-run-limit="autotradeRunLimit"
       :autotrade-run-force="autotradeRunForce"
+      :autotrade-run-limit="autotradeRunLimit"
+      :autotrade-status="autotradeStatus"
+      :autotrade-status-loading="autotradeStatusLoading"
+      :can-operate="canOperate"
+      :execution-config-loading="executionConfigLoading"
       :execution-live-confirm-token="executionLiveConfirmToken"
+      :execution-status="executionStatus"
       :to-money="toMoney"
       :to-percent="toPercent"
-      @load-autotrade-status="loadAutotradeStatus"
-      @start-autotrade="startAutotrade"
-      @stop-autotrade="stopAutotrade"
-      @set-execution-provider="setExecutionProvider"
-      @toggle-execution-flag="toggleExecutionFlag"
-      @adjust-execution-number="adjustExecutionNumber"
       @adjust-autotrade-number="adjustAutotradeNumber"
       @adjust-autotrade-roi="adjustAutotradeRoi"
-      @toggle-autotrade-flag="toggleAutotradeFlag"
-      @update:execution-live-confirm-token="executionLiveConfirmToken = $event"
-      @update:autotrade-run-limit="autotradeRunLimit = $event"
-      @update:autotrade-run-force="autotradeRunForce = $event"
+      @adjust-execution-number="adjustExecutionNumber"
+      @load-autotrade-status="loadAutotradeStatus"
       @run-autotrade-once="runAutotradeOnce"
-    />
+      @set-execution-provider="setExecutionProvider"
+      @start-autotrade="startAutotrade"
+      @stop-autotrade="stopAutotrade"
+      @toggle-autotrade-flag="toggleAutotradeFlag"
+      @toggle-execution-flag="toggleExecutionFlag"
+      @update:autotrade-run-force="autotradeRunForce = $event"
+      @update:autotrade-run-limit="autotradeRunLimit = $event"
+      @update:execution-live-confirm-token="executionLiveConfirmToken = $event"
+    ></AutotradePanel>
 
     <ExecutionRetryPanel
-      :execution-retry-service-status="executionRetryServiceStatus"
-      :execution-retry-service-status-loading="
-        executionRetryServiceStatusLoading
-      "
+      :can-operate="canOperate"
+      :execution-retry-action-options="executionRetryActionOptions"
+      :execution-retry-config-loading="executionRetryConfigLoading"
+      :execution-retry-service-action="executionRetryServiceAction"
       :execution-retry-service-action-loading="
         executionRetryServiceActionLoading
       "
-      :execution-retry-config-loading="executionRetryConfigLoading"
-      :can-operate="canOperate"
-      :execution-retry-service-action="executionRetryServiceAction"
-      :execution-retry-service-run-limit="executionRetryServiceRunLimit"
-      :execution-retry-service-run-force="executionRetryServiceRunForce"
       :execution-retry-service-dry-run="executionRetryServiceDryRun"
       :execution-retry-service-execution-force="
         executionRetryServiceExecutionForce
       "
-      :execution-retry-action-options="executionRetryActionOptions"
+      :execution-retry-service-run-force="executionRetryServiceRunForce"
+      :execution-retry-service-run-limit="executionRetryServiceRunLimit"
+      :execution-retry-service-status="executionRetryServiceStatus"
+      :execution-retry-service-status-loading="
+        executionRetryServiceStatusLoading
+      "
+      @adjust-execution-retry-number="adjustExecutionRetryNumber"
       @load-execution-retry-service-status="loadExecutionRetryServiceStatus"
+      @run-execution-retry-service-once="runExecutionRetryServiceOnce"
+      @set-execution-retry-default-action="setExecutionRetryDefaultAction"
       @start-execution-retry-service="startExecutionRetryService"
       @stop-execution-retry-service="stopExecutionRetryService"
-      @adjust-execution-retry-number="adjustExecutionRetryNumber"
-      @set-execution-retry-default-action="setExecutionRetryDefaultAction"
       @toggle-execution-retry-flag="toggleExecutionRetryFlag"
       @update:execution-retry-service-action="
         executionRetryServiceAction = $event
-      "
-      @update:execution-retry-service-run-limit="
-        executionRetryServiceRunLimit = $event
-      "
-      @update:execution-retry-service-run-force="
-        executionRetryServiceRunForce = $event
       "
       @update:execution-retry-service-dry-run="
         executionRetryServiceDryRun = $event
@@ -134,164 +129,169 @@
       @update:execution-retry-service-execution-force="
         executionRetryServiceExecutionForce = $event
       "
-      @run-execution-retry-service-once="runExecutionRetryServiceOnce"
-    />
+      @update:execution-retry-service-run-force="
+        executionRetryServiceRunForce = $event
+      "
+      @update:execution-retry-service-run-limit="
+        executionRetryServiceRunLimit = $event
+      "
+    ></ExecutionRetryPanel>
 
     <TradeDataTabs
       :active-tab="activeTab"
-      :loading="loading"
-      :lists-loading="listsLoading"
-      :execution-logs-loading="executionLogsLoading"
-      :execution-retry-loading="executionRetryLoading"
-      :blocked-batch-loading="blockedBatchLoading"
-      :blocked-reject-batch-loading="blockedRejectBatchLoading"
-      :pricing-loading-trade-id="pricingLoadingTradeId"
-      :pricing-action="pricingAction"
-      :execution-loading-trade-id="executionLoadingTradeId"
-      :execution-action="executionAction"
-      :opportunities="opportunities"
-      :blocked-opportunities="blockedOpportunities"
       :active-trades="activeTrades"
-      :sold-trades="soldTrades"
-      :execution-logs="executionLogs"
+      :blocked-batch-loading="blockedBatchLoading"
+      :blocked-opportunities="blockedOpportunities"
+      :blocked-reject-batch-loading="blockedRejectBatchLoading"
       :blocked-risk-threshold="blockedRiskThreshold"
-      :execution-log-filters="executionLogFilters"
+      :execution-action="executionAction"
       :execution-action-options="executionActionOptions"
-      :execution-provider-options="executionProviderOptions"
+      :execution-loading-trade-id="executionLoadingTradeId"
+      :execution-log-filters="executionLogFilters"
+      :execution-logs="executionLogs"
+      :execution-logs-loading="executionLogsLoading"
       :execution-mode-options="executionModeOptions"
+      :execution-provider-options="executionProviderOptions"
       :execution-result-options="executionResultOptions"
       :execution-retry-action="executionRetryAction"
+      :execution-retry-loading="executionRetryLoading"
       :execution-retry-limit="executionRetryLimit"
+      :lists-loading="listsLoading"
       :execution-retry-dry-run="executionRetryDryRun"
+      :loading="loading"
       :execution-retry-force="executionRetryForce"
+      :opportunities="opportunities"
       :execution-retry-action-options="executionRetryActionOptions"
-      :to-money="toMoney"
-      :to-percent="toPercent"
-      :short-text="shortText"
+      :pricing-action="pricingAction"
       :compact-json="compactJson"
+      :pricing-loading-trade-id="pricingLoadingTradeId"
       :get-pricing-preview="getPricingPreview"
       :get-action-text="getActionText"
       :get-action-type="getActionType"
       :get-urgency-text="getUrgencyText"
+      :short-text="shortText"
       :get-urgency-type="getUrgencyType"
+      :sold-trades="soldTrades"
       :get-risk-level-type="getRiskLevelType"
       :get-risk-level-text="getRiskLevelText"
       :get-risk-reason-text="getRiskReasonText"
-      @update:active-tab="activeTab = $event"
-      @update:blocked-risk-threshold="blockedRiskThreshold = $event"
-      @update:execution-log-filters="executionLogFilters = $event"
-      @update:execution-retry-action="executionRetryAction = $event"
-      @update:execution-retry-limit="executionRetryLimit = $event"
-      @update:execution-retry-dry-run="executionRetryDryRun = $event"
-      @update:execution-retry-force="executionRetryForce = $event"
-      @open-listing="openListing"
+      :to-money="toMoney"
+      :to-percent="toPercent"
       @open-approve="openApprove"
-      @reject="reject"
-      @send-to-review="sendToReview"
-      @send-blocked-batch-to-review="sendBlockedBatchToReview"
-      @reject-blocked-batch="rejectBlockedBatch"
+      @open-listing="openListing"
       @open-mark-listed="openMarkListed"
+      @reject="reject"
       @open-mark-sold="openMarkSold"
+      @reject-blocked-batch="rejectBlockedBatch"
       @execute-trade-buy="executeTradeBuy"
+      @send-blocked-batch-to-review="sendBlockedBatchToReview"
       @execute-trade-list="executeTradeList"
+      @send-to-review="sendToReview"
       @execute-trade-sell="executeTradeSell"
+      @update:active-tab="activeTab = $event"
       @preview-trade-pricing="previewTradePricing"
+      @update:blocked-risk-threshold="blockedRiskThreshold = $event"
       @apply-trade-pricing="applyTradePricing"
+      @update:execution-log-filters="executionLogFilters = $event"
       @load-execution-logs="loadExecutionLogs"
+      @update:execution-retry-action="executionRetryAction = $event"
       @reset-execution-log-filters="resetExecutionLogFilters"
+      @update:execution-retry-dry-run="executionRetryDryRun = $event"
       @retry-failed-executions="retryFailedExecutions"
-    />
+      @update:execution-retry-force="executionRetryForce = $event"
+      @update:execution-retry-limit="executionRetryLimit = $event"
+    ></TradeDataTabs>
 
     <n-modal
-      v-model:show="approveModalVisible"
+      negative-text="取消"
+      positive-text="确认审批"
       preset="dialog"
       title="审批买入"
-      positive-text="确认审批"
-      negative-text="取消"
+      v-model:show="approveModalVisible"
       :positive-button-props="{ loading: approving }"
       @positive-click="submitApprove"
     >
       <n-form label-placement="left" :label-width="90">
         <n-form-item label="机会ID">
-          <n-input :value="String(approveForm.opportunity_id || '')" disabled />
+          <n-input disabled :value="String(approveForm.opportunity_id || '')"></n-input>
         </n-form-item>
         <n-form-item label="审批买入价">
           <n-input-number
+            style="width: 100%"
             v-model:value="approveForm.approved_buy_price"
             :min="0.01"
             :precision="2"
-            style="width: 100%"
-          />
+          ></n-input-number>
         </n-form-item>
         <n-form-item label="审批人">
-          <n-input v-model:value="approveForm.approved_by" />
+          <n-input v-model:value="approveForm.approved_by"></n-input>
         </n-form-item>
         <n-form-item label="备注">
-          <n-input v-model:value="approveForm.note" type="textarea" />
+          <n-input type="textarea" v-model:value="approveForm.note"></n-input>
         </n-form-item>
       </n-form>
     </n-modal>
 
     <n-modal
-      v-model:show="markListedModalVisible"
+      negative-text="取消"
+      positive-text="确认"
       preset="dialog"
       title="标记已挂售"
-      positive-text="确认"
-      negative-text="取消"
+      v-model:show="markListedModalVisible"
       :positive-button-props="{ loading: markListedLoading }"
       @positive-click="submitMarkListed"
     >
       <n-form label-placement="left" :label-width="90">
         <n-form-item label="交易ID">
-          <n-input :value="String(markListedForm.trade_id || '')" disabled />
+          <n-input disabled :value="String(markListedForm.trade_id || '')"></n-input>
         </n-form-item>
         <n-form-item label="挂售链接">
           <n-input
-            v-model:value="markListedForm.listing_url"
             placeholder="https://..."
-          />
+            v-model:value="markListedForm.listing_url"
+          ></n-input>
         </n-form-item>
         <n-form-item label="备注">
-          <n-input v-model:value="markListedForm.note" type="textarea" />
+          <n-input type="textarea" v-model:value="markListedForm.note"></n-input>
         </n-form-item>
       </n-form>
     </n-modal>
 
     <n-modal
-      v-model:show="markSoldModalVisible"
+      negative-text="取消"
+      positive-text="确认"
       preset="dialog"
       title="标记已卖出"
-      positive-text="确认"
-      negative-text="取消"
+      v-model:show="markSoldModalVisible"
       :positive-button-props="{ loading: markSoldLoading }"
       @positive-click="submitMarkSold"
     >
       <n-form label-placement="left" :label-width="90">
         <n-form-item label="交易ID">
-          <n-input :value="String(markSoldForm.trade_id || '')" disabled />
+          <n-input disabled :value="String(markSoldForm.trade_id || '')"></n-input>
         </n-form-item>
         <n-form-item label="卖出价格">
           <n-input-number
+            style="width: 100%"
             v-model:value="markSoldForm.sold_price"
             :min="0.01"
             :precision="2"
-            style="width: 100%"
-          />
+          ></n-input-number>
         </n-form-item>
         <n-form-item label="备注">
-          <n-input v-model:value="markSoldForm.note" type="textarea" />
+          <n-input type="textarea" v-model:value="markSoldForm.note"></n-input>
         </n-form-item>
       </n-form>
     </n-modal>
 
     <n-modal
-      v-model:show="pricingPlanModalVisible"
       preset="card"
-      title="智能定价建议"
       style="width: 90%; max-width: 760px"
+      title="智能定价建议"
+      v-model:show="pricingPlanModalVisible"
     >
       <div v-if="pricingPlanPayload">
-        <n-descriptions bordered :column="2" label-placement="left">
+        <n-descriptions bordered label-placement="left" :column="2">
           <n-descriptions-item label="交易ID">
             {{ pricingPlanPayload.trade_id }}
           </n-descriptions-item>
@@ -344,13 +344,13 @@
     </n-modal>
 
     <n-modal
-      v-model:show="batchPricingModalVisible"
       preset="card"
-      title="批量重定价预览"
       style="width: 95%; max-width: 960px"
+      title="批量重定价预览"
+      v-model:show="batchPricingModalVisible"
     >
       <n-space vertical>
-        <div class="batch-summary" v-if="batchPricingResult">
+        <div v-if="batchPricingResult" class="batch-summary">
           模式: {{ getModeText(batchPricingResult.mode) }} | 已处理
           {{ batchPricingResult.processed }} | 已更新
           {{ batchPricingResult.updated }} | 当前为
@@ -358,9 +358,9 @@
         </div>
         <n-table
           v-if="
-            batchPricingResult &&
-            batchPricingResult.items &&
-            batchPricingResult.items.length > 0
+            batchPricingResult
+              && batchPricingResult.items
+              && batchPricingResult.items.length > 0
           "
           striped
           size="small"
@@ -398,19 +398,19 @@
             </tr>
           </tbody>
         </n-table>
-        <n-empty v-else description="暂无重定价结果" />
+        <n-empty v-else description="暂无重定价结果"></n-empty>
       </n-space>
     </n-modal>
 
     <n-modal
-      v-model:show="listingModalVisible"
       preset="card"
-      title="商品信息"
       style="width: 90%; max-width: 760px"
+      title="商品信息"
+      v-model:show="listingModalVisible"
     >
       <n-spin :show="listingLoading">
         <div v-if="listingPayload">
-          <n-descriptions bordered :column="2" label-placement="left">
+          <n-descriptions bordered label-placement="left" :column="2">
             <n-descriptions-item label="标题">
               {{ listingPayload.title }}
             </n-descriptions-item>
@@ -435,11 +435,10 @@
             <n-descriptions-item label="链接">
               <span v-if="listingPayload.listing_url">
                 <a
-                  :href="listingPayload.listing_url"
-                  target="_blank"
                   rel="noreferrer"
-                  >打开链接</a
-                >
+                  target="_blank"
+                  :href="listingPayload.listing_url"
+                >打开链接</a>
               </span>
               <span v-else>-</span>
             </n-descriptions-item>
@@ -450,7 +449,7 @@
               {{ listingPayload.description || "-" }}
             </div>
           </div>
-          <div class="listing-raw" v-if="rawListingJson">
+          <div v-if="rawListingJson" class="listing-raw">
             <div class="listing-label">原始数据</div>
             <pre>{{ rawListingJson }}</pre>
           </div>
@@ -462,6 +461,7 @@
 
 <script>
 import { defineComponent } from "vue";
+
 import "@/views/card-flip-ops/cardFlipOps.scss";
 import AutomationControlPanel from "@/views/card-flip-ops/AutomationControlPanel.vue";
 import AutotradePanel from "@/views/card-flip-ops/AutotradePanel.vue";

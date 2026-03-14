@@ -79,8 +79,6 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
-
 const props = defineProps({
   entry: {
     type: Object,
@@ -97,10 +95,14 @@ const formatDate = (dateString) => {
   const diffTime = now - date;
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) return "今天";
-  if (diffDays === 1) return "昨天";
-  if (diffDays < 7) return `${diffDays}天前`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}周前`;
+  if (diffDays === 0)
+    return "今天";
+  if (diffDays === 1)
+    return "昨天";
+  if (diffDays < 7)
+    return `${diffDays}天前`;
+  if (diffDays < 30)
+    return `${Math.floor(diffDays / 7)}周前`;
 
   return date.toLocaleDateString("zh-CN", {
     year: "numeric",

@@ -6,16 +6,16 @@ const STORE_KV = "kv";
 const STORE_GAME_TOKENS = "gameTokens";
 
 const ENC_VERSION = 1;
-const IS_DEV =
-  typeof import.meta !== "undefined" &&
-  import.meta.env &&
-  Boolean(import.meta.env.DEV);
+const IS_DEV
+  = typeof import.meta !== "undefined"
+    && import.meta.env
+    && Boolean(import.meta.env.DEV);
 const DEV_FALLBACK_SECRET = "dev-token-encryption-secret";
-const ENV_SECRET =
-  (typeof import.meta !== "undefined" &&
-    import.meta.env &&
-    String(import.meta.env.VITE_TOKEN_ENCRYPTION_SECRET || "").trim()) ||
-  "";
+const ENV_SECRET
+  = (typeof import.meta !== "undefined"
+    && import.meta.env
+    && String(import.meta.env.VITE_TOKEN_ENCRYPTION_SECRET || "").trim())
+  || "";
 const ENC_SECRET = ENV_SECRET || (IS_DEV ? DEV_FALLBACK_SECRET : "");
 
 const textEncoder = new TextEncoder();
@@ -99,7 +99,8 @@ async function deriveAesKey(saltBytes) {
 }
 
 async function encryptPayload(value) {
-  if (!crypto?.subtle) return value;
+  if (!crypto?.subtle)
+    return value;
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -195,10 +196,12 @@ export async function getAllGameTokens() {
 
   const map = {};
   const decryptJobs = (rows || []).map(async (item) => {
-    if (!item || !item.roleId) return;
+    if (!item || !item.roleId)
+      return;
     const roleId = item.roleId;
     const tokenData = await decryptPayload(item.payload ?? item);
-    if (tokenData) map[roleId] = tokenData;
+    if (tokenData)
+      map[roleId] = tokenData;
   });
   await Promise.all(decryptJobs);
   return map;
@@ -232,7 +235,8 @@ export async function migrateFromLocalStorageIfNeeded() {
     const hasUser = !!userTok;
 
     // If DB already has data, skip
-    if (hasAny || hasUser) return { migrated: false };
+    if (hasAny || hasUser)
+      return { migrated: false };
 
     // Try migrate from localStorage
     const lsUser = localStorage.getItem("userToken");
@@ -244,11 +248,13 @@ export async function migrateFromLocalStorageIfNeeded() {
       lsGameTokens = {};
     }
 
-    const lsHasAny =
-      lsUser || (lsGameTokens && Object.keys(lsGameTokens).length > 0);
-    if (!lsHasAny) return { migrated: false };
+    const lsHasAny
+      = lsUser || (lsGameTokens && Object.keys(lsGameTokens).length > 0);
+    if (!lsHasAny)
+      return { migrated: false };
 
-    if (lsUser) await setUserToken(lsUser);
+    if (lsUser)
+      await setUserToken(lsUser);
     for (const [roleId, tokenData] of Object.entries(lsGameTokens || {})) {
       await putGameToken(roleId, tokenData);
     }

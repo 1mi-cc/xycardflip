@@ -3,8 +3,8 @@
  * 基于 readable-xyzw-ws.js 重构，适配本项目架构
  */
 
-import { bonProtocol, g_utils } from "./bonProtocol.js";
-import { wsLogger, gameLogger } from "./logger.js";
+import { g_utils } from "./bonProtocol.js";
+import { gameLogger, wsLogger } from "./logger.js";
 
 /** 生成 [min,max] 的随机整数 */
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -14,7 +14,8 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
 /** 为日志生成安全的 body 预览，避免控制台再次解析原始对象 */
 const formatBodyForLog = (body) => {
-  if (!body) return "";
+  if (!body)
+    return "";
 
   if (body instanceof Uint8Array) {
     return `[BON:${body.length}b]`;
@@ -26,7 +27,7 @@ const formatBodyForLog = (body) => {
 
   if (typeof body === "object") {
     const isNumericObject = Object.keys(body).every(
-      (key) => !Number.isNaN(parseInt(key)),
+      (key) => !Number.isNaN(Number.parseInt(key)),
     );
     if (isNumericObject) {
       return `[BON:Object:${Object.keys(body).length}]`;
@@ -91,7 +92,8 @@ export class CommandRegistry {
   /** 构造报文 */
   build(cmd, ack, seq, params) {
     const fn = this.commands.get(cmd);
-    if (!fn) throw new Error(`Unknown cmd: ${cmd}`);
+    if (!fn)
+      throw new Error(`Unknown cmd: ${cmd}`);
     return fn(ack, seq, params);
   }
 }
@@ -150,7 +152,7 @@ export function registerDefaultCommands(reg) {
     .register("legionwar_getdetails")
     .register("legion_storebuygoods")
 
-    //盐场
+    // 盐场
     .register("legion_getinfobyid")
     .register("legion_getarearank")
     .register("saltroad_getsaltroadwartotalrank")
@@ -218,8 +220,8 @@ export function registerDefaultCommands(reg) {
     .register("role_gettargetteam")
 
     // 武将升级相关
-    .register("hero_heroupgradelevel") //武将升级
-    .register("hero_heroupgradeorder") //武将进阶
+    .register("hero_heroupgradelevel") // 武将升级
+    .register("hero_heroupgradeorder") // 武将进阶
 
     // 升星相关
     .register("hero_heroupgradestar")
@@ -352,7 +354,8 @@ export class XyzwWebSocketClient {
       this._setupHeartbeat();
       // 启动消息队列处理
       this._processQueueLoop();
-      if (this.onConnect) this.onConnect();
+      if (this.onConnect)
+        this.onConnect();
     };
 
     this.socket.onmessage = (evt) => {
@@ -412,8 +415,8 @@ export class XyzwWebSocketClient {
 
               // 更新 ack 为服务端最新的 seq（若存在）
               const actualPacket = packet._raw || packet;
-              const incomingSeq =
-                typeof actualPacket?.seq === "number"
+              const incomingSeq
+                = typeof actualPacket?.seq === "number"
                   ? actualPacket.seq
                   : typeof packet?.seq === "number"
                     ? packet.seq
@@ -455,8 +458,8 @@ export class XyzwWebSocketClient {
           const actualPacket = packet._raw || packet;
 
           // 更新 ack 为服务端最新的 seq（若存在）
-          const incomingSeq =
-            typeof actualPacket.seq === "number"
+          const incomingSeq
+            = typeof actualPacket.seq === "number"
               ? actualPacket.seq
               : typeof packet.seq === "number"
                 ? packet.seq
@@ -519,14 +522,16 @@ export class XyzwWebSocketClient {
       });
       this.connected = false;
       this._clearTimers();
-      if (this.onDisconnect) this.onDisconnect(evt);
+      if (this.onDisconnect)
+        this.onDisconnect(evt);
     };
 
     this.socket.onerror = (error) => {
       wsLogger.error("WebSocket 错误:", error);
       this.connected = false;
       this._clearTimers();
-      if (this.onError) this.onError(error);
+      if (this.onError)
+        this.onError(error);
     };
   }
 
@@ -542,7 +547,8 @@ export class XyzwWebSocketClient {
 
   /** 判断是否需要解码body */
   shouldDecodeBody(body) {
-    if (!body) return false;
+    if (!body)
+      return false;
 
     // Uint8Array或Array格式
     if (body instanceof Uint8Array || Array.isArray(body)) {
@@ -553,7 +559,7 @@ export class XyzwWebSocketClient {
     if (typeof body === "object" && body.constructor === Object) {
       // 检查是否是数字键的对象（例如 {"0": 8, "1": 2, ...}）
       const keys = Object.keys(body);
-      return keys.length > 0 && keys.every((key) => !isNaN(parseInt(key)));
+      return keys.length > 0 && keys.every((key) => !isNaN(Number.parseInt(key)));
     }
 
     return false;
@@ -561,7 +567,8 @@ export class XyzwWebSocketClient {
 
   /** 转换body为Uint8Array */
   convertToUint8Array(body) {
-    if (!body) return null;
+    if (!body)
+      return null;
 
     if (body instanceof Uint8Array) {
       return body;
@@ -574,13 +581,13 @@ export class XyzwWebSocketClient {
     // 对象格式的数字数组转换为Uint8Array
     if (typeof body === "object" && body.constructor === Object) {
       const keys = Object.keys(body)
-        .map((k) => parseInt(k))
+        .map((k) => Number.parseInt(k))
         .sort((a, b) => a - b);
       if (keys.length > 0) {
         const maxIndex = Math.max(...keys);
         const arr = new Array(maxIndex + 1).fill(0);
         for (const [key, value] of Object.entries(body)) {
-          const index = parseInt(key);
+          const index = Number.parseInt(key);
           if (!isNaN(index) && typeof value === "number") {
             arr[index] = value;
           }
@@ -595,9 +602,11 @@ export class XyzwWebSocketClient {
 
   /** 尝试为日志解码BON体，成功返回对象 */
   decodeBodyForLog(body) {
-    if (!body) return null;
+    if (!body)
+      return null;
     const decoder = this.utils?.bon?.decode;
-    if (typeof decoder !== "function") return null;
+    if (typeof decoder !== "function")
+      return null;
 
     let bytes = null;
     if (body instanceof Uint8Array) {
@@ -608,7 +617,8 @@ export class XyzwWebSocketClient {
       bytes = this.convertToUint8Array(body);
     }
 
-    if (!bytes) return null;
+    if (!bytes)
+      return null;
 
     try {
       return decoder(bytes);
@@ -673,8 +683,8 @@ export class XyzwWebSocketClient {
     // 移除特定命令的控制台直出日志，统一用 wsLogger 控制
 
     // 统一在入队时分配 seq，避免与 Promise 版本竞争导致重复
-    const assignedSeq =
-      options.seq !== undefined
+    const assignedSeq
+      = options.seq !== undefined
         ? options.seq
         : cmd === "heart_beat"
           ? 0
@@ -773,14 +783,18 @@ export class XyzwWebSocketClient {
 
   /** 队列处理循环 */
   _processQueueLoop() {
-    if (this.sendQueueTimer) clearInterval(this.sendQueueTimer);
+    if (this.sendQueueTimer)
+      clearInterval(this.sendQueueTimer);
 
     this.sendQueueTimer = setInterval(async () => {
-      if (!this.sendQueue.length) return;
-      if (!this.connected || this.socket?.readyState !== WebSocket.OPEN) return;
+      if (!this.sendQueue.length)
+        return;
+      if (!this.connected || this.socket?.readyState !== WebSocket.OPEN)
+        return;
 
       const task = this.sendQueue.shift();
-      if (!task) return;
+      if (!task)
+        return;
 
       try {
         // 直接使用任务指定的 seq（已在入队时分配）
@@ -844,7 +858,8 @@ export class XyzwWebSocketClient {
         }
 
         // 可选延时
-        if (task.sleep) await sleep(task.sleep);
+        if (task.sleep)
+          await sleep(task.sleep);
       } catch (error) {
         wsLogger.error(`发送消息失败: ${task.cmd}`, error);
       }
@@ -859,8 +874,8 @@ export class XyzwWebSocketClient {
       delete this.promises[packet.resp];
 
       // 获取响应数据，优先使用 rawData（ProtoMsg 自动解码），然后 decodedBody（手动解码），最后 body
-      const responseBody =
-        packet.rawData !== undefined
+      const responseBody
+        = packet.rawData !== undefined
           ? packet.rawData
           : packet.decodedBody !== undefined
             ? packet.decodedBody
@@ -880,7 +895,8 @@ export class XyzwWebSocketClient {
 
     // 兼容旧的基于cmd名称的匹配方式（保留为向后兼容）
     const cmd = packet.cmd;
-    if (!cmd) return;
+    if (!cmd)
+      return;
     const respCmdKey = typeof cmd === "string" ? cmd.toLowerCase() : cmd;
 
     // 命令到响应的映射 - 处理响应命令与原始命令不匹配的情况
@@ -918,9 +934,9 @@ export class XyzwWebSocketClient {
       fight_starttowerresp: "fight_starttower",
       evotowerinforesp: "evotower_getinfo",
       evotower_fightresp: "evotower_fight",
-      evotower_getlegionjoinmembersresp: 'evotower_getlegionjoinmembers',
-      mergebox_getinforesp: 'mergebox_getinfo',
-      mergebox_claimfreeenergyresp: 'mergebox_claimfreeenergy',
+      evotower_getlegionjoinmembersresp: "evotower_getlegionjoinmembers",
+      mergebox_getinforesp: "mergebox_getinfo",
+      mergebox_claimfreeenergyresp: "mergebox_claimfreeenergy",
       item_openpackresp: "item_openpack",
       // 咸王宝库
       matchteam_getroleteaminforesp: "matchteam_getroleteaminfo",
@@ -944,7 +960,6 @@ export class XyzwWebSocketClient {
       car_getmemberrankresp: "car_getmemberrank",
       role_gettargetteamresp: "role_gettargetteam",
       activity_warorderclaimresp: "activity_recyclewarorderrewardclaim",
-      arena_getarearankresp: "arena_getarearank",
       bosstower_gethelprankresp: "bosstower_gethelprank",
       // 特殊响应映射 - 有些命令有独立响应，有些用同步响应
       task_claimdailyrewardresp: "task_claimdailyreward",
@@ -980,8 +995,8 @@ export class XyzwWebSocketClient {
         delete this.promises[requestId];
 
         // 获取响应数据，优先使用 rawData（ProtoMsg 自动解码），然后 decodedBody（手动解码），最后 body
-        const responseBody =
-          packet.rawData !== undefined
+        const responseBody
+          = packet.rawData !== undefined
             ? packet.rawData
             : packet.decodedBody !== undefined
               ? packet.decodedBody

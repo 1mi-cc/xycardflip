@@ -1,5 +1,7 @@
-import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import { openDB } from "idb";
 import { ref } from "vue";
+
+import type { DBSchema, IDBPDatabase } from "idb";
 
 // 数据库结构定义
 interface ArrayBufferDB extends DBSchema {
@@ -71,8 +73,8 @@ export function useIndexedDB(config: DBConfig = {}): UseIndexedDBReturn {
           }
         },
         blocked() {
-          error.value =
-            "数据库被其他标签页阻塞，请关闭其他使用相同数据库的标签页";
+          error.value
+            = "数据库被其他标签页阻塞，请关闭其他使用相同数据库的标签页";
         },
         blocking() {
           error.value = "数据库需要升级，请关闭所有标签页后重试";

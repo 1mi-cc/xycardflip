@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="star-upgrade" :statusClass="{ active: state.isRunning }">
+  <MyCard class="star-upgrade" :status-class="{ active: state.isRunning }">
     <template #icon>
-      <img src="/icons/legionCup.png" alt="升级图标" />
+      <img alt="升级图标" src="/icons/legionCup.png">
     </template>
     <template #title>
       <h3>武将升级</h3>
@@ -21,9 +21,9 @@
       </div>
     </template>
     <template #action>
-      <div class="action-row" v-if="HeroItem != null">
+      <div v-if="HeroItem != null" class="action-row">
         <div class="hero-item">
-          <img :src="HeroItem.avatar" :alt="HeroItem.name" />
+          <img :alt="HeroItem.name" :src="HeroItem.avatar">
         </div>
         <div class="hero-property">
           <div class="current-property">
@@ -41,21 +41,23 @@
           </div>
           <div class="button-group">
             <a-button
+              size="small"
               type="primary"
               :disabled="state.isRunning"
-              size="small"
               @click="levelHeroUpgrade"
-              >升级</a-button
             >
+              升级
+            </a-button>
             <a-button
+              size="small"
               type="primary"
               :disabled="
                 judgeLevelupgrade(HeroItem.level, 1, HeroItem.order) == false
               "
-              size="small"
               @click="orderHeroUpgrade"
-              >进阶</a-button
             >
+              进阶
+            </a-button>
           </div>
         </div>
       </div>
@@ -64,11 +66,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
-import MyCard from "../Common/MyCard.vue";
 import { HERO_DICT } from "@/utils/HeroList";
+
+import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -76,7 +80,7 @@ const message = useMessage();
 const HeroOptions = computed(() => [
   ...Object.values(tokenStore.gameData.roleInfo.role.heroes).map((item) => {
     return {
-      label: HERO_DICT[item.heroId].name + "(" + item.level + "/6000)",
+      label: `${HERO_DICT[item.heroId].name}(${item.level}/6000)`,
       value: item.heroId,
       disabled: item.level == 6000,
     };
@@ -142,7 +146,7 @@ watch(
   { deep: true }, // 深度监听内部变化
 );
 
-//英雄进阶
+// 英雄进阶
 const orderHeroUpgrade = async () => {
   if (!tokenStore.selectedToken) {
     message.warning("请先选择游戏角色");
@@ -160,7 +164,7 @@ const orderHeroUpgrade = async () => {
   state.value.isRunning = true;
 
   try {
-    let judgement = judgeLevelupgrade(
+    const judgement = judgeLevelupgrade(
       HeroItem.value.level,
       levelNum.value,
       HeroItem.value.order,
@@ -189,7 +193,7 @@ const orderHeroUpgrade = async () => {
   }
 };
 
-//英雄升级
+// 英雄升级
 const levelHeroUpgrade = async () => {
   if (!tokenStore.selectedToken) {
     message.warning("请先选择游戏角色");
@@ -207,7 +211,7 @@ const levelHeroUpgrade = async () => {
   state.value.isRunning = true;
 
   try {
-    let judgement = judgeLevelupgrade(
+    const judgement = judgeLevelupgrade(
       HeroItem.value.level,
       levelNum.value,
       HeroItem.value.order,
@@ -226,7 +230,7 @@ const levelHeroUpgrade = async () => {
         tokenStore.sendGetRoleInfo(tokenId);
       }
     } else {
-      message.warning("请手动升级到" + judgement + "级,然后进行进阶");
+      message.warning(`请手动升级到${judgement}级,然后进行进阶`);
     }
   } catch (error) {
     message.error(`升级失败: ${error.message}`);
@@ -260,7 +264,7 @@ const levelArr = [
   { level: 4500, order: 17 },
   { level: 5000, order: 18 },
   { level: 5500, order: 19 },
-]; //需要进阶的等级
+]; // 需要进阶的等级
 const judgeLevelupgrade = (level, levelNum, order) => {
   for (const item of levelArr) {
     console.log(
@@ -272,9 +276,9 @@ const judgeLevelupgrade = (level, levelNum, order) => {
       item.level < level + levelNum,
     );
     if (
-      order != item.order &&
-      level <= item.level &&
-      item.level < level + levelNum
+      order != item.order
+      && level <= item.level
+      && item.level < level + levelNum
     ) {
       return item.level;
     } else {

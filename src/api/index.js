@@ -1,4 +1,5 @@
 import axios from "axios";
+
 import { useAuthStore } from "@/stores/auth";
 
 // 创建axios实例
@@ -38,7 +39,7 @@ request.interceptors.response.use(
     // 兼容不同的响应格式
     return {
       success: true,
-      data: data,
+      data,
       message: "success",
     };
   },
@@ -49,48 +50,37 @@ request.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response;
 
+      const makeError = (message) => {
+        const err = new Error(message);
+        err.success = false;
+        return err;
+      };
+
       switch (status) {
         case 401:
           // 未授权，清除登录状态
           authStore.logout();
           window.location.href = "/login";
-          return Promise.reject({
-            success: false,
-            message: "登录已过期，请重新登录",
-          });
+          return Promise.reject(makeError("登录已过期，请重新登录"));
         case 403:
-          return Promise.reject({
-            success: false,
-            message: "没有权限访问",
-          });
+          return Promise.reject(makeError("没有权限访问"));
         case 404:
-          return Promise.reject({
-            success: false,
-            message: "请求的资源不存在",
-          });
+          return Promise.reject(makeError("请求的资源不存在"));
         case 500:
-          return Promise.reject({
-            success: false,
-            message: "服务器内部错误",
-          });
+          return Promise.reject(makeError("服务器内部错误"));
         default:
-          return Promise.reject({
-            success: false,
-            message: data?.message || "请求失败",
-          });
+          return Promise.reject(makeError(data?.message || "请求失败"));
       }
     } else if (error.request) {
       // 网络错误
-      return Promise.reject({
-        success: false,
-        message: "网络连接失败，请检查网络",
-      });
+      const networkErr = new Error("网络连接失败，请检查网络");
+      networkErr.success = false;
+      return Promise.reject(networkErr);
     } else {
       // 其他错误
-      return Promise.reject({
-        success: false,
-        message: error.message || "未知错误",
-      });
+      const unknownErr = new Error(error.message || "未知错误");
+      unknownErr.success = false;
+      return Promise.reject(unknownErr);
     }
   },
 );

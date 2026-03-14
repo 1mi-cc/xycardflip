@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="star-upgrade" :statusClass="{ active: state.isRunning }">
+  <MyCard class="star-upgrade" :status-class="{ active: state.isRunning }">
     <template #icon>
-      <img src="/icons/ta.png" alt="升星图标" />
+      <img alt="升星图标" src="/icons/ta.png">
     </template>
     <template #title>
       <h3>升星助手</h3>
@@ -15,66 +15,73 @@
         <div class="setting-item">
           <span class="label">延迟(ms)</span>
           <n-input-number
+            size="small"
             v-model:value="delay"
             :min="0"
             :step="100"
-            size="small"
-          />
+          ></n-input-number>
         </div>
         <div class="status-row">
           <span>英雄数量：{{ heroIds.length }}</span>
         </div>
       </div>
       <div class="progress-row">
-        <n-progress type="line" :percentage="percent" :show-indicator="false" />
-        <span class="progress-text"
-          >{{ state.done }}/{{ state.total }} {{ percent }}%</span
-        >
+        <n-progress type="line" :percentage="percent" :show-indicator="false"></n-progress>
+        <span class="progress-text">{{ state.done }}/{{ state.total }} {{ percent }}%</span>
       </div>
     </template>
     <template #action>
       <div class="action-row">
         <a-button
-          type="primary"
           size="small"
+          type="primary"
           :disabled="state.isRunning"
           @click="startHeroUpgrade"
-          >升星</a-button
         >
+          升星
+        </a-button>
         <a-button
-          type="primary"
           size="small"
+          type="primary"
           :disabled="state.isRunning"
           @click="startBookUpgrade"
-          >图鉴</a-button
         >
+          图鉴
+        </a-button>
         <a-button
-          type="primary"
           size="small"
+          type="primary"
           :disabled="state.isRunning"
           @click="startClaimRewards"
-          >领奖</a-button
         >
-        <a-button size="small" :disabled="!state.isRunning" @click="stopRunning"
-          >停止</a-button
+          领奖
+        </a-button>
+        <a-button
+          size="small"
+          :disabled="!state.isRunning"
+          @click="stopRunning"
         >
+          停止
+        </a-button>
       </div>
     </template>
   </MyCard>
   <n-modal
-    v-model:show="state.showConfirm"
+    content="将对预设英雄执行升星、图鉴升星并领取奖励。"
+    negative-text="取消"
+    positive-text="开始"
     preset="dialog"
     title="确认执行"
-    content="将对预设英雄执行升星、图鉴升星并领取奖励。"
-    positive-text="开始"
-    negative-text="取消"
-  />
+    v-model:show="state.showConfirm"
+  ></n-modal>
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -211,7 +218,8 @@ const runHeroUpgrade = async (mod) => {
   try {
     state.value.isRunning = true;
     for (const heroId of heroIds.value) {
-      if (state.value.stopRequested) break;
+      if (state.value.stopRequested)
+        break;
       let skip = false;
       for (let i = 1; i <= 10; i++) {
         if (state.value.stopRequested) {
@@ -225,10 +233,11 @@ const runHeroUpgrade = async (mod) => {
             { heroId },
             8000,
           );
-          const ok =
-            res && (res.code === 0 || res.success === true || res.result === 0);
+          const ok
+            = res && (res.code === 0 || res.success === true || res.result === 0);
           addLog(`英雄ID:${heroId} 升星第${i}/10次`, ok ? "success" : "error");
-          if (!ok) throw new Error("升星失败");
+          if (!ok)
+            throw new Error("升星失败");
         } catch (err) {
           addLog(`英雄ID:${heroId} 升星第${i}/10次失败，跳过剩余次数`, "error");
           skip = true;
@@ -263,7 +272,8 @@ const runBookUpgrade = async (mod) => {
   try {
     state.value.isRunning = true;
     for (const heroId of heroIds.value) {
-      if (state.value.stopRequested) break;
+      if (state.value.stopRequested)
+        break;
       let skip = false;
       for (let i = 1; i <= 10; i++) {
         if (state.value.stopRequested) {
@@ -277,13 +287,14 @@ const runBookUpgrade = async (mod) => {
             { heroId },
             8000,
           );
-          const ok =
-            res && (res.code === 0 || res.success === true || res.result === 0);
+          const ok
+            = res && (res.code === 0 || res.success === true || res.result === 0);
           addLog(
             `英雄ID:${heroId} 图鉴升星第${i}/10次`,
             ok ? "success" : "error",
           );
-          if (!ok) throw new Error("图鉴升星失败");
+          if (!ok)
+            throw new Error("图鉴升星失败");
         } catch (err) {
           addLog(
             `英雄ID:${heroId} 图鉴升星第${i}/10次失败，跳过剩余次数`,
@@ -321,7 +332,8 @@ const runClaimRewards = async (mod) => {
   try {
     state.value.isRunning = true;
     for (let i = 1; i <= 10; i++) {
-      if (state.value.stopRequested) break;
+      if (state.value.stopRequested)
+        break;
       try {
         const res = await tokenStore.sendMessageWithPromise(
           tokenId,
@@ -329,10 +341,11 @@ const runClaimRewards = async (mod) => {
           {},
           8000,
         );
-        const ok =
-          res && (res.code === 0 || res.success === true || res.result === 0);
+        const ok
+          = res && (res.code === 0 || res.success === true || res.result === 0);
         addLog(`领取图鉴奖励第${i}/10次`, ok ? "success" : "error");
-        if (!ok) throw new Error("领取奖励失败");
+        if (!ok)
+          throw new Error("领取奖励失败");
         state.value.done++;
       } catch (err) {
         addLog(`领取图鉴奖励第${i}/10次失败，跳过剩余次数`, "error");

@@ -1,8 +1,7 @@
-import { useTokenStore } from "@/stores/tokenStore";
-
 // 辅助函数
 const pickArenaTargetId = (targets) => {
-  if (!targets) return null;
+  if (!targets)
+    return null;
 
   // Handle if targets is an array directly
   if (Array.isArray(targets)) {
@@ -10,28 +9,32 @@ const pickArenaTargetId = (targets) => {
     return candidate?.roleId || candidate?.id || candidate?.targetId;
   }
 
-  const candidate =
-    targets?.rankList?.[0] ||
-    targets?.roleList?.[0] ||
-    targets?.targets?.[0] ||
-    targets?.targetList?.[0] ||
-    targets?.list?.[0];
+  const candidate
+    = targets?.rankList?.[0]
+      || targets?.roleList?.[0]
+      || targets?.targets?.[0]
+      || targets?.targetList?.[0]
+      || targets?.list?.[0];
 
   if (candidate) {
-    if (candidate.roleId) return candidate.roleId;
-    if (candidate.id) return candidate.id;
-    if (candidate.targetId) return candidate.targetId;
+    if (candidate.roleId)
+      return candidate.roleId;
+    if (candidate.id)
+      return candidate.id;
+    if (candidate.targetId)
+      return candidate.targetId;
   }
 
   return targets?.roleId || targets?.id || targets?.targetId;
 };
 
 const isTodayAvailable = (statisticsTime) => {
-  if (!statisticsTime) return true;
+  if (!statisticsTime)
+    return true;
 
   // 如果有时间戳，检查是否为今天
   const today = new Date().toDateString();
-  //系统返回得时间戳是秒，要转换成毫秒
+  // 系统返回得时间戳是秒，要转换成毫秒
   const recordDate = new Date(statisticsTime * 1000).toDateString();
 
   return today !== recordDate;
@@ -66,7 +69,8 @@ export class DailyTaskRunner {
     timeout = 8000,
   ) {
     try {
-      if (description) this.log(`执行: ${description}`);
+      if (description)
+        this.log(`执行: ${description}`);
       const result = await this.tokenStore.sendMessageWithPromise(
         tokenId,
         cmd,
@@ -74,7 +78,8 @@ export class DailyTaskRunner {
         timeout,
       );
       await new Promise((resolve) => setTimeout(resolve, 500));
-      if (description) this.log(`${description} - 成功`, "success");
+      if (description)
+        this.log(`${description} - 成功`, "success");
       return result;
     } catch (error) {
       if (description)
@@ -578,10 +583,10 @@ export class DailyTaskRunner {
     // 咸王梦境
     const mengyandayOfWeek = new Date().getDay();
     if (
-      (mengyandayOfWeek === 0) |
-      (mengyandayOfWeek === 1) |
-      (mengyandayOfWeek === 3) |
-      (mengyandayOfWeek === 4)
+      (mengyandayOfWeek === 0)
+      | (mengyandayOfWeek === 1)
+      | (mengyandayOfWeek === 3)
+      | (mengyandayOfWeek === 4)
     ) {
       const mjbattleTeam = { 0: 107 };
       taskList.push({
@@ -598,8 +603,8 @@ export class DailyTaskRunner {
 
     // 深海灯神
     if (
-      mengyandayOfWeek === 1 &&
-      isTodayAvailable(statisticsTime[`genie:daily:free:5`])
+      mengyandayOfWeek === 1
+      && isTodayAvailable(statisticsTime[`genie:daily:free:5`])
     ) {
       taskList.push({
         name: "深海灯神",
@@ -670,14 +675,16 @@ export class DailyTaskRunner {
       try {
         await task.execute();
         const progress = Math.floor(((i + 1) / totalTasks) * 100);
-        if (this.callbacks?.onProgress) this.callbacks.onProgress(progress);
+        if (this.callbacks?.onProgress)
+          this.callbacks.onProgress(progress);
         await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (error) {
         this.log(`任务执行失败: ${task.name} - ${error.message}`, "error");
       }
     }
 
-    if (this.callbacks?.onProgress) this.callbacks.onProgress(100);
+    if (this.callbacks?.onProgress)
+      this.callbacks.onProgress(100);
     this.log("所有任务执行完成", "success");
   }
 }

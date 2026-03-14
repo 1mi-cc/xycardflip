@@ -14,7 +14,7 @@
           <div class="header-actions">
             <div class="connection-status" :class="connectionStatus">
               <n-icon>
-                <CloudDone />
+                <CloudDone></CloudDone>
               </n-icon>
               <span>{{ connectionStatusText }}</span>
             </div>
@@ -24,12 +24,12 @@
     </div>
 
     <!-- 反馈提示区域 -->
-    <div v-if="showFeedback" class="feedback-section" />
+    <div v-if="showFeedback" class="feedback-section"></div>
 
     <!-- 功能模块网格 -->
     <div class="features-grid-section">
       <div class="container">
-        <GameStatus />
+        <GameStatus></GameStatus>
       </div>
     </div>
 
@@ -64,11 +64,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { useRouter } from "vue-router";
-import { useMessage } from "naive-ui";
-import { useTokenStore } from "@/stores/tokenStore";
 import { CloudDone } from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+
+import { useTokenStore } from "@/stores/tokenStore";
 
 const router = useRouter();
 const message = useMessage();
@@ -80,13 +81,15 @@ const lastActivity = ref(null);
 
 // 计算属性
 const connectionStatus = computed(() => {
-  if (!tokenStore.selectedToken) return "disconnected";
+  if (!tokenStore.selectedToken)
+    return "disconnected";
   const status = tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
   return status === "connected" ? "connected" : "disconnected";
 });
 
 const connectionStatusText = computed(() => {
-  if (!tokenStore.selectedToken) return "未选择Token";
+  if (!tokenStore.selectedToken)
+    return "未选择Token";
   const status = tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
   return status === "connected" ? "已连接" : "未连接";
 });
@@ -102,15 +105,17 @@ const isConnected = computed(() => {
 });
 
 const pickArenaTargetId = (targets) => {
-  const candidate =
-    targets?.rankList?.[0] ||
-    targets?.roleList?.[0] ||
-    targets?.targets?.[0] ||
-    targets?.targetList?.[0] ||
-    targets?.list?.[0];
+  const candidate
+    = targets?.rankList?.[0]
+      || targets?.roleList?.[0]
+      || targets?.targets?.[0]
+      || targets?.targetList?.[0]
+      || targets?.list?.[0];
 
-  if (candidate?.roleId) return candidate.roleId;
-  if (candidate?.id) return candidate.id;
+  if (candidate?.roleId)
+    return candidate.roleId;
+  if (candidate?.id)
+    return candidate.id;
   return targets?.roleId || targets?.id;
 };
 
@@ -275,7 +280,8 @@ watch(
     return { status: conn?.status, lastError: conn?.lastError };
   },
   (cur) => {
-    if (!cur) return;
+    if (!cur)
+      return;
     if (cur.status === "error" && cur.lastError) {
       const err = String(cur.lastError.error || "").toLowerCase();
       if (err.includes("token") && err.includes("expired")) {
@@ -289,7 +295,8 @@ watch(
 
 // 初始化游戏数据
 const initializeGameData = async () => {
-  if (!tokenStore.selectedToken) return;
+  if (!tokenStore.selectedToken)
+    return;
 
   try {
     const tokenId = tokenStore.selectedToken.id;

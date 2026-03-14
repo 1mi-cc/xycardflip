@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="monthly-tasks" :statusClass="monthActivity ? 'active' : ''">
+  <MyCard class="monthly-tasks" :status-class="monthActivity ? 'active' : ''">
     <template #icon>
-      <img src="/icons/1736425783912140.png" alt="月度任务" />
+      <img alt="月度任务" src="/icons/1736425783912140.png">
     </template>
     <template #title>
       <h3>月度任务</h3>
@@ -42,8 +42,8 @@
             {{ fishToppingUp ? "补齐中..." : "钓鱼补齐" }}
           </n-button>
           <n-dropdown
-            :options="fishMoreOptions"
             trigger="click"
+            :options="fishMoreOptions"
             @select="onFishMoreSelect"
           >
             <n-button :disabled="monthLoading || fishToppingUp">▾</n-button>
@@ -59,8 +59,8 @@
             {{ arenaToppingUp ? "补齐中..." : "竞技场补齐" }}
           </n-button>
           <n-dropdown
-            :options="arenaMoreOptions"
             trigger="click"
+            :options="arenaMoreOptions"
             @select="onArenaMoreSelect"
           >
             <n-button :disabled="monthLoading || arenaToppingUp">▾</n-button>
@@ -77,9 +77,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -132,15 +134,18 @@ const fishMoreOptions = [{ label: "一键完成", key: "complete-fish" }];
 const arenaMoreOptions = [{ label: "一键完成", key: "complete-arena" }];
 
 const isConnected = computed(() => {
-  if (!tokenStore.selectedToken) return false;
+  if (!tokenStore.selectedToken)
+    return false;
   return (
     tokenStore.getWebSocketStatus(tokenStore.selectedToken.id) === "connected"
   );
 });
 
 const fetchMonthlyActivity = async () => {
-  if (!tokenStore.selectedToken) return message.warning("请先选择Token");
-  if (!isConnected.value) return;
+  if (!tokenStore.selectedToken)
+    return message.warning("请先选择Token");
+  if (!isConnected.value)
+    return;
   monthLoading.value = true;
   try {
     const tokenId = tokenStore.selectedToken.id;
@@ -152,7 +157,8 @@ const fetchMonthlyActivity = async () => {
     );
     const act = result?.activity || result?.body?.activity || result;
     monthActivity.value = act || null;
-    if (act) message.success("月度任务进度已更新");
+    if (act)
+      message.success("月度任务进度已更新");
   } catch (e) {
     message.error(`获取月度任务失败：${e.message}`);
   } finally {
@@ -166,7 +172,8 @@ const getTodayStartSec = () => {
   return Math.floor(d.getTime() / 1000);
 };
 const isTodayAvailable = (lastTimeSec) => {
-  if (!lastTimeSec || typeof lastTimeSec !== "number") return true;
+  if (!lastTimeSec || typeof lastTimeSec !== "number")
+    return true;
   return lastTimeSec < getTodayStartSec();
 };
 
@@ -176,7 +183,8 @@ const topUpMonthly = (type) => {
   const current = isFish ? fishNum.value : arenaNum.value;
   const shouldBe = isFish ? fishShouldBe.value : arenaShouldBe.value;
   const need = Math.max(0, shouldBe - current);
-  if (need <= 0) return message.success("当前进度已达标，无需补齐");
+  if (need <= 0)
+    return message.success("当前进度已达标，无需补齐");
   return isFish
     ? autoTopUpFish(need, shouldBe, target)
     : autoTopUpArena(need, shouldBe, target);
@@ -187,22 +195,27 @@ const completeMonthly = (type) => {
   const target = isFish ? FISH_TARGET : ARENA_TARGET;
   const current = isFish ? fishNum.value : arenaNum.value;
   const need = Math.max(0, target - current);
-  if (need <= 0) return message.success("已满额，无需完成");
+  if (need <= 0)
+    return message.success("已满额，无需完成");
   return isFish
     ? autoTopUpFish(need, target, target)
     : autoTopUpArena(need, target, target);
 };
 
 const onFishMoreSelect = (key) => {
-  if (key === "complete-fish") completeMonthly("fish");
+  if (key === "complete-fish")
+    completeMonthly("fish");
 };
 const onArenaMoreSelect = (key) => {
-  if (key === "complete-arena") completeMonthly("arena");
+  if (key === "complete-arena")
+    completeMonthly("arena");
 };
 
 const autoTopUpFish = async (need, shouldBe, target) => {
-  if (!tokenStore.selectedToken) return message.warning("请先选择Token");
-  if (!isConnected.value) return message.warning("请先建立WS连接");
+  if (!tokenStore.selectedToken)
+    return message.warning("请先选择Token");
+  if (!isConnected.value)
+    return message.warning("请先建立WS连接");
   fishToppingUp.value = true;
   try {
     const tokenId = tokenStore.selectedToken.id;
@@ -233,10 +246,12 @@ const autoTopUpFish = async (need, shouldBe, target) => {
           break;
         }
       }
-      if (freeUsed > 0) await fetchMonthlyActivity();
+      if (freeUsed > 0)
+        await fetchMonthlyActivity();
     }
     let remaining = Math.max(0, shouldBe - fishNum.value);
-    if (remaining <= 0) return message.success("已通过免费次数完成当日目标");
+    if (remaining <= 0)
+      return message.success("已通过免费次数完成当日目标");
     message.info(`开始付费钓鱼补齐：共需 ${remaining} 次（每次最多10）`);
     while (remaining > 0) {
       const batch = Math.min(10, remaining);
@@ -264,21 +279,25 @@ const autoTopUpFish = async (need, shouldBe, target) => {
 };
 
 const pickArenaTargetId = (targets) => {
-  const candidate =
-    targets?.rankList?.[0] ||
-    targets?.roleList?.[0] ||
-    targets?.targets?.[0] ||
-    targets?.targetList?.[0] ||
-    targets?.list?.[0];
+  const candidate
+    = targets?.rankList?.[0]
+      || targets?.roleList?.[0]
+      || targets?.targets?.[0]
+      || targets?.targetList?.[0]
+      || targets?.list?.[0];
 
-  if (candidate?.roleId) return candidate.roleId;
-  if (candidate?.id) return candidate.id;
+  if (candidate?.roleId)
+    return candidate.roleId;
+  if (candidate?.id)
+    return candidate.id;
   return targets?.roleId || targets?.id;
 };
 
 const autoTopUpArena = async (need, shouldBe, target) => {
-  if (!tokenStore.selectedToken) return message.warning("请先选择Token");
-  if (!isConnected.value) return message.warning("请先建立WS连接");
+  if (!tokenStore.selectedToken)
+    return message.warning("请先选择Token");
+  if (!isConnected.value)
+    return message.warning("请先建立WS连接");
   arenaToppingUp.value = true;
   try {
     const tokenId = tokenStore.selectedToken.id;
@@ -362,7 +381,8 @@ watch(
 );
 
 onMounted(() => {
-  if (tokenStore.selectedToken && isConnected.value) fetchMonthlyActivity();
+  if (tokenStore.selectedToken && isConnected.value)
+    fetchMonthlyActivity();
 });
 
 defineExpose({ fetchMonthlyActivity });

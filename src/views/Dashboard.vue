@@ -9,20 +9,20 @@
           方便你像标准后台一样快速切换工作。
         </p>
         <div class="hero-tags">
-          <n-tag size="small" round type="info">
+          <n-tag round size="small" type="info">
             当前 Token：{{ tokenStore.selectedToken?.name || "未选择" }}
           </n-tag>
-          <n-tag size="small" round type="success">
+          <n-tag round size="small" type="success">
             已导入 {{ tokenStore.gameTokens.length }} 个 Token
           </n-tag>
-          <n-tag size="small" round :type="tokenStore.hasTokens ? 'warning' : 'error'">
+          <n-tag round size="small" :type="tokenStore.hasTokens ? 'warning' : 'error'">
             {{ tokenStore.hasTokens ? "已准备进入后台" : "请先导入 Token" }}
           </n-tag>
         </div>
       </div>
 
       <div class="hero-actions">
-        <n-button type="primary" size="large" @click="router.push('/admin/card-flip-ops')">
+        <n-button size="large" type="primary" @click="router.push('/admin/card-flip-ops')">
           进入卡片倒卖操作台
         </n-button>
         <n-button size="large" @click="handleManageTokens">管理 Token</n-button>
@@ -35,7 +35,7 @@
     <section class="summary-grid">
       <article v-for="stat in statistics" :key="stat.id" class="summary-card">
         <div class="summary-icon" :style="{ color: stat.color, background: stat.bg }">
-          <component :is="stat.icon" />
+          <component :is="stat.icon"></component>
         </div>
         <div class="summary-body">
           <span class="summary-label">{{ stat.label }}</span>
@@ -57,12 +57,12 @@
           <button
             v-for="action in quickActions"
             :key="action.id"
-            type="button"
             class="quick-card"
+            type="button"
             @click="handleQuickAction(action)"
           >
             <div class="quick-icon">
-              <component :is="action.icon" />
+              <component :is="action.icon"></component>
             </div>
             <div class="quick-copy">
               <h3>{{ action.title }}</h3>
@@ -112,7 +112,7 @@
           class="activity-item"
         >
           <div class="activity-icon" :class="activity.type">
-            <component :is="getActivityIcon(activity.type)" />
+            <component :is="getActivityIcon(activity.type)"></component>
           </div>
           <div class="activity-copy">
             <div class="activity-text">{{ activity.message }}</div>
@@ -122,17 +122,13 @@
       </div>
 
       <div v-else class="activity-empty">
-        <n-empty description="最近还没有新的后台记录" />
+        <n-empty description="最近还没有新的后台记录"></n-empty>
       </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { useMessage } from "naive-ui";
-import { useTokenStore } from "@/stores/tokenStore";
 import {
   Add,
   CheckmarkCircle,
@@ -145,6 +141,11 @@ import {
   Time,
   TrendingUp,
 } from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
+import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+
+import { useTokenStore } from "@/stores/tokenStore";
 
 const router = useRouter();
 const message = useMessage();
@@ -258,7 +259,7 @@ const handleManageTokens = () => {
   }
 };
 
-const handleQuickAction = action => router.push(action.action);
+const handleQuickAction = (action) => router.push(action.action);
 
 const refreshActivity = () => {
   recentActivities.value = [
@@ -285,8 +286,10 @@ const refreshActivity = () => {
 };
 
 const getActivityIcon = (type) => {
-  if (type === "success") return CheckmarkCircle;
-  if (type === "warning") return Time;
+  if (type === "success")
+    return CheckmarkCircle;
+  if (type === "warning")
+    return Time;
   return Home;
 };
 
@@ -296,9 +299,12 @@ const formatTime = (timestamp) => {
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-  if (days > 0) return `${days} 天前`;
-  if (hours > 0) return `${hours} 小时前`;
-  if (minutes > 0) return `${minutes} 分钟前`;
+  if (days > 0)
+    return `${days} 天前`;
+  if (hours > 0)
+    return `${hours} 小时前`;
+  if (minutes > 0)
+    return `${minutes} 分钟前`;
   return "刚刚";
 };
 

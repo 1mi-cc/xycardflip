@@ -6,13 +6,13 @@
         <h3>审批引擎</h3>
         <p>负责自动审批、自动买入、自动上架，是操作台里最常用的执行面板。</p>
         <div class="service-tags">
-          <n-tag :type="autotradeStatus.running ? 'success' : 'default'" size="small">
+          <n-tag size="small" :type="autotradeStatus.running ? 'success' : 'default'">
             {{ autotradeStatus.running ? "运行中" : "已停止" }}
           </n-tag>
-          <n-tag :type="autotradeStatus.enabled ? 'info' : 'warning'" size="small">
+          <n-tag size="small" :type="autotradeStatus.enabled ? 'info' : 'warning'">
             {{ autotradeStatus.enabled ? "已启用" : "未启用" }}
           </n-tag>
-          <n-tag :type="executionStatus.live_enabled ? 'error' : 'warning'" size="small">
+          <n-tag size="small" :type="executionStatus.live_enabled ? 'error' : 'warning'">
             {{ executionStatus.live_enabled ? "实盘链路" : "模拟链路" }}
           </n-tag>
         </div>
@@ -22,23 +22,23 @@
         <n-button
           size="small"
           type="primary"
-          :loading="autotradeActionLoading === 'start'"
           :disabled="!canOperate"
+          :loading="autotradeActionLoading === 'start'"
           @click="$emit('startAutotrade')"
         >
           启动
         </n-button>
         <n-button
           size="small"
-          :loading="autotradeActionLoading === 'stop'"
           :disabled="!canOperate"
+          :loading="autotradeActionLoading === 'stop'"
           @click="$emit('stopAutotrade')"
         >
           停止
         </n-button>
         <n-button
-          size="small"
           tertiary
+          size="small"
           :loading="autotradeStatusLoading"
           @click="$emit('loadAutotradeStatus')"
         >
@@ -92,22 +92,22 @@
       <div class="section-subtitle">高频手动操作保留在主面板，参数调节放到折叠区。</div>
       <n-space wrap>
         <n-input
-          :value="executionLiveConfirmToken"
-          type="password"
-          show-password-on="click"
           placeholder="实盘确认口令"
+          show-password-on="click"
           style="width: 220px"
+          type="password"
           :disabled="!executionStatus.live_confirm_required"
+          :value="executionLiveConfirmToken"
           @update:value="value => $emit('update:executionLiveConfirmToken', value)"
-        />
+        ></n-input>
         <n-input-number
-          :value="autotradeRunLimit"
-          :min="0"
-          :max="500"
-          style="width: 160px"
           placeholder="审批条数"
+          style="width: 160px"
+          :max="500"
+          :min="0"
+          :value="autotradeRunLimit"
           @update:value="value => $emit('update:autotradeRunLimit', value)"
-        />
+        ></n-input-number>
         <n-switch
           :value="autotradeRunForce"
           @update:value="value => $emit('update:autotradeRunForce', value)"
@@ -127,26 +127,26 @@
 
     <div v-if="canOperate" class="service-section">
       <n-collapse>
-        <n-collapse-item title="执行设置" name="exec-live-settings">
+        <n-collapse-item name="exec-live-settings" title="执行设置">
           <n-space wrap>
             <n-button-group size="small">
               <n-button
-                :type="executionStatus.provider === 'mock' ? 'primary' : 'default'"
                 :loading="executionConfigLoading"
+                :type="executionStatus.provider === 'mock' ? 'primary' : 'default'"
                 @click="$emit('setExecutionProvider', 'mock')"
               >
                 mock
               </n-button>
               <n-button
-                :type="executionStatus.provider === 'webhook' ? 'primary' : 'default'"
                 :loading="executionConfigLoading"
+                :type="executionStatus.provider === 'webhook' ? 'primary' : 'default'"
                 @click="$emit('setExecutionProvider', 'webhook')"
               >
                 webhook
               </n-button>
               <n-button
-                :type="['disabled', 'none'].includes(executionStatus.provider) ? 'warning' : 'default'"
                 :loading="executionConfigLoading"
+                :type="['disabled', 'none'].includes(executionStatus.provider) ? 'warning' : 'default'"
                 @click="$emit('setExecutionProvider', 'disabled')"
               >
                 disabled
@@ -155,8 +155,8 @@
 
             <n-button
               size="small"
-              :type="executionStatus.live_enabled ? 'success' : 'default'"
               :loading="executionConfigLoading"
+              :type="executionStatus.live_enabled ? 'success' : 'default'"
               @click="$emit('toggleExecutionFlag', 'live_enabled')"
             >
               {{ executionStatus.live_enabled ? "实盘执行：开" : "实盘执行：关" }}
@@ -164,8 +164,8 @@
 
             <n-button
               size="small"
-              :type="executionStatus.live_confirm_required ? 'primary' : 'default'"
               :loading="executionConfigLoading"
+              :type="executionStatus.live_confirm_required ? 'primary' : 'default'"
               @click="$emit('toggleExecutionFlag', 'live_confirm_required')"
             >
               {{ executionStatus.live_confirm_required ? "二次确认：开" : "二次确认：关" }}
@@ -231,7 +231,7 @@
           </n-space>
         </n-collapse-item>
 
-        <n-collapse-item title="快速调参" name="autotrade-quick-tune">
+        <n-collapse-item name="autotrade-quick-tune" title="快速调参">
           <n-space wrap>
             <n-button-group size="small">
               <n-button
@@ -309,8 +309,8 @@
 
             <n-button
               size="small"
-              :type="autotradeStatus.require_risk_score ? 'primary' : 'default'"
               :loading="autotradeConfigLoading"
+              :type="autotradeStatus.require_risk_score ? 'primary' : 'default'"
               @click="$emit('toggleAutotradeFlag', 'require_risk_score')"
             >
               {{ autotradeStatus.require_risk_score ? "要求风险分：开" : "要求风险分：关" }}
@@ -318,8 +318,8 @@
 
             <n-button
               size="small"
-              :type="autotradeStatus.auto_execute_buy_on_approve ? 'success' : 'default'"
               :loading="autotradeConfigLoading"
+              :type="autotradeStatus.auto_execute_buy_on_approve ? 'success' : 'default'"
               @click="$emit('toggleAutotradeFlag', 'auto_execute_buy_on_approve')"
             >
               {{ autotradeStatus.auto_execute_buy_on_approve ? "自动买入：开" : "自动买入：关" }}
@@ -327,8 +327,8 @@
 
             <n-button
               size="small"
-              :type="autotradeStatus.auto_execute_buy_dry_run ? 'warning' : 'error'"
               :loading="autotradeConfigLoading"
+              :type="autotradeStatus.auto_execute_buy_dry_run ? 'warning' : 'error'"
               @click="$emit('toggleAutotradeFlag', 'auto_execute_buy_dry_run')"
             >
               买入模式：{{ autotradeStatus.auto_execute_buy_dry_run ? "dry-run" : "live" }}
@@ -336,8 +336,8 @@
 
             <n-button
               size="small"
-              :type="autotradeStatus.auto_execute_list_on_buy_success ? 'success' : 'default'"
               :loading="autotradeConfigLoading"
+              :type="autotradeStatus.auto_execute_list_on_buy_success ? 'success' : 'default'"
               @click="$emit('toggleAutotradeFlag', 'auto_execute_list_on_buy_success')"
             >
               {{ autotradeStatus.auto_execute_list_on_buy_success ? "自动上架：开" : "自动上架：关" }}
@@ -345,8 +345,8 @@
 
             <n-button
               size="small"
-              :type="autotradeStatus.auto_execute_list_dry_run ? 'warning' : 'error'"
               :loading="autotradeConfigLoading"
+              :type="autotradeStatus.auto_execute_list_dry_run ? 'warning' : 'error'"
               @click="$emit('toggleAutotradeFlag', 'auto_execute_list_dry_run')"
             >
               上架模式：{{ autotradeStatus.auto_execute_list_dry_run ? "dry-run" : "live" }}

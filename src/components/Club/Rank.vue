@@ -3,10 +3,10 @@
   <div class="status-card legion-match">
     <div class="card-header">
       <img
-        src="/icons/1733492491706152.png"
         alt="俱乐部图标"
         class="status-icon"
-      />
+        src="/icons/1733492491706152.png"
+      >
       <div class="status-info">
         <h3>俱乐部排位</h3>
         <p>赛事状态</p>
@@ -17,7 +17,7 @@
     </div>
     <div class="card-content">
       <p class="description">
-        每逢周三周四周五有比赛<br />
+        每逢周三周四周五有比赛<br>
         立即报名参与精彩对决！
       </p>
       <button
@@ -32,9 +32,10 @@
 </template>
 
 <script setup lang="ts">
-import { useTokenStore } from "@/stores/tokenStore";
 import { useMessage } from "naive-ui";
 import { ref } from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -45,7 +46,8 @@ const legionMatch = ref({
 
 // 俱乐部排位报名
 const registerLegionMatch = () => {
-  if (!tokenStore.selectedToken || legionMatch.value.isRegistered) return;
+  if (!tokenStore.selectedToken || legionMatch.value.isRegistered)
+    return;
 
   const tokenId = tokenStore.selectedToken.id;
   tokenStore.sendMessage(tokenId, "legionmatch_rolesignup");

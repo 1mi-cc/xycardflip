@@ -8,15 +8,15 @@
           <n-button size="small" :disabled="loading" @click="handleRefresh">
             <template #icon>
               <n-icon>
-                <Refresh />
+                <Refresh></Refresh>
               </n-icon>
             </template>
             刷新
           </n-button>
-          <n-button type="primary" size="small" :disabled="!memberScores || loading" @click="handleExport">
+          <n-button size="small" type="primary" :disabled="!memberScores || loading" @click="handleExport">
             <template #icon>
               <n-icon>
-                <Copy />
+                <Copy></Copy>
               </n-icon>
             </template>
             导出
@@ -33,7 +33,7 @@
         </div>
 
         <!-- 赛车列表 -->
-        <div v-else-if="memberScores.length > 0" ref="exportDom" class="records-list">
+        <div ref="exportDom" v-else-if="memberScores.length > 0" class="records-list">
           <div class="records-info">
             <n-tag type="success">总成员: {{ memberScores.length }}</n-tag>
           </div>
@@ -42,8 +42,13 @@
             <div class="member-header">
               <div class="member-info">
                 <div class="ranking-number">{{ index + 1 }}</div>
-                <img v-if="member.headImg" :src="member.headImg" :alt="member.name" class="member-avatar"
-                  @error="handleImageError">
+                <img
+                  v-if="member.headImg"
+                  class="member-avatar"
+                  :alt="member.name"
+                  :src="member.headImg"
+                  @error="handleImageError"
+                >
                 <div v-else class="member-avatar-placeholder">{{ member.name?.charAt(0) || '?' }}</div>
                 <span class="member-name">{{ member.name }}</span>
               </div>
@@ -57,22 +62,28 @@
     </div>
 
     <!-- Modal 模式 -->
-    <n-modal v-else v-model:show="showModal" preset="card" title="俱乐部赛车信息" style="width: 90%; max-width: 800px"
-      @after-leave="handleClose">
+    <n-modal
+      v-else
+      preset="card"
+      style="width: 90%; max-width: 800px"
+      title="俱乐部赛车信息"
+      v-model:show="showModal"
+      @after-leave="handleClose"
+    >
       <template #header-extra>
         <div class="header-actions">
           <n-button size="small" :disabled="loading" @click="handleRefresh">
             <template #icon>
               <n-icon>
-                <Refresh />
+                <Refresh></Refresh>
               </n-icon>
             </template>
             刷新
           </n-button>
-          <n-button type="primary" size="small" :disabled="!memberScores || loading" @click="handleExport">
+          <n-button size="small" type="primary" :disabled="!memberScores || loading" @click="handleExport">
             <template #icon>
               <n-icon>
-                <Copy />
+                <Copy></Copy>
               </n-icon>
             </template>
             导出
@@ -89,7 +100,7 @@
         </div>
 
         <!-- 赛车列表 -->
-        <div v-else-if="memberScores.length > 0" ref="exportDom" class="records-list">
+        <div ref="exportDom" v-else-if="memberScores.length > 0" class="records-list">
           <div class="records-info">
             <n-tag type="success">总成员: {{ memberScores.length }}</n-tag>
           </div>
@@ -98,8 +109,13 @@
             <div class="member-header">
               <div class="member-info">
                 <div class="ranking-number">{{ index + 1 }}</div>
-                <img v-if="member.headImg" :src="member.headImg" :alt="member.name" class="member-avatar"
-                  @error="handleImageError">
+                <img
+                  v-if="member.headImg"
+                  class="member-avatar"
+                  :alt="member.name"
+                  :src="member.headImg"
+                  @error="handleImageError"
+                >
                 <div v-else class="member-avatar-placeholder">{{ member.name?.charAt(0) || '?' }}</div>
                 <span class="member-name">{{ member.name }}</span>
               </div>
@@ -115,131 +131,128 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useMessage } from 'naive-ui'
-import { useTokenStore } from '@/stores/tokenStore'
-import html2canvas from 'html2canvas';
 import {
-  Trophy,
-  Refresh,
   Copy,
-  ChevronDown,
-  ChevronUp,
-  DocumentText
-} from '@vicons/ionicons5'
-import { gettoday } from '@/utils/clubWarrankUtils'
+  Refresh,
+} from "@vicons/ionicons5";
+import html2canvas from "html2canvas";
+import { useMessage } from "naive-ui";
+import { computed, onMounted, ref } from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
+import { gettoday } from "@/utils/clubWarrankUtils";
+
 const props = defineProps({
   visible: {
     type: Boolean,
-    default: false
+    default: false,
   },
   inline: {
     type: Boolean,
-    default: false
-  }
-})
+    default: false,
+  },
+});
 
-const exportDom = ref(null)
-const emit = defineEmits(['update:visible'])
-
-const message = useMessage()
-const tokenStore = useTokenStore()
+const emit = defineEmits(["update:visible"]);
+const exportDom = ref(null);
+const message = useMessage();
+const tokenStore = useTokenStore();
 
 const showModal = computed({
   get: () => props.visible,
-  set: (val) => emit('update:visible', val)
-})
+  set: (val) => emit("update:visible", val),
+});
 
-const loading = ref(false)
-const memberScores = ref([])
+const loading = ref(false);
+const memberScores = ref([]);
 
 // 处理图片加载错误
 const handleImageError = (event) => {
-  event.target.style.display = 'none'
-}
+  event.target.style.display = "none";
+};
 
 // 获取赛车数据
 const fetchWeirdTowerInfo = async () => {
   if (!tokenStore.selectedToken) {
-    message.warning('请先选择游戏角色')
-    return
+    message.warning("请先选择游戏角色");
+    return;
   }
 
-  const tokenId = tokenStore.selectedToken.id
+  const tokenId = tokenStore.selectedToken.id;
 
   // 检查WebSocket连接
-  const wsStatus = tokenStore.getWebSocketStatus(tokenId)
-  if (wsStatus !== 'connected') {
-    message.error('WebSocket未连接，无法查询爬塔数据')
-    return
+  const wsStatus = tokenStore.getWebSocketStatus(tokenId);
+  if (wsStatus !== "connected") {
+    message.error("WebSocket未连接，无法查询爬塔数据");
+    return;
   }
 
-  loading.value = true
+  loading.value = true;
 
   try {
     // 获取赛车数据
     const result = await tokenStore.sendMessageWithPromise(
       tokenId,
-      'car_getmemberrank',
+      "car_getmemberrank",
       {},
-      10000
-    )
+      10000,
+    );
 
     if (result && result.list) {
       // 转换数据格式
       const members = result.list.map((member) => ({
         roleId: member.roleId,
         name: member.name,
-        headImg: member.headImg?.replace(/`/g, '').trim(), // 移除可能的反引号和空格
+        headImg: member.headImg?.replace(/`/g, "").trim(), // 移除可能的反引号和空格
         score: member.score,
         power: member.power,
         rank: member.rank,
-        serverId: member.serverId
-      }))
+        serverId: member.serverId,
+      }));
 
       // 按积分从高到低排序
-      members.sort((a, b) => b.score - a.score)
+      members.sort((a, b) => b.score - a.score);
 
-      memberScores.value = members
-      message.success('赛车数据加载成功，已按积分从高到低排序')
+      memberScores.value = members;
+      message.success("赛车数据加载成功，已按积分从高到低排序");
     } else {
-      memberScores.value = []
-      message.warning('未查询到赛车数据')
+      memberScores.value = [];
+      message.warning("未查询到赛车数据");
     }
   } catch (error) {
-      console.error('查询赛车数据失败:', error)
-      message.error(`查询失败: ${error.message}`)
-      memberScores.value = []
-    } finally {
-      loading.value = false
-    }
-}
+    console.error("查询赛车数据失败:", error);
+    message.error(`查询失败: ${error.message}`);
+    memberScores.value = [];
+  } finally {
+    loading.value = false;
+  }
+};
 
 // 刷新爬塔数据
 const handleRefresh = () => {
-  fetchWeirdTowerInfo()
-}
+  fetchWeirdTowerInfo();
+};
 
 // 导出数据
 const handleExport = async () => {
   if (!memberScores.value) {
-    message.warning('没有可导出的数据')
-    return
+    message.warning("没有可导出的数据");
+    return;
   }
 
   try {
-    exportToImage()
-    message.success('导出成功')
+    exportToImage();
+    message.success("导出成功");
   } catch (error) {
-    console.error('导出失败:', error)
-    message.error('导出失败，请重试')
+    console.error("导出失败:", error);
+    message.error("导出失败，请重试");
   }
-}
+};
 
 const exportToImage = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert('未找到要导出的DOM元素');
+    alert("未找到要导出的DOM元素");
     return;
   }
 
@@ -248,44 +261,44 @@ const exportToImage = async () => {
     const canvas = await html2canvas(exportDom.value, {
       scale: 2, // 放大2倍，解决图片模糊问题
       useCORS: true, // 允许跨域图片（若DOM内有远程图片，需开启）
-      backgroundColor: '#ffffff', // 避免透明背景（默认透明）
-      logging: false // 关闭控制台日志
+      backgroundColor: "#ffffff", // 避免透明背景（默认透明）
+      logging: false, // 关闭控制台日志
     });
 
     // 6. Canvas转图片链接（支持PNG/JPG）
-    const imgUrl = canvas.toDataURL('image/png'); // 若要JPG，改为'image/jpeg'
+    const imgUrl = canvas.toDataURL("image/png"); // 若要JPG，改为'image/jpeg'
 
     // 7. 创建下载链接，触发浏览器下载
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = imgUrl;
-    console.log()
-    const queryDate = ref(gettoday())
-    link.download = queryDate.value.replace("/",'年').replace("/",'月')+'日俱乐部赛车数据.png'; // 下载文件名
+    console.log();
+    const queryDate = ref(gettoday());
+    link.download = `${queryDate.value.replace("/", "年").replace("/", "月")}日俱乐部赛车数据.png`; // 下载文件名
     document.body.appendChild(link);
     link.click(); // 触发点击下载
     document.body.removeChild(link); // 下载后清理DOM
   } catch (err) {
-    console.error('DOM转图片失败：', err);
-    alert('导出图片失败，请重试');
+    console.error("DOM转图片失败：", err);
+    alert("导出图片失败，请重试");
   }
 };
 
 // 关闭弹窗
 const handleClose = () => {
   // 可以在这里清理资源
-}
+};
 
 // 暴露方法给父组件
 defineExpose({
-  fetchWeirdTowerInfo
-})
+  fetchWeirdTowerInfo,
+});
 
 // Inline 模式：挂载后自动拉取
 onMounted(() => {
   if (props.inline) {
-    fetchWeirdTowerInfo()
+    fetchWeirdTowerInfo();
   }
-})
+});
 </script>
 
 <style scoped lang="scss">

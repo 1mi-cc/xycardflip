@@ -6,16 +6,16 @@
         <h3>总控编排</h3>
         <p>按 monitor、scan、autotrade、retry 组合执行整条自动化链路。</p>
         <div class="service-tags">
-          <n-tag :type="automationStatus.all_running ? 'success' : 'warning'" size="small">
+          <n-tag size="small" :type="automationStatus.all_running ? 'success' : 'warning'">
             {{ automationStatus.all_running ? "主链路运行中" : "主链路未完全运行" }}
           </n-tag>
-          <n-tag :type="automationStatus.monitor?.is_running ? 'success' : 'default'" size="small">
+          <n-tag size="small" :type="automationStatus.monitor?.is_running ? 'success' : 'default'">
             {{ automationStatus.monitor?.is_running ? "Monitor 运行中" : "Monitor 已停止" }}
           </n-tag>
-          <n-tag :type="automationStatus.autotrade?.running ? 'success' : 'default'" size="small">
+          <n-tag size="small" :type="automationStatus.autotrade?.running ? 'success' : 'default'">
             {{ automationStatus.autotrade?.running ? "AutoTrade 运行中" : "AutoTrade 已停止" }}
           </n-tag>
-          <n-tag :type="automationStatus.execution_retry?.running ? 'success' : 'default'" size="small">
+          <n-tag size="small" :type="automationStatus.execution_retry?.running ? 'success' : 'default'">
             {{
               automationStatus.execution_retry?.running
                 ? "Retry 运行中"
@@ -29,23 +29,23 @@
         <n-button
           size="small"
           type="primary"
-          :loading="automationActionLoading === 'start'"
           :disabled="!canOperate"
+          :loading="automationActionLoading === 'start'"
           @click="$emit('startAutomation')"
         >
           启动
         </n-button>
         <n-button
           size="small"
-          :loading="automationActionLoading === 'stop'"
           :disabled="!canOperate"
+          :loading="automationActionLoading === 'stop'"
           @click="$emit('stopAutomation')"
         >
           停止
         </n-button>
         <n-button
-          size="small"
           tertiary
+          size="small"
           :loading="automationStatusLoading"
           @click="$emit('loadAutomationStatus')"
         >
@@ -129,33 +129,33 @@
           <template #unchecked>严格</template>
         </n-switch>
         <n-input-number
-          :value="automationScanLimit"
-          :min="0"
-          :max="500"
-          style="width: 140px"
           placeholder="扫描上限"
-          @update:value="value => $emit('update:automationScanLimit', value)"
-        />
-        <n-input-number
-          :value="automationAutotradeLimit"
-          :min="0"
-          :max="500"
-          style="width: 150px"
-          placeholder="审批上限"
-          @update:value="value => $emit('update:automationAutotradeLimit', value)"
-        />
-        <n-input-number
-          :value="automationExecutionRetryLimit"
-          :min="0"
-          :max="200"
           style="width: 140px"
+          :max="500"
+          :min="0"
+          :value="automationScanLimit"
+          @update:value="value => $emit('update:automationScanLimit', value)"
+        ></n-input-number>
+        <n-input-number
+          placeholder="审批上限"
+          style="width: 150px"
+          :max="500"
+          :min="0"
+          :value="automationAutotradeLimit"
+          @update:value="value => $emit('update:automationAutotradeLimit', value)"
+        ></n-input-number>
+        <n-input-number
           placeholder="重试上限"
+          style="width: 140px"
+          :max="200"
+          :min="0"
+          :value="automationExecutionRetryLimit"
           @update:value="value => $emit('update:automationExecutionRetryLimit', value)"
-        />
+        ></n-input-number>
         <n-button
           type="warning"
-          :loading="automationActionLoading === 'run_once'"
           :disabled="!canOperate"
+          :loading="automationActionLoading === 'run_once'"
           @click="$emit('runAutomationOnce')"
         >
           运行一次
@@ -165,7 +165,7 @@
 
     <div v-if="canMaintain" class="service-section">
       <n-collapse>
-        <n-collapse-item title="维护动作" name="automation-maintenance">
+        <n-collapse-item name="automation-maintenance" title="维护动作">
           <n-space wrap>
             <n-button
               size="small"
@@ -176,9 +176,9 @@
               重启 Monitor
             </n-button>
             <n-button
+              secondary
               size="small"
               type="error"
-              secondary
               :loading="monitorActionLoading"
               @click="$emit('resetMonitorCircuit')"
             >

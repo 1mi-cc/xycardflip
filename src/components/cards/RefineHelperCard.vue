@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="refine-helper" :statusClass="{ active: state.isRunning }">
+  <MyCard class="refine-helper" :status-class="{ active: state.isRunning }">
     <template #icon>
-      <img src="/icons/ta.png" alt="洗练图标" />
+      <img alt="洗练图标" src="/icons/ta.png">
     </template>
     <template #title>
       <h3>洗练助手</h3>
@@ -14,9 +14,9 @@
       <div class="refine-container">
         <!-- 工具栏 -->
         <div class="toolbar">
-          <n-button type="primary" size="small" @click="refreshHeroes"
-            >刷新阵容</n-button
-          >
+          <n-button size="small" type="primary" @click="refreshHeroes">
+            刷新阵容
+          </n-button>
           <n-button size="small" @click="resetCount">清零</n-button>
           <div class="jade-info">
             <span>白玉: {{ jadeCount }}</span>
@@ -102,32 +102,32 @@
           <!-- 操作按钮 -->
           <div class="actions">
             <n-button
-              type="primary"
               size="small"
+              type="primary"
               :disabled="state.isRunning"
               @click="quenchOnce"
             >
               淬炼一次
             </n-button>
             <n-button
-              type="success"
               size="small"
+              type="success"
               :disabled="state.isRunning"
               @click="quenchContinuous"
             >
               连续淬炼
             </n-button>
             <n-button
-              type="warning"
               size="small"
+              type="warning"
               :disabled="state.isRunning"
               @click="startAutoQuench"
             >
               自动淬炼
             </n-button>
             <n-button
-              type="error"
               size="small"
+              type="error"
               :disabled="!state.isRunning"
               @click="stopQuench"
             >
@@ -145,31 +145,31 @@
               <div class="form-item">
                 <span class="form-label">属性</span>
                 <n-select
-                  v-model:value="targetAttrId"
-                  :options="attrOptions"
                   placeholder="选择属性"
                   size="small"
                   style="width: 120px"
+                  v-model:value="targetAttrId"
+                  :options="attrOptions"
                 ></n-select>
               </div>
               <div class="form-item">
                 <span class="form-label">≥</span>
                 <n-input-number
-                  v-model:value="targetAttrValue"
-                  :min="1"
-                  :max="100"
                   size="small"
                   style="width: 80px"
+                  v-model:value="targetAttrValue"
+                  :max="100"
+                  :min="1"
                 ></n-input-number>
               </div>
               <div class="form-item">
                 <span class="form-label">延迟(ms)</span>
                 <n-input-number
+                  size="small"
+                  style="width: 100px"
                   v-model:value="delay"
                   :min="0"
                   :step="100"
-                  size="small"
-                  style="width: 100px"
                 ></n-input-number>
               </div>
             </div>
@@ -181,9 +181,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
 import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
@@ -264,7 +266,8 @@ const attrOptions = computed(() => {
 
 // 装备部位列表
 const equipParts = computed(() => {
-  if (!heroEquipment.value) return [];
+  if (!heroEquipment.value)
+    return [];
   return Object.entries(heroEquipment.value).map(([id, equip]) => ({
     id: Number(id),
     name: partMap[Number(id)] || `装备${id}`,
@@ -372,7 +375,8 @@ const buildHeroList = (teamData, heroData) => {
   // 从当前队伍中获取英雄
   for (const [position, hero] of Object.entries(teamInfo)) {
     const heroId = hero?.heroId || hero?.id;
-    if (!heroId) continue;
+    if (!heroId)
+      continue;
 
     const heroDetail = heroData[String(heroId)] || {};
     heroList.push({
@@ -395,7 +399,8 @@ const buildHeroList = (teamData, heroData) => {
           level: hero?.level || 1,
           equipment: hero?.equipment || {},
         });
-        if (heroList.length >= 5) break;
+        if (heroList.length >= 5)
+          break;
       }
     }
   }
@@ -497,14 +502,14 @@ const selectPart = (partId) => {
     quenchTimes.value = equip.quenchTimes || 0;
 
     // 根据部位类型更新加成名称
-    const bonusType =
-      partId === 1
+    const bonusType
+      = partId === 1
         ? "quenchAttackExt"
         : partId === 3
           ? "quenchDefenseExt"
           : "quenchHpExt";
-    equipBonusName.value =
-      partId === 1 ? "攻击" : partId === 3 ? "防御" : "血量";
+    equipBonusName.value
+      = partId === 1 ? "攻击" : partId === 3 ? "防御" : "血量";
     equipBonusValue.value = equip[bonusType] || 0;
 
     // 更新孔位信息
@@ -585,7 +590,8 @@ const quenchOnce = async () => {
 
 // 连续淬炼
 const quenchContinuous = () => {
-  if (state.value.continuousQuenching) return;
+  if (state.value.continuousQuenching)
+    return;
 
   if (!selectedHeroId.value || !selectedPart.value) {
     message.warning("请先选择武将和装备部位");
@@ -597,7 +603,8 @@ const quenchContinuous = () => {
   message.info("开始连续淬炼，出现橙色或红色属性时自动暂停");
 
   const continuousQuench = async () => {
-    if (!state.value.continuousQuenching) return;
+    if (!state.value.continuousQuenching)
+      return;
 
     try {
       const result = await executeQuench();
@@ -638,7 +645,8 @@ const startAutoQuench = () => {
   );
 
   const autoQuench = async () => {
-    if (!state.value.autoQuenching) return;
+    if (!state.value.autoQuenching)
+      return;
 
     try {
       const result = await executeQuench();
@@ -721,10 +729,10 @@ const executeQuench = async () => {
 
           // 更新淬炼次数和加成
           quenchTimes.value = updatedEquip.quenchTimes || 0;
-          const bonusType =
-            selectedPart.value === 1
+          const bonusType
+            = selectedPart.value === 1
               ? "quenchAttackExt"
-              : selectedPart === 3
+              : selectedPart.value === 3
                 ? "quenchDefenseExt"
                 : "quenchHpExt";
           equipBonusValue.value = updatedEquip[bonusType] || 0;
@@ -753,13 +761,16 @@ const executeQuench = async () => {
 
 // 检查高品质属性（橙色或红色）
 const checkHighQualityAttr = (result) => {
-  if (!result?.role?.heroes) return false;
+  if (!result?.role?.heroes)
+    return false;
 
   const hero = result.role.heroes[String(selectedHeroId.value)];
-  if (!hero?.equipment) return false;
+  if (!hero?.equipment)
+    return false;
 
   const equip = hero.equipment[String(selectedPart.value)];
-  if (!equip?.quenches) return false;
+  if (!equip?.quenches)
+    return false;
 
   // 检查是否有高品质属性（colorId >= 5）
   for (const slot of Object.values(equip.quenches)) {
@@ -777,16 +788,18 @@ const checkTargetAttr = (result) => {
     return false;
 
   const hero = result.role.heroes[String(selectedHeroId.value)];
-  if (!hero?.equipment) return false;
+  if (!hero?.equipment)
+    return false;
 
   const equip = hero.equipment[String(selectedPart.value)];
-  if (!equip?.quenches) return false;
+  if (!equip?.quenches)
+    return false;
 
   // 检查是否达到目标属性
   for (const slot of Object.values(equip.quenches)) {
     if (
-      slot.attrId === targetAttrId.value &&
-      slot.attrNum >= targetAttrValue.value
+      slot.attrId === targetAttrId.value
+      && slot.attrNum >= targetAttrValue.value
     ) {
       return true;
     }

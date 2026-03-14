@@ -1,7 +1,7 @@
 <template>
-  <MyCard class="club-info" :statusClass="{ active: !!club }">
+  <MyCard class="club-info" :status-class="{ active: !!club }">
     <template #icon>
-      <img src="/icons/1733492491706152.png" alt="俱乐部图标" />
+      <img alt="俱乐部图标" src="/icons/1733492491706152.png">
     </template>
     <template #title>
       <h3>俱乐部信息</h3>
@@ -12,7 +12,7 @@
     </template>
     <template #default>
       <div v-if="!club" class="empty-club">
-        <n-empty description="暂无俱乐部" />
+        <n-empty description="暂无俱乐部"></n-empty>
         <div class="actions">
           <n-button size="small" @click="refreshClub">刷新</n-button>
         </div>
@@ -24,14 +24,14 @@
           </n-space>
         </div>
 
-        <n-tabs v-model:value="activeTab" type="line" animated>
-          <n-tab-pane name="overview" tab="概览" display-directive="show:lazy">
+        <n-tabs animated type="line" v-model:value="activeTab">
+          <n-tab-pane display-directive="show:lazy" name="overview" tab="概览">
             <div class="overview">
               <div class="club-header">
                 <n-avatar
                   :size="48"
                   :src="club.logo || '/icons/xiaoyugan.png'"
-                />
+                ></n-avatar>
                 <div class="meta">
                   <div class="name">{{ club.name }}</div>
                   <div class="sub">
@@ -44,8 +44,8 @@
                 <n-space size="small">
                   <n-button
                     size="small"
-                    :disabled="legionSignedIn"
                     type="primary"
+                    :disabled="legionSignedIn"
                     @click="signInLegion"
                   >
                     {{ legionSignedIn ? "已签到" : "俱乐部签到" }}
@@ -76,20 +76,20 @@
                 <div class="label">公告</div>
                 <div class="text">{{ club.announcement }}</div>
               </div>
-              <div class="leader" v-if="leader">
+              <div v-if="leader" class="leader">
                 <div class="label">会长</div>
                 <div class="leader-info">
                   <n-avatar
                     :size="32"
                     :src="leader.headImg || '/icons/xiaoyugan.png'"
-                  />
+                  ></n-avatar>
                   <span class="leader-name">{{ leader.name }}</span>
                 </div>
               </div>
             </div>
           </n-tab-pane>
 
-          <n-tab-pane name="members" tab="成员" display-directive="show:lazy">
+          <n-tab-pane display-directive="show:lazy" name="members" tab="成员">
             <div class="members">
               <div class="members-list">
                 <div v-for="m in topMembers" :key="m.roleId" class="member-row">
@@ -97,7 +97,7 @@
                     <n-avatar
                       :size="28"
                       :src="m.headImg || '/icons/xiaoyugan.png'"
-                    />
+                    ></n-avatar>
                     <span class="name">{{ m.name }}(ID:{{ m.roleId }})</span>
                   </div>
                   <div class="right">
@@ -115,35 +115,35 @@
           </n-tab-pane>
 
           <n-tab-pane
+            display-directive="show:lazy"
             name="records"
             tab="盐场战绩"
-            display-directive="show:lazy"
           >
-            <ClubBattleRecords inline />
+            <ClubBattleRecords inline></ClubBattleRecords>
           </n-tab-pane>
 
           <n-tab-pane
+            display-directive="show:lazy"
             name="history"
             tab="俱乐部历史战绩"
-            display-directive="show:lazy"
           >
-            <ClubHistoryRecords inline />
+            <ClubHistoryRecords inline></ClubHistoryRecords>
           </n-tab-pane>
 
           <n-tab-pane
+            display-directive="show:lazy"
             name="weirdtower"
             tab="怪异塔信息"
-            display-directive="show:lazy"
           >
-            <ClubWeirdTowerInfo inline />
+            <ClubWeirdTowerInfo inline></ClubWeirdTowerInfo>
           </n-tab-pane>=
-          
+
           <n-tab-pane
+            display-directive="show:lazy"
             name="carsocre"
             tab="赛车积分信息"
-            display-directive="show:lazy"
           >
-            <CarScoreInfo inline />
+            <CarScoreInfo inline></CarScoreInfo>
           </n-tab-pane>=
         </n-tabs>
       </div>
@@ -152,13 +152,15 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
 import { useMessage } from "naive-ui";
+import { computed, ref } from "vue";
+
 import { useTokenStore } from "@/stores/tokenStore";
+
+import CarScoreInfo from "./CarScoreInfo.vue";
 import ClubBattleRecords from "./ClubBattleRecords.vue";
 import ClubHistoryRecords from "./ClubHistoryRecords.vue";
-import ClubWeirdTowerInfo from './ClubWeirdTowerInfo.vue';
-import CarScoreInfo from './CarScoreInfo.vue'
+import ClubWeirdTowerInfo from "./ClubWeirdTowerInfo.vue";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -172,7 +174,8 @@ const memberCount = computed(() => members.value.length);
 
 const leader = computed(() => {
   const lid = club.value?.leaderId;
-  if (!lid) return null;
+  if (!lid)
+    return null;
   return members.value.find((m) => Number(m.roleId) === Number(lid)) || null;
 });
 
@@ -180,8 +183,8 @@ const topMembers = computed(() => {
   return [...members.value]
     .sort(
       (a, b) =>
-        Number(b.power || b.custom?.s_power || 0) -
-        Number(a.power || a.custom?.s_power || 0),
+        Number(b.power || b.custom?.s_power || 0)
+        - Number(a.power || a.custom?.s_power || 0),
     )
     .slice(0, 30);
 });
@@ -191,8 +194,8 @@ const activeTab = ref("overview");
 // 今日是否已进行俱乐部签到
 const legionSignedIn = computed(() => {
   const ts = Number(
-    tokenStore.gameData?.roleInfo?.role?.statisticsTime?.["legion:sign:in"] ||
-      0,
+    tokenStore.gameData?.roleInfo?.role?.statisticsTime?.["legion:sign:in"]
+    || 0,
   );
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -202,7 +205,8 @@ const legionSignedIn = computed(() => {
 
 const signInLegion = () => {
   const token = tokenStore.selectedToken;
-  if (!token || legionSignedIn.value) return;
+  if (!token || legionSignedIn.value)
+    return;
   tokenStore.sendMessage(token.id, "legion_signin");
   tokenStore.sendMessage(token.id, "role_getroleinfo");
   message.info("俱乐部签到");
@@ -218,17 +222,17 @@ const clubOverview = computed(() => {
   const power = Number(base.power ?? i.power ?? base.s_power ?? i.s_power ?? 0);
   const dan = base.dan ?? i.dan ?? base.rank ?? i.rank ?? "-";
   const redQuench = Number(
-    base.redQuenchCnt ??
-      i.redQuenchCnt ??
-      stats["red:quench"] ??
-      stats["red_quench"] ??
-      0,
+    base.redQuenchCnt
+    ?? i.redQuenchCnt
+    ?? stats["red:quench"]
+    ?? stats.red_quench
+    ?? 0,
   );
-  const lastWarRank =
-    stats["last:war:rank"] ??
-    stats["lastWarRank"] ??
-    stats["legion:last:war:rank"] ??
-    "-";
+  const lastWarRank
+    = stats["last:war:rank"]
+      ?? stats.lastWarRank
+      ?? stats["legion:last:war:rank"]
+      ?? "-";
   const noApply = Boolean(base.noApply ?? i.noApply);
 
   const currentHP = formatNumber(boss.currentHP || 0);
@@ -238,25 +242,31 @@ const clubOverview = computed(() => {
 
 const refreshClub = () => {
   const token = tokenStore.selectedToken;
-  if (!token) return;
+  if (!token)
+    return;
   tokenStore.sendMessage(token.id, "legion_getinfo");
 };
 
 const jobLabel = (job) => {
-  if (job === 1) return "会长";
-  if (job === 2) return "副会长";
+  if (job === 1)
+    return "会长";
+  if (job === 2)
+    return "副会长";
   return "成员";
 };
 
 const redQuenchlabel = (redQuenchl) => {
-  return redQuenchl + "红";
+  return `${redQuenchl}红`;
 };
 
 const formatNumber = (num) => {
   const n = Number(num || 0);
-  if (n >= 1e12) return (n / 1e12).toFixed(2) + "兆";
-  if (n >= 1e8) return (n / 1e8).toFixed(2) + "亿";
-  if (n >= 1e4) return (n / 1e4).toFixed(2) + "万";
+  if (n >= 1e12)
+    return `${(n / 1e12).toFixed(2)}兆`;
+  if (n >= 1e8)
+    return `${(n / 1e8).toFixed(2)}亿`;
+  if (n >= 1e4)
+    return `${(n / 1e4).toFixed(2)}万`;
   return String(n);
 };
 </script>

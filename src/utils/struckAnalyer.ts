@@ -16,14 +16,16 @@ declare interface TermData {
  * @returns
  */
 const scanForTermData = (
-  obj: Object,
+  obj: object,
   record: TermData[],
   terms: RegExp[],
   path: string = "",
 ) => {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || typeof obj !== "object")
+    return;
 
-  if (!terms || terms.length === 0) return;
+  if (!terms || terms.length === 0)
+    return;
 
   for (const [key, value] of Object.entries(obj)) {
     const currentPath = path ? `${path}.${key}` : key;
@@ -31,8 +33,8 @@ const scanForTermData = (
     if (terms.find((term) => term.test(key))) {
       record.push({
         path: currentPath,
-        key: key,
-        value: value,
+        key,
+        value,
         type: typeof value,
         isArray: Array.isArray(value),
       });
@@ -46,7 +48,7 @@ const scanForTermData = (
 
 // 辅助函数：分析数据结构
 const analyzeDataStructure = (
-  obj: Object,
+  obj: object,
   depth: number = 0,
   maxDepth: number = 3,
 ) => {
@@ -57,8 +59,8 @@ const analyzeDataStructure = (
   const structure: any = {};
   for (const [key, value] of Object.entries(obj)) {
     if (Array.isArray(value)) {
-      structure[key] =
-        `Array[${value.length}]${value.length > 0 ? `: ${analyzeDataStructure(value[0], depth + 1, maxDepth)}` : ""}`;
+      structure[key]
+        = `Array[${value.length}]${value.length > 0 ? `: ${analyzeDataStructure(value[0], depth + 1, maxDepth)}` : ""}`;
     } else if (typeof value === "object" && value !== null) {
       structure[key] = analyzeDataStructure(value, depth + 1, maxDepth);
     } else {
@@ -69,7 +71,7 @@ const analyzeDataStructure = (
 };
 
 // 辅助函数：尝试解析队伍数据
-const tryParseTeamData = (data: Object, result: any, cmd) => {
+const tryParseTeamData = (data: object, result: any, cmd) => {
   // 查找队伍相关字段
   const teamFields: TermData[] = [];
   scanForTermData(data, teamFields, [
@@ -82,8 +84,8 @@ const tryParseTeamData = (data: Object, result: any, cmd) => {
     // 尝试更新游戏数据
     teamFields.forEach((field) => {
       if (
-        field.key === "presetTeamInfo" ||
-        field.path.includes("presetTeamInfo")
+        field.key === "presetTeamInfo"
+        || field.path.includes("presetTeamInfo")
       ) {
         if (!result.presetTeam) {
           result.presetTeam = {};

@@ -2,10 +2,10 @@
   <div class="status-card team-formation-card">
     <div class="card-header">
       <img
-        src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
         alt="阵容"
         class="icon"
-      />
+        src="/icons/Ob7pyorzmHiJcbab2c25af264d0758b527bc1b61cc3b.png"
+      >
       <div class="info">
         <h3>阵容</h3>
         <p>当前使用的战斗阵容</p>
@@ -14,24 +14,25 @@
         <button
           v-for="teamId in availableTeams"
           :key="teamId"
+          class="team-button"
+          :class="[{ active: currentTeam === teamId }]"
           :disabled="loading || switching"
-          :class="['team-button', { active: currentTeam === teamId }]"
           @click="selectTeam(teamId)"
         >
           {{ teamId }}
         </button>
         <button
           class="refresh-button"
-          :disabled="loading"
           title="刷新队伍数据"
+          :disabled="loading"
           @click="refreshTeamData(true)"
         >
           <svg
             class="refresh-icon"
-            viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             stroke-width="2"
+            viewBox="0 0 24 24"
           >
             <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
             <path d="M21 3v5h-5" />
@@ -64,10 +65,10 @@
               <div class="hero-circle">
                 <img
                   v-if="hero.avatar"
-                  :src="hero.avatar"
-                  :alt="hero.name"
                   class="hero-avatar"
-                />
+                  :alt="hero.name"
+                  :src="hero.avatar"
+                >
                 <div v-else class="hero-placeholder">
                   {{ hero.name?.substring(0, 2) || "?" }}
                 </div>
@@ -85,10 +86,10 @@
               <div class="hero-circle">
                 <img
                   v-if="hero.avatar"
-                  :src="hero.avatar"
-                  :alt="hero.name"
                   class="hero-avatar"
-                />
+                  :alt="hero.name"
+                  :src="hero.avatar"
+                >
                 <div v-else class="hero-placeholder">
                   {{ hero.name?.substring(0, 2) || "?" }}
                 </div>
@@ -110,9 +111,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
-import { useTokenStore } from "@/stores/tokenStore";
 import { useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
+
+import { useTokenStore } from "@/stores/tokenStore";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
@@ -191,30 +193,35 @@ const HERO_DICT: Record<
 };
 
 const wsStatus = computed(() => {
-  if (!tokenStore.selectedToken) return "disconnected";
+  if (!tokenStore.selectedToken)
+    return "disconnected";
   return tokenStore.getWebSocketStatus(tokenStore.selectedToken.id);
 });
 
 const presetTeamRaw = computed(() => tokenStore.gameData?.presetTeam ?? null);
 
 function normalizePresetTeam(raw: any) {
-  if (!raw)
+  if (!raw) {
     return {
       useTeamId: 1,
       teams: {} as Record<number, { teamInfo: Record<string, any> }>,
     };
+  }
   const root = raw.presetTeamInfo ?? raw;
   const findUseIdRec = (obj: any): number | null => {
-    if (!obj || typeof obj !== "object") return null;
-    if (typeof obj.useTeamId === "number") return obj.useTeamId;
+    if (!obj || typeof obj !== "object")
+      return null;
+    if (typeof obj.useTeamId === "number")
+      return obj.useTeamId;
     for (const k of Object.keys(obj)) {
       const v = findUseIdRec(obj[k]);
-      if (v) return v;
+      if (v)
+        return v;
     }
     return null;
   };
-  const useTeamId =
-    root.useTeamId ?? root.presetTeamInfo?.useTeamId ?? findUseIdRec(root) ?? 1;
+  const useTeamId
+    = root.useTeamId ?? root.presetTeamInfo?.useTeamId ?? findUseIdRec(root) ?? 1;
 
   const dict = root.presetTeamInfo ?? root;
   const teams: Record<number, { teamInfo: Record<string, any> }> = {};
@@ -251,11 +258,13 @@ const presetTeam = computed(() => normalizePresetTeam(presetTeamRaw.value));
 const currentTeamHeroes = computed(() => {
   const team = (presetTeam.value.teams as any)[currentTeam.value]?.teamInfo;
   console.log("🚀 ~ team:", team);
-  if (!team) return [] as any[];
+  if (!team)
+    return [] as any[];
   const heroes: any[] = [];
   for (const [pos, hero] of Object.entries(team)) {
     const hid = (hero as any)?.heroId ?? (hero as any)?.id;
-    if (!hid) continue;
+    if (!hid)
+      continue;
     const meta = HERO_DICT[Number(hid)];
     const avatarPath = meta?.avatar;
     const fullAvatarPath = avatarPath
@@ -304,7 +313,8 @@ const getTeamInfoWithCache = async (force = false) => {
   const tokenId = tokenStore.selectedToken.id;
   if (!force) {
     const cached = (tokenStore.gameData as any)?.presetTeam?.presetTeamInfo;
-    if (cached) return cached;
+    if (cached)
+      return cached;
   }
   loading.value = true;
   try {
@@ -338,7 +348,8 @@ const updateCurrentTeam = () => {
 };
 
 const selectTeam = async (teamId: number) => {
-  if (switching.value || loading.value) return;
+  if (switching.value || loading.value)
+    return;
   if (!tokenStore.selectedToken) {
     message.warning("请先选择Token");
     return;
@@ -381,9 +392,9 @@ onMounted(async () => {
 
 watch(wsStatus, (newStatus, oldStatus) => {
   if (
-    newStatus === "connected" &&
-    oldStatus !== "connected" &&
-    tokenStore.selectedToken
+    newStatus === "connected"
+    && oldStatus !== "connected"
+    && tokenStore.selectedToken
   ) {
     setTimeout(async () => {
       await refreshTeamData(false);

@@ -7,7 +7,7 @@ import { g_utils } from "./bonProtocol.js";
 
 export class WsAgent {
   /**
-   * @param {Object} options 配置选项
+   * @param {object} options 配置选项
    */
   constructor(options = {}) {
     const {
@@ -61,7 +61,7 @@ export class WsAgent {
   /**
    * 连接WebSocket
    * @param {string} url WebSocket URL
-   * @param {Object} connectionParams 连接参数
+   * @param {object} connectionParams 连接参数
    */
   connect(url, connectionParams = {}) {
     if (this.connecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
@@ -113,8 +113,8 @@ export class WsAgent {
 
           // 自动重连
           if (
-            this.autoReconnect &&
-            this.reconnectAttempts < this.maxReconnectAttempts
+            this.autoReconnect
+            && this.reconnectAttempts < this.maxReconnectAttempts
           ) {
             this._scheduleReconnect(url, connectionParams);
           }
@@ -152,7 +152,7 @@ export class WsAgent {
 
   /**
    * 发送消息
-   * @param {Object|Array} payload 消息载荷
+   * @param {object | Array} payload 消息载荷
    */
   send(payload) {
     if (Array.isArray(payload)) {
@@ -164,7 +164,7 @@ export class WsAgent {
 
   /**
    * 发送消息并等待响应
-   * @param {Object} options 请求选项
+   * @param {object} options 请求选项
    * @returns {Promise} 响应Promise
    */
   sendWithPromise(options) {
@@ -238,7 +238,8 @@ export class WsAgent {
   _startHeartbeat() {
     this._stopHeartbeat();
 
-    if (!this.heartbeatInterval) return;
+    if (!this.heartbeatInterval)
+      return;
 
     this._heartbeatTimer = setInterval(() => {
       if (this.connected && this.ws?.readyState === WebSocket.OPEN) {
@@ -343,8 +344,8 @@ export class WsAgent {
     try {
       // 发送前日志（仅标准五段）
       if (packet?.cmd && packet.cmd !== "_sys/ack") {
-        const bodyForLog =
-          packet.body instanceof Uint8Array || Array.isArray(packet.body)
+        const bodyForLog
+          = packet.body instanceof Uint8Array || Array.isArray(packet.body)
             ? "[BON]"
             : packet.body || {};
         console.info("📤 发送报文", {
