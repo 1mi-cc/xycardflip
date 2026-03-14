@@ -2,8 +2,8 @@
  * Vite 库模式构建配置
  *
  * 用法：pnpm run build:lib
- * 产物：dist/xyzw-token-manager.es.js  (ESM)
- *       dist/xyzw-token-manager.umd.js  (UMD)
+ * 产物：dist/xyzw-token-manager.mjs  (ESM)
+ *       dist/xyzw-token-manager.cjs  (CJS)
  */
 import { defineConfig } from "vite";
 import path from "path";

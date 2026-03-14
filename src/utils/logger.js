@@ -4,9 +4,7 @@
  */
 
 // 环境安全访问工具（兼容非 Vite / 非浏览器环境）
-const _isDevEnv = (() => {
-  try { return !!import.meta.env?.DEV; } catch { return false; }
-})();
+const _isDevEnv = typeof import.meta !== "undefined" && import.meta.env?.DEV === true;
 const _storage = typeof localStorage !== "undefined" ? localStorage : null;
 
 // 日志级别定义
