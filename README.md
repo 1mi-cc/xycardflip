@@ -149,6 +149,7 @@ pnpm run preview
 ```bash
 pnpm run dev      # 启动开发服务器 (端口3000)
 pnpm run build    # 构建生产版本
+pnpm run build:lib # 构建库文件（供其他项目集成）
 pnpm run preview  # 预览生产构建
 pnpm run lint     # 代码检查和修复
 pnpm run format   # 代码格式化
@@ -162,6 +163,97 @@ start_uptime_kuma.cmd
 
 默认地址：`http://127.0.0.1:3001`  
 监控目标模板：`monitoring/uptime-kuma/targets.example.json`
+
+---
+
+## 📦 库模式集成（在你的项目中使用）
+
+除了作为独立 SPA 使用，核心工具（BON 协议、WebSocket 客户端、游戏指令等）也可以作为 npm 包集成到你自己的项目中。
+
+### 安装
+
+```bash
+# 从 GitHub 安装
+npm install github:1mi-cc/xycardflip
+
+# 安装必要的 peer 依赖
+npm install lz4js
+```
+
+### 构建库文件
+
+如果从源码使用，需要先构建库：
+
+```bash
+pnpm run build:lib
+```
+
+产物：
+- `dist/xyzw-token-manager.mjs` — ESM 格式
+- `dist/xyzw-token-manager.cjs` — CommonJS 格式
+
+### 使用示例
+
+#### BON 协议编解码
+
+```javascript
+import { bon, GameMessages, g_utils } from 'xyzw-token-manager'
+
+// 编码 / 解码
+const encoded = bon.encode({ hello: 'world', num: 42 })
+const decoded = bon.decode(encoded)
+console.log(decoded) // { hello: 'world', num: 42 }
+
+// 使用预定义游戏消息模板
+const msg = GameMessages.getRoleInfo(0, 12345)
+```
+
+#### WebSocket 客户端
+
+```javascript
+import { XyzwWebSocketClient, g_utils } from 'xyzw-token-manager'
+
+const client = new XyzwWebSocketClient({
+  url: 'wss://your-game-server/ws',
+  g_utils,
+})
+
+// 发送游戏指令
+client.send('role_getroleinfo', { platform: 'hortor' })
+
+// 带响应的请求
+const res = await client.sendWithPromise('some_cmd', { id: 1 })
+```
+
+#### 游戏指令
+
+```javascript
+import { GameCommands } from 'xyzw-token-manager'
+
+const cmds = new GameCommands()
+const heartbeat = cmds.heart_beat()
+const roleInfo = cmds.role_getroleinfo(0, 1)
+```
+
+#### 日志系统
+
+```javascript
+import { createLogger, LOG_LEVELS } from 'xyzw-token-manager'
+
+const logger = createLogger('MY_APP')
+logger.info('连接成功')
+logger.debug('调试消息')
+```
+
+### 导出清单
+
+| 模块 | 导出项 | 说明 |
+|------|--------|------|
+| BON 协议 | `bon`, `bonProtocol`, `BonEncoder`, `BonDecoder`, `DataReader`, `DataWriter`, `Int64`, `ProtoMsg`, `GameMessages`, `g_utils`, `encode`, `parse`, `getEnc`, `LXCrypto`, `XCrypto`, `XTMCrypto` | 二进制编解码与加密 |
+| WebSocket | `XyzwWebSocketClient`, `CommandRegistry`, `registerDefaultCommands` | 游戏 WebSocket 客户端 |
+| 游戏指令 | `GameCommands`, `gameCommands`, `studyQuestions` | 预定义游戏命令 |
+| WsAgent | `WsAgent` | 底层 WebSocket 代理 |
+| 日志 | `LOG_LEVELS`, `createLogger`, `wsLogger`, `tokenLogger`, `gameLogger`, `setGlobalLogLevel`, `enableVerboseLogging` | 分级日志系统 |
 
 ---
 
