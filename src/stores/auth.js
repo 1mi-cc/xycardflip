@@ -153,8 +153,7 @@ const requestAuth = async ({
         credentials: "same-origin",
         body: body !== null ? JSON.stringify(body) : undefined,
       });
-    }
-    catch {
+    } catch {
       // Network error – backend unreachable. Only record if no earlier real
       // error has been captured, then try the next endpoint.
       if (!lastError)
@@ -163,8 +162,17 @@ const requestAuth = async ({
     }
 
     const payload = await response.json().catch(() => null);
-    if (response.ok)
+    if (response.ok) {
+      // If the body could not be parsed as JSON (e.g. the Vite dev-server
+      // served its SPA index.html for an unmatched path), do not treat this
+      // as a successful auth response – fall through to the next endpoint.
+      if (payload === null) {
+        if (!lastError)
+          lastError = new Error("接口返回了非 JSON 响应");
+        continue;
+      }
       return payload;
+    }
 
     if (response.status === 404) {
       // Endpoint not found on this host – try the next fallback URL, but

@@ -63,8 +63,7 @@ const requestSupport = async ({
         credentials: "same-origin",
         body: body !== null ? JSON.stringify(body) : undefined,
       });
-    }
-    catch {
+    } catch {
       // Network error – backend unreachable. Try the next endpoint.
       if (!lastError)
         lastError = new Error("无法连接到服务器，请确认后端服务已启动");
@@ -72,8 +71,17 @@ const requestSupport = async ({
     }
 
     const payload = await response.json().catch(() => null);
-    if (response.ok)
+    if (response.ok) {
+      // If the body could not be parsed as JSON (e.g. the Vite dev-server
+      // served its SPA index.html for an unmatched path), do not return this
+      // as a successful response – fall through to the next endpoint.
+      if (payload === null) {
+        if (!lastError)
+          lastError = new Error("接口返回了非 JSON 响应");
+        continue;
+      }
       return payload?.data || payload || {};
+    }
 
     if (response.status === 404) {
       // Endpoint not found on this host – try the next fallback URL, but do
