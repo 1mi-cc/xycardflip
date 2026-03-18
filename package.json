@@ -3,12 +3,25 @@
   "version": "2.0.0",
   "type": "module",
   "description": "XYZW游戏Token管理器 - 支持Base64导入和WebSocket连接管理",
-  "main": "src/main.js",
+  "main": "dist/xyzw-token-manager.cjs",
+  "module": "dist/xyzw-token-manager.mjs",
+  "exports": {
+    ".": {
+      "import": "./dist/xyzw-token-manager.mjs",
+      "require": "./dist/xyzw-token-manager.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src/lib.js",
+    "src/utils"
+  ],
   "scripts": {
     "testr": "node ./test/roleToken.js",
     "testd": "node ./test/token.js",
     "dev": "vite",
     "build": "vite build",
+    "build:lib": "vite build --config vite.lib.config.js",
     "preview": "vite preview",
     "lint": "eslint src --ext .vue,.js,.ts --fix",
     "format": "prettier --write \"src/**/*.{js,vue,ts,css,scss}\""
