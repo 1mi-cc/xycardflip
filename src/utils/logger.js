@@ -3,6 +3,10 @@
  * 支持日志级别控制和开发/生产环境区分
  */
 
+// 环境安全访问工具（兼容非 Vite / 非浏览器环境）
+const _isDevEnv = typeof import.meta !== "undefined" && import.meta.env?.DEV === true;
+const _storage = typeof localStorage !== "undefined" ? localStorage : null;
+
 // 日志级别定义
 export const LOG_LEVELS = {
   ERROR: 0, // 错误 - 始终显示
@@ -16,18 +20,18 @@ class Logger {
   constructor(namespace = "APP") {
     this.namespace = namespace;
     this.level = this.getLogLevel();
-    this.isDev = import.meta.env.DEV;
-    this.enableVerbose = localStorage.getItem("ws_debug_verbose") === "true";
+    this.isDev = _isDevEnv;
+    this.enableVerbose = _storage?.getItem("ws_debug_verbose") === "true";
   }
 
   getLogLevel() {
     // 生产环境默认只显示错误和警告
-    if (!import.meta.env.DEV) {
+    if (!_isDevEnv) {
       return LOG_LEVELS.WARN;
     }
 
     // 开发环境根据localStorage配置决定
-    const saved = localStorage.getItem("ws_debug_level");
+    const saved = _storage?.getItem("ws_debug_level");
     if (saved) {
       return Number.parseInt(saved, 10);
     }
@@ -37,12 +41,12 @@ class Logger {
 
   setLevel(level) {
     this.level = level;
-    localStorage.setItem("ws_debug_level", level.toString());
+    _storage?.setItem("ws_debug_level", level.toString());
   }
 
   setVerbose(enabled) {
     this.enableVerbose = enabled;
-    localStorage.setItem("ws_debug_verbose", enabled.toString());
+    _storage?.setItem("ws_debug_verbose", enabled.toString());
   }
 
   formatMessage(level, message, ...args) {
@@ -148,19 +152,21 @@ export const enableVerboseLogging = (enabled = true) => {
   gameLogger.setVerbose(enabled);
 };
 
-// 开发者调试工具
-window.wsDebug = {
-  setLevel: setGlobalLogLevel,
-  enableVerbose: enableVerboseLogging,
-  levels: LOG_LEVELS,
-  // 快捷设置
-  quiet: () => setGlobalLogLevel(LOG_LEVELS.WARN),
-  normal: () => setGlobalLogLevel(LOG_LEVELS.INFO),
-  debug: () => setGlobalLogLevel(LOG_LEVELS.DEBUG),
-  verbose: () => {
-    setGlobalLogLevel(LOG_LEVELS.VERBOSE);
-    enableVerboseLogging(true);
-  },
-};
+// 开发者调试工具（仅在浏览器环境注册）
+if (typeof window !== "undefined") {
+  window.wsDebug = {
+    setLevel: setGlobalLogLevel,
+    enableVerbose: enableVerboseLogging,
+    levels: LOG_LEVELS,
+    // 快捷设置
+    quiet: () => setGlobalLogLevel(LOG_LEVELS.WARN),
+    normal: () => setGlobalLogLevel(LOG_LEVELS.INFO),
+    debug: () => setGlobalLogLevel(LOG_LEVELS.DEBUG),
+    verbose: () => {
+      setGlobalLogLevel(LOG_LEVELS.VERBOSE);
+      enableVerboseLogging(true);
+    },
+  };
 
-console.info("🔧 WebSocket调试工具已加载，使用 wsDebug.verbose() 启用详细日志");
+  console.info("🔧 WebSocket调试工具已加载，使用 wsDebug.verbose() 启用详细日志");
+}
