@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from statistics import mean, pstdev
+from statistics import mean, stdev
 from typing import Any
 
 from fastapi import APIRouter, Query
@@ -115,7 +115,7 @@ def _volatility(prices: list[float]) -> dict[str, Any]:
     clean = [p for p in prices if p > 0]
     if len(clean) < 2:
         return {"stddev": 0.0, "coefficient_of_variation": 0.0}
-    stddev = pstdev(clean)
+    stddev = stdev(clean)
     avg_price = mean(clean)
     cov = stddev / avg_price if avg_price > 0 else 0.0
     return {
@@ -271,7 +271,12 @@ async def realtime_stream(
                 "calculation_layer": _calculation_overview(limit=50),
                 "decision_layer": _decision_overview(limit=50),
             }
-            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            try:
+                encoded = json.dumps(payload, ensure_ascii=False)
+            except (TypeError, ValueError) as exc:
+                yield f"event: error\ndata: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
+                break
+            yield f"data: {encoded}\n\n"
             if interval_seconds > 0:
                 await asyncio.sleep(interval_seconds)
 
