@@ -1,4 +1,4 @@
-import { useMessage } from "naive-ui";
+import { useDialog, useMessage } from "naive-ui";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 
 import cardFlipApi from "@/api/cardFlip";
@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/auth";
 import useCardFlipOpsData from "@/views/card-flip-ops/useCardFlipOpsData";
 
 export function useCardFlipOpsPage() {
+  const dialog = useDialog();
   const message = useMessage();
   const authStore = useAuthStore();
   const recentMessages = new Map();
@@ -27,6 +28,33 @@ export function useCardFlipOpsPage() {
       message.info(text);
     else message.error(text);
   };
+
+  const confirmAction = (
+    content,
+    title = "确认操作",
+    positiveText = "确认",
+    negativeText = "取消",
+  ) =>
+    new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled)
+          return;
+        settled = true;
+        resolve(value);
+      };
+      dialog.warning({
+        title,
+        content,
+        positiveText,
+        negativeText,
+        maskClosable: false,
+        closable: false,
+        onPositiveClick: () => finish(true),
+        onNegativeClick: () => finish(false),
+        onClose: () => finish(false),
+      });
+    });
 
   const currentRoleKey = computed(() => {
     const info = authStore.userInfo || {};
@@ -887,7 +915,7 @@ export function useCardFlipOpsPage() {
         message.warning("请先输入实盘确认口令");
         return;
       }
-      if (!window.confirm("确认执行失败记录重试（live）？"))
+      if (!await confirmAction("确认执行失败记录重试（live）？", "执行确认"))
         return;
     }
     executionRetryLoading.value = true;
@@ -1202,7 +1230,7 @@ export function useCardFlipOpsPage() {
         );
         return;
       }
-      if (!window.confirm("确认执行 ExecutionRetry 单次 live 重试？"))
+      if (!await confirmAction("确认执行 ExecutionRetry 单次 live 重试？", "执行确认"))
         return;
     }
     executionRetryServiceActionLoading.value = "run_once";
@@ -1343,7 +1371,7 @@ export function useCardFlipOpsPage() {
         message.warning("请先输入实盘确认口令");
         return;
       }
-      if (!window.confirm(`确认对交易 #${trade.trade_id} 触发实盘买入？`))
+      if (!await confirmAction(`确认对交易 #${trade.trade_id} 触发实盘买入？`, "实盘确认"))
         return;
     }
     executionLoadingTradeId.value = trade.trade_id;
@@ -1386,7 +1414,7 @@ export function useCardFlipOpsPage() {
         message.warning("请先输入实盘确认口令");
         return;
       }
-      if (!window.confirm(`确认对交易 #${trade.trade_id} 触发实盘上架？`))
+      if (!await confirmAction(`确认对交易 #${trade.trade_id} 触发实盘上架？`, "实盘确认"))
         return;
     }
     executionLoadingTradeId.value = trade.trade_id;
@@ -1432,7 +1460,7 @@ export function useCardFlipOpsPage() {
         message.warning("请先输入实盘确认口令");
         return;
       }
-      if (!window.confirm(`确认对交易 #${trade.trade_id} 触发实盘卖出？`))
+      if (!await confirmAction(`确认对交易 #${trade.trade_id} 触发实盘卖出？`, "实盘确认"))
         return;
     }
     executionLoadingTradeId.value = trade.trade_id;
@@ -1487,9 +1515,13 @@ export function useCardFlipOpsPage() {
 
   const refreshCookie = async () => {
     if (
-      !window.confirm("将刷新闲鱼 Cookie，过程中会关闭 Chrome/Edge。确认继续？")
-    )
+      !await confirmAction(
+        "将刷新闲鱼 Cookie，过程中会关闭 Chrome/Edge。确认继续？",
+        "刷新 Cookie",
+      )
+    ) {
       return;
+    }
     cookieRefreshLoading.value = true;
     try {
       const res = await cardFlipApi.refreshMonitorCookie(true);
@@ -1592,8 +1624,9 @@ export function useCardFlipOpsPage() {
       return;
     }
     if (
-      !window.confirm(
+      !await confirmAction(
         `确认将风险分 <= ${blockedRiskThreshold.value} 的拦截机会批量移入待审核？`,
+        "批量复核",
       )
     ) {
       return;
@@ -1622,8 +1655,9 @@ export function useCardFlipOpsPage() {
       return;
     }
     if (
-      !window.confirm(
+      !await confirmAction(
         `确认批量忽略当前 ${blockedOpportunities.value.length} 条风控拦截机会？`,
+        "批量忽略",
       )
     ) {
       return;
@@ -1803,8 +1837,9 @@ export function useCardFlipOpsPage() {
 
   const applyBatchReprice = async () => {
     if (
-      !window.confirm(
+      !await confirmAction(
         "确认按当前模式批量应用建议价格？该操作会更新进行中交易的目标卖价。",
+        "批量应用定价",
       )
     ) {
       return;

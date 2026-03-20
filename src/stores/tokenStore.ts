@@ -496,7 +496,7 @@ export const useTokenStore = defineStore("tokens", () => {
       let decoded;
       try {
         decoded = atob(cleanBase64);
-      } catch (decodeError) {
+      } catch {
         // 如果不是有效的Base64，作为纯文本token处理
         decoded = base64String.trim();
       }

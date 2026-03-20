@@ -49,7 +49,7 @@ const myRoutes = [
       permission: "token:view",
     },
     props: (route) => ({
-      token: route.query.token,
+      importToken: route.query.token,
       name: route.query.name,
       server: route.query.server,
       wsUrl: route.query.wsUrl,

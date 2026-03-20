@@ -19,15 +19,15 @@
 // ---- BON 协议 ----
 export {
   bon,
-  bonProtocol,
   BonDecoder,
   BonEncoder,
+  bonProtocol,
   DataReader,
   DataWriter,
   encode,
+  g_utils,
   GameMessages,
   getEnc,
-  g_utils,
   Int64,
   LXCrypto,
   parse,
@@ -36,22 +36,12 @@ export {
   XTMCrypto,
 } from "./utils/bonProtocol.js";
 
-// ---- WebSocket 客户端 ----
-export {
-  CommandRegistry,
-  registerDefaultCommands,
-  XyzwWebSocketClient,
-} from "./utils/xyzwWebSocket.js";
-
 // ---- 游戏指令 ----
 export {
   GameCommands,
   gameCommands,
   studyQuestions,
 } from "./utils/gameCommands.js";
-
-// ---- 低层级 WebSocket Agent ----
-export { WsAgent } from "./utils/wsAgent.js";
 
 // ---- 日志 ----
 export {
@@ -63,3 +53,13 @@ export {
   tokenLogger,
   wsLogger,
 } from "./utils/logger.js";
+
+// ---- 低层级 WebSocket Agent ----
+export { WsAgent } from "./utils/wsAgent.js";
+
+// ---- WebSocket 客户端 ----
+export {
+  CommandRegistry,
+  registerDefaultCommands,
+  XyzwWebSocketClient,
+} from "./utils/xyzwWebSocket.js";

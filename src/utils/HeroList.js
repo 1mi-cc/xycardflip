@@ -165,7 +165,7 @@ const color = {
 /**
  * 提取传入对象中的鱼和鱼珠信息
  * @param {*} obj
- * @returns
+ * @returns {Record<string, any>} 鱼灵与鱼珠映射信息
  */
 export const HeroFillInfo = (obj) => {
   const temp = {};

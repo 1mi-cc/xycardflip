@@ -405,7 +405,7 @@ const rewardConfigs = {
 };
 
 // 消耗活动的ID (仅作参考，实际逻辑会自动查找)
-const ACTIVITY_ID = 2512261;
+const _ACTIVITY_ID = 2512261;
 const roleInfo = computed(() => tokenStore.gameData?.roleInfo || null);
 const ActivityItem = computed(
   () => roleInfo.value?.role?.items?.[5261]?.quantity || 0,

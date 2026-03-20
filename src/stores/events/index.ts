@@ -56,7 +56,7 @@ StudyPlugin({
   $emit,
 });
 
-onSome(["_sys/ack"], (data: Session) => {});
+onSome(["_sys/ack"], (_data: Session) => {});
 
 // omail_newmailnotify   邮件
 
@@ -64,7 +64,7 @@ onSome(
   ["system_newchatmessagenotify", "system_newchatmessagenotifyresp"],
   (data: Session) => {
     gameLogger.info(`收到新聊天消息事件: ${data.tokenId}`, data);
-    const { body, gameData } = data;
+    const { body } = data;
     if (!body || !body.chatMessage) {
       gameLogger.debug("聊天消息响应为空或格式不正确");
       return;
@@ -151,7 +151,7 @@ onSome(
   ],
   (data: Session) => {
     gameLogger.verbose(`收到队伍信息事件: ${data.tokenId}`, data);
-    const { body, gameData, cmd } = data;
+    const { body, gameData } = data;
     if (!body) {
       gameLogger.debug("队伍信息响应为空");
       return;
@@ -174,7 +174,7 @@ onSome(
   ],
   (data: Session) => {
     gameLogger.verbose(`收到队伍信息事件: ${data.tokenId}`, data);
-    const { body, gameData, cmd } = data;
+    const { body, gameData } = data;
     if (!body) {
       gameLogger.debug("队伍信息响应为空");
       return;
@@ -198,7 +198,7 @@ onSome(
 
 onSome(["tower_getinfo", "tower_getinforesp"], (data: Session) => {
   gameLogger.verbose(`收到查询塔事件: ${data.tokenId}`, data);
-  const { body, gameData, client } = data;
+  const { body, gameData } = data;
   // 保存爬塔结果到gameData中，供组件使用
   if (!gameData.value.towerResult) {
     gameData.value.towerResult = {};
@@ -210,7 +210,7 @@ onSome(["tower_getinfo", "tower_getinforesp"], (data: Session) => {
 
 onSome(["fight_starttower", "fight_starttowerresp"], (data: Session) => {
   gameLogger.verbose(`收到爬塔战斗开始事件: ${data.tokenId}`, data);
-  const { body, gameData, client } = data;
+  const { body, client } = data;
   // 保存爬塔结果到gameData中，供组件使用
   if (!gameData.value.towerResult) {
     gameData.value.towerResult = {};
@@ -238,7 +238,7 @@ onSome(["fight_starttower", "fight_starttowerresp"], (data: Session) => {
   gameData.value.lastUpdated = new Date().toISOString();
 
   // 检查是否需要自动领取奖励
-  if (!isSuccess && towerId == undefined) {
+  if (!isSuccess && towerId === undefined) {
     return;
   }
 
@@ -264,14 +264,14 @@ onSome(["fight_starttower", "fight_starttowerresp"], (data: Session) => {
   setTimeout(() => {
     try {
       client?.send("role_getroleinfo", {});
-    } catch (error) {
+    } catch {
       // 忽略更新数据错误
     }
   }, 1000);
 });
 
 onSome(["tower_claimreward", "tower_claimrewardresp"], (data: Session) => {
-  const { body, gameData, client } = data;
+  const { body, client } = data;
   if (!body) {
     gameLogger.warn("爬塔战斗开始响应为空");
     return;

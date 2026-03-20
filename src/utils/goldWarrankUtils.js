@@ -39,7 +39,7 @@ export async function formatWarrankRecordsForExport(legionRankList, queryDate) {
     ["排名", "ID", "区服", "俱乐部名", "战力", "红淬", "前三红淬", "黄金积分", "联盟", "公告"],
     ...legionRankList
       .sort((a, b) => (a.rank || 0) - (b.rank || 0))
-      .map((member, index) => [
+      .map((member, _index) => [
         member.rank,
         member.id,
         member.ServerId,
@@ -54,7 +54,11 @@ export async function formatWarrankRecordsForExport(legionRankList, queryDate) {
   ];
 
   // 初始化统计变量
-  let totalmeng = 0; let totalbig = 0; let totalzhengyi = 0; let totallong = 0; let totalweizhi = 0;
+  let totalmeng = 0;
+  let totalbig = 0;
+  let totalzhengyi = 0;
+  let totallong = 0;
+  let totalweizhi = 0;
 
   legionRankList.forEach((member) => {
     const alliance = allianceincludes(member.announcement);

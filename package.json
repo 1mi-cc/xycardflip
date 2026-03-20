@@ -2,7 +2,7 @@
   "name": "xyzw-token-manager",
   "version": "2.0.0",
   "type": "module",
-  "description": "XYZW游戏Token管理器 - 支持Base64导入和WebSocket连接管理",
+  "description": "XYZW game token manager with Base64 import and WebSocket connection management",
   "main": "dist/xyzw-token-manager.cjs",
   "module": "dist/xyzw-token-manager.mjs",
   "exports": {

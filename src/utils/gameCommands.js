@@ -6,10 +6,6 @@
 import { g_utils } from "./bonProtocol.js";
 
 // 生成随机数工具函数
-function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
 /**
  * 游戏命令构造器类
  * 每个命令方法返回标准的WebSocket消息格式
@@ -22,7 +18,7 @@ export class GameCommands {
   /**
    * 心跳消息
    */
-  heart_beat(ack = 0, seq = 0, params = {}) {
+  heart_beat(ack = 0, seq = 0, _params = {}) {
     return {
       ack,
       body: {},
@@ -518,7 +514,7 @@ export class GameCommands {
   /**
    * 获取军团信息
    */
-  legion_getinfo(ack = 0, seq = 0, params = {}) {
+  legion_getinfo(ack = 0, seq = 0, _params = {}) {
     return {
       ack,
       body: this.g_utils.bon.encode({}),
@@ -531,7 +527,7 @@ export class GameCommands {
   /**
    * 军团匹配角色报名
    */
-  legionmatch_rolesignup(ack = 0, seq = 0, params = {}) {
+  legionmatch_rolesignup(ack = 0, seq = 0, _params = {}) {
     return {
       ack,
       body: this.g_utils.bon.encode({}),
@@ -544,7 +540,7 @@ export class GameCommands {
   /**
    * 开始爬塔
    */
-  fight_starttower(ack = 0, seq = 0, params = {}) {
+  fight_starttower(ack = 0, seq = 0, _params = {}) {
     return {
       ack,
       body: this.g_utils.bon.encode({}),
@@ -587,7 +583,7 @@ export class GameCommands {
   /**
    * 开始答题游戏
    */
-  study_startgame(ack = 0, seq = 0, params = {}) {
+  study_startgame(ack = 0, seq = 0, _params = {}) {
     return {
       ack,
       body: this.g_utils.bon.encode({}),

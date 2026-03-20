@@ -141,7 +141,7 @@ const isLoading = ref(false);
 const hasDefaultInfo = ref(false);
 const teamHeroes = ref([]);
 const continuousBattles = ref({});
-const battleInterval = ref(null);
+const _battleInterval = ref(null);
 
 // 购买模块状态
 const merchantData = ref({ 1: [], 2: [], 3: [] });
@@ -569,7 +569,7 @@ async function buyItem(merchantId, index, pos) {
 }
 
 // 批量购买选中的商品
-async function batchBuySelected() {
+async function _batchBuySelected() {
   if (selectedItems.value.size === 0) {
     message.warning("请先选择要购买的商品");
     return;
@@ -592,8 +592,8 @@ async function batchBuySelected() {
 
   // 按商人ID和位置排序，从大到小购买
   items.sort((a, b) => {
-    const [aMerchant, aIndex, aPos] = a.split("-").map(Number);
-    const [bMerchant, bIndex, bPos] = b.split("-").map(Number);
+    const [aMerchant, _aIndex, aPos] = a.split("-").map(Number);
+    const [bMerchant, _bIndex, bPos] = b.split("-").map(Number);
 
     if (aMerchant !== bMerchant)
       return bMerchant - aMerchant;
@@ -611,7 +611,7 @@ async function batchBuySelected() {
       } else {
         failCount++;
       }
-    } catch (error) {
+    } catch {
       failCount++;
     }
 
@@ -661,7 +661,7 @@ async function buyAllGoldItems() {
           } else {
             failCount++;
           }
-        } catch (error) {
+        } catch {
           failCount++;
         }
 
@@ -709,7 +709,7 @@ async function buyAllGoldFishItems() {
         } else {
           failCount++;
         }
-      } catch (error) {
+      } catch {
         failCount++;
       }
 
@@ -743,7 +743,7 @@ async function refreshMerchantList() {
     message.info("开始自动获取商品列表流程...");
 
     // 第一步：获取默认队伍信息
-    const teamSuccess = await getDefaultTeam();
+    const _teamSuccess = await getDefaultTeam();
 
     // 第二步：选择梦境阵容
     await selectDreamTeam();

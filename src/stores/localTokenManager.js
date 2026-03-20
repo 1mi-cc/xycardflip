@@ -184,7 +184,7 @@ export const useLocalTokenStore = defineStore("localToken", () => {
         }
       };
 
-      wsAgent.onClose = (event) => {
+      wsAgent.onClose = (_event) => {
         // 降噪
         if (wsConnections.value[roleId]) {
           wsConnections.value[roleId].status = "disconnected";
@@ -237,8 +237,8 @@ export const useLocalTokenStore = defineStore("localToken", () => {
   };
 
   // 处理游戏消息
-  const handleGameMessage = (roleId, message) => {
-    const { cmd, body } = message;
+  const handleGameMessage = (_roleId, message) => {
+    const { cmd } = message;
 
     switch (cmd) {
       case "role_getroleinfo":
@@ -268,9 +268,7 @@ export const useLocalTokenStore = defineStore("localToken", () => {
       // 如果是新的WsAgent实例
       if (connection.agent && typeof connection.agent.close === "function") {
         connection.agent.close();
-      }
-      // 如果是旧的WebSocket实例
-      else if (
+      } else if (
         connection.connection
         && typeof connection.connection.close === "function"
       ) {

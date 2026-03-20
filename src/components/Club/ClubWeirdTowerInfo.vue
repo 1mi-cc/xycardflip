@@ -292,7 +292,7 @@ const handleExport = async () => {
 const exportToImage = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert("未找到要导出的DOM元素");
+    message.error("未找到要导出的 DOM 元素");
     return;
   }
 
@@ -319,7 +319,7 @@ const exportToImage = async () => {
     document.body.removeChild(link); // 下载后清理DOM
   } catch (err) {
     console.error("DOM转图片失败：", err);
-    alert("导出图片失败，请重试");
+    message.error("导出图片失败，请重试");
   }
 };
 

@@ -52,7 +52,7 @@
               size="small"
               type="primary"
               :disabled="
-                judgeLevelupgrade(HeroItem.level, 1, HeroItem.order) == false
+                judgeLevelupgrade(HeroItem.level, 1, HeroItem.order) === false
               "
               @click="orderHeroUpgrade"
             >
@@ -82,7 +82,7 @@ const HeroOptions = computed(() => [
     return {
       label: `${HERO_DICT[item.heroId].name}(${item.level}/6000)`,
       value: item.heroId,
-      disabled: item.level == 6000,
+      disabled: item.level === 6000,
     };
   }),
 ]);
@@ -131,7 +131,7 @@ watch(
   () => {
     if (HeroValue.value) {
       if (
-        tokenStore.gameData.roleInfo.role.heroes[HeroValue.value].level != 6000
+        tokenStore.gameData.roleInfo.role.heroes[HeroValue.value].level !== 6000
       ) {
         HeroItem.value = Object.assign(
           {},
@@ -169,7 +169,7 @@ const orderHeroUpgrade = async () => {
       levelNum.value,
       HeroItem.value.order,
     );
-    if (judgement == HeroItem.value.level) {
+    if (judgement === HeroItem.value.level) {
       const result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "hero_heroupgradeorder",
@@ -216,7 +216,7 @@ const levelHeroUpgrade = async () => {
       levelNum.value,
       HeroItem.value.order,
     );
-    if (judgement == false) {
+    if (judgement === false) {
       const result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "hero_heroupgradelevel",
@@ -271,12 +271,12 @@ const judgeLevelupgrade = (level, levelNum, order) => {
       level,
       levelNum,
       order,
-      order != item.order,
+      order !== item.order,
       level <= item.level,
       item.level < level + levelNum,
     );
     if (
-      order != item.order
+      order !== item.order
       && level <= item.level
       && item.level < level + levelNum
     ) {
@@ -288,7 +288,7 @@ const judgeLevelupgrade = (level, levelNum, order) => {
   return false;
 };
 
-const formatTime = (ts) => new Date(ts).toLocaleTimeString("zh-CN");
+const _formatTime = (ts) => new Date(ts).toLocaleTimeString("zh-CN");
 </script>
 
 <style scoped lang="scss">

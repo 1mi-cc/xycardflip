@@ -120,7 +120,7 @@ const emit = defineEmits(["update:visible"]);
 const message = useMessage();
 const tokenStore = useTokenStore();
 
-const showModal = computed({
+const _showModal = computed({
   get: () => props.visible,
   set: (val) => emit("update:visible", val),
 });
@@ -128,11 +128,11 @@ const showModal = computed({
 const loading1 = ref(false);
 const topranklist = ref(null);
 const expandedMembers = ref(new Set());
-const roleIdinput = ref("");
+const _roleIdinput = ref("");
 const queryDate = ref("");
 const selectedGroup = ref("");
 const teamArray = ref(null);
-const player_date = { name: "", power: "" };
+const _playerDate = { name: "", power: "" };
 
 // 分页状态
 const currentPage = ref(1);
@@ -169,11 +169,11 @@ const formatPower = (power) => {
   return power.toString();
 };
 
-const formatScore = (score) => {
+const _formatScore = (score) => {
   return score.toFixed(0).toString();
 };
 
-const formatServerId = (ServerId) => {
+const _formatServerId = (ServerId) => {
   return (ServerId - 27).toFixed(0).toString();
 };
 
@@ -212,7 +212,7 @@ const ProcessingendRank = (selectgroup) => {
 };
 
 // 处理图片加载错误
-const handleImageError = (event) => {
+const _handleImageError = (event) => {
   event.target.style.display = "none";
 };
 
@@ -263,7 +263,7 @@ const fetchtopranklist = async () => {
       const roleIdCounts = [];
       const nameCounts = [];
       const redQuenchCounts = [];
-      for (const [ClubId, ClubData] of Object.entries(
+      for (const [_clubId, ClubData] of Object.entries(
         detail?.legionData?.members,
       )) {
         if (ClubData.roleId !== undefined) {
@@ -327,7 +327,7 @@ const handleExport1 = async () => {
   }
 
   try {
-    const exportText = await formatWarrankRecordsForExport(
+    const _exportText = await formatWarrankRecordsForExport(
       teamArray.value,
       queryDate.value,
     );
@@ -339,7 +339,7 @@ const handleExport1 = async () => {
 };
 
 // 关闭弹窗
-const handleClose = () => {
+const _handleClose = () => {
   expandedMembers.value.clear();
 };
 

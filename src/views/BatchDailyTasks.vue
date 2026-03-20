@@ -553,7 +553,7 @@ const ismengjingActivityOpen = computed(() => {
 });
 const isbaokuActivityOpen = computed(() => {
   const day = new Date().getDay();
-  return day != 1 && day != 2;
+  return day !== 1 && day !== 2;
 });
 const isarenaActivityOpen = computed(() => {
   const hour = new Date().getHours();
@@ -880,7 +880,7 @@ const legionStoreBuySkinCoins = async () => {
       });
 
       for (let i = 0; i < 5; i++) {
-        const result = await tokenStore.sendMessageWithPromise(
+        const _result = await tokenStore.sendMessageWithPromise(
           tokenId,
           "legion_storebuygoods",
           { id: 1 },
@@ -2421,7 +2421,7 @@ const batcharenafight = async () => {
             type: "info",
           });
           await new Promise((r) => setTimeout(r, 500));
-        } catch (e) {
+        } catch {
           addLog({
             time: new Date().toLocaleTimeString(),
             message: `竞技场对决失败: ${error.message || "未知错误"}`,
@@ -2719,7 +2719,7 @@ const climbTower = async () => {
           try {
             roleInfo = await tokenStore.sendGetRoleInfo(tokenId);
             energy = roleInfo?.role?.tower?.energy || 0;
-          } catch (e) {
+          } catch {
             // 忽略刷新失败
           }
         }
@@ -3522,7 +3522,7 @@ const batchSmartSendCar = async () => {
           message: `剩余车票: ${refreshTickets}`,
           type: "info",
         });
-      } catch (_) { }
+      } catch {}
 
       // 3. Process Cars
       for (const car of carList) {
@@ -3622,7 +3622,7 @@ const batchSmartSendCar = async () => {
             refreshTickets = Number(
               roleRes?.role?.items?.[35002]?.quantity || 0,
             );
-          } catch (_) { }
+          } catch {}
 
           // Check if good enough now
           if (shouldSendCar(car, refreshTickets)) {

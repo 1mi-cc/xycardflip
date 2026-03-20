@@ -16,7 +16,7 @@
       </div>
       <div class="car-grid">
         <div
-          v-for="(car, index) in sortedCarList"
+          v-for="car in sortedCarList"
           :key="car.id"
           class="car-item"
           style="width: 0"
@@ -205,7 +205,7 @@ const getCarStatusText = (carData) => {
   const rewards = carData.rewards || [];
 
   // 优先判断是否可收菜（发过车且完成但未领取）
-  if (sendAt > 0 && claimAt == 0 && rewards.length > 0) {
+  if (sendAt > 0 && claimAt === 0 && rewards.length > 0) {
     return "可收菜";
   } else if (sendAt > 0) {
     // 已发车
@@ -336,7 +336,7 @@ const claimAllCars = async () => {
           await claimCar(car.id);
           // 为了避免请求过于频繁，可以添加一个小的延迟
           await new Promise((resolve) => setTimeout(resolve, 300));
-        } catch (error) {
+        } catch {
           // 继续收其他车辆，不中断整个过程
         }
       }
@@ -560,7 +560,7 @@ const smartSendCar = async () => {
           while (shouldRefresh) {
             // 执行刷新
             console.log(`正在刷新车辆: ${car.id}`);
-            const refreshResult = await refreshCar(car.id);
+            const _refreshResult = await refreshCar(car.id);
 
             // 重新获取车辆列表以更新数据
             await getCarList();

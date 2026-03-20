@@ -1,20 +1,18 @@
 <template>
   <div class="changelog-page">
     <div class="changelog-container">
-      <!-- 页面头部 -->
       <div class="page-header">
         <div class="header-content">
           <h1 class="page-title">
             <i class="icon-history">📜</i>
             更新日志
           </h1>
-          <p class="page-description">查看系统的最新更新和改进内容</p>
+          <p class="page-description">查看系统的最新更新、修复和改进内容。</p>
         </div>
 
-        <!-- 筛选器 -->
         <div class="filter-section">
           <div class="filter-group">
-            <label>版本类型：</label>
+            <label>版本类型</label>
             <div class="filter-buttons">
               <button
                 v-for="type in versionTypes"
@@ -30,10 +28,9 @@
         </div>
       </div>
 
-      <!-- 统计信息 -->
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-icon">🚀</div>
+          <div class="stat-icon">🧾</div>
           <div class="stat-content">
             <div class="stat-value">{{ stats.totalVersions }}</div>
             <div class="stat-label">总版本数</div>
@@ -47,14 +44,14 @@
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">🐛</div>
+          <div class="stat-icon">🛠</div>
           <div class="stat-content">
             <div class="stat-value">{{ stats.totalFixes }}</div>
-            <div class="stat-label">修复问题</div>
+            <div class="stat-label">问题修复</div>
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">⬆️</div>
+          <div class="stat-icon">⚡</div>
           <div class="stat-content">
             <div class="stat-value">{{ stats.totalImprovements }}</div>
             <div class="stat-label">优化改进</div>
@@ -62,7 +59,6 @@
         </div>
       </div>
 
-      <!-- 更新日志列表 -->
       <div class="changelog-list">
         <transition-group name="changelog-fade">
           <ChangelogCard
@@ -72,23 +68,21 @@
           ></ChangelogCard>
         </transition-group>
 
-        <!-- 空状态 -->
         <div v-if="filteredChangelogs.length === 0" class="empty-state">
-          <div class="empty-icon">📭</div>
-          <p class="empty-text">暂无该类型的更新日志</p>
+          <div class="empty-icon">📝</div>
+          <p class="empty-text">当前筛选条件下暂无更新日志。</p>
           <button class="reset-filter-btn" @click="selectedType = 'all'">
             重置筛选
           </button>
         </div>
       </div>
 
-      <!-- 订阅更新 -->
       <div class="subscribe-section">
         <div class="subscribe-card">
           <div class="subscribe-icon">🔔</div>
           <div class="subscribe-content">
             <h3 class="subscribe-title">订阅更新通知</h3>
-            <p class="subscribe-desc">第一时间获取系统更新信息</p>
+            <p class="subscribe-desc">第一时间获取系统更新信息。</p>
           </div>
           <button class="subscribe-btn" @click="handleSubscribe">
             {{ isSubscribed ? "已订阅" : "立即订阅" }}
@@ -100,12 +94,14 @@
 </template>
 
 <script setup>
+import { useMessage } from "naive-ui";
 import { computed, onMounted, ref } from "vue";
 
 import ChangelogCard from "@/components/ChangelogCard.vue";
 import { useChangelogStore } from "@/stores/changelogStore";
 
 const changelogStore = useChangelogStore();
+const message = useMessage();
 
 const selectedType = ref("all");
 const isSubscribed = ref(false);
@@ -147,10 +143,10 @@ const handleSubscribe = () => {
   isSubscribed.value = !isSubscribed.value;
   if (isSubscribed.value) {
     localStorage.setItem("changelog_subscribed", "true");
-    alert("已成功订阅更新通知！");
+    message.success("已成功订阅更新通知");
   } else {
     localStorage.removeItem("changelog_subscribed");
-    alert("已取消订阅");
+    message.info("已取消订阅");
   }
 };
 
@@ -171,7 +167,6 @@ onMounted(() => {
   margin: 0 auto;
 }
 
-/* 页面头部 */
 .page-header {
   margin-bottom: 40px;
 }
@@ -202,7 +197,6 @@ onMounted(() => {
   margin: 0;
 }
 
-/* 筛选器 */
 .filter-section {
   background: var(--card-bg);
   border-radius: 12px;
@@ -247,7 +241,6 @@ onMounted(() => {
   border-color: var(--primary-color);
 }
 
-/* 统计卡片 */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -291,12 +284,10 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-/* 更新日志列表 */
 .changelog-list {
   margin-bottom: 40px;
 }
 
-/* 空状态 */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -332,7 +323,6 @@ onMounted(() => {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-/* 订阅部分 */
 .subscribe-section {
   margin-top: 40px;
 }
@@ -385,7 +375,6 @@ onMounted(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-/* 过渡动画 */
 .changelog-fade-enter-active,
 .changelog-fade-leave-active {
   transition: all 0.3s ease;
@@ -401,7 +390,6 @@ onMounted(() => {
   transform: translateY(-20px);
 }
 
-/* CSS 变量 */
 :root {
   --bg-color: #f3f4f6;
   --card-bg: #ffffff;
@@ -422,7 +410,6 @@ onMounted(() => {
   }
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .changelog-page {
     padding: 20px 12px;

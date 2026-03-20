@@ -92,14 +92,14 @@ const handleHelper = async () => {
     const batches = Math.floor(number.value / 10);
     const remainder = number.value % 10;
     for (let i = 0; i < batches; i++) {
-      const result = await tokenStore.sendMessageWithPromise(
+      const _result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "hero_recruit",
         { recruitType: 1, recruitNumber: 10 },
       );
     }
     if (remainder > 0) {
-      const result = await tokenStore.sendMessageWithPromise(
+      const _result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "hero_recruit",
         { recruitType: 1, recruitNumber: remainder },

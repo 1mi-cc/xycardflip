@@ -48,7 +48,7 @@ export function getLastSaturday() {
     fourthSunday.setDate(firstSunday.getDate() + 21); // 21天 = 3周
 
     // 判断今天是否是第四个周日
-    if (today.getDate() === fourthSunday.getDate()) {
+    if (todayDate === fourthSunday.getDate()) {
       // 今天是第四周周日，返回今天
       daysToSubtract = 0;
     } else {
@@ -79,7 +79,7 @@ export function formatTimestamp1(timestamp) {
 }
 
 // 获取战斗情况
-const getBattleWinFlag = (newWinFlag) => {
+export const getBattleWinFlag = (newWinFlag) => {
   if (newWinFlag === 2) {
     return "胜利";
   } else {
@@ -88,7 +88,7 @@ const getBattleWinFlag = (newWinFlag) => {
 };
 
 // 获取进攻防守方情况
-const getBattleAttackType = (attackType) => {
+export const getBattleAttackType = (attackType) => {
   if (attackType === 0) {
     return "进攻方";
   } else {
@@ -199,11 +199,11 @@ export async function formatBattleRecordsForExport(roleDetailsList, queryDate) {
 
   // 构造战斗数据工作表
   const processedData = roleDetailsList
-    .map((member, index) => {
+    .map((member, _index) => {
       const targetRoleList = member.targetRoleList || [];
       return targetRoleList
         .filter((battle) => battle !== null)
-        .map((battle, battleIndex) => {
+        .map((battle, _battleIndex) => {
           const targetRoleInfo = battle.targetRoleInfo || {};
           return [
             battle.roleInfo.roleId || 0,
@@ -244,7 +244,7 @@ export async function formatBattleRecordsForExport(roleDetailsList, queryDate) {
       "战斗结果",
       "战斗时间",
     ],
-    ...processedDataWithKeys.map((battle, index) => [
+    ...processedDataWithKeys.map((battle, _index) => [
       battle.roleId || 0,
       battle.roleName || "",
       battle.targetRoleId || 0,
@@ -330,7 +330,7 @@ export async function copyToClipboard(text) {
 
     try {
       document.execCommand("copy");
-    } catch (err) {
+    } catch {
       throw new Error("复制失败");
     } finally {
       textArea.remove();

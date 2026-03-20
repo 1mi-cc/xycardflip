@@ -366,7 +366,7 @@ const selectTeam = async (teamId: number) => {
     currentTeam.value = teamId;
     message.success(`已切换到阵容 ${teamId}`);
     await refreshTeamData(true);
-  } catch (e) {
+  } catch {
     currentTeam.value = prev;
   } finally {
     switching.value = false;

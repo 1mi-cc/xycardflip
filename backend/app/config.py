@@ -556,6 +556,44 @@ class Settings:
         False,
     )
     automation_default_scan_limit: int = _get_int("AUTOMATION_DEFAULT_SCAN_LIMIT", 120)
+    operating_state_execution_window: int = _get_int("OPERATING_STATE_EXECUTION_WINDOW", 24)
+    operating_state_min_monitor_samples: int = _get_int("OPERATING_STATE_MIN_MONITOR_SAMPLES", 6)
+    operating_state_min_execution_samples: int = _get_int(
+        "OPERATING_STATE_MIN_EXECUTION_SAMPLES",
+        6,
+    )
+    operating_state_cautious_success_rate: float = _get_float(
+        "OPERATING_STATE_CAUTIOUS_SUCCESS_RATE",
+        0.75,
+    )
+    operating_state_recovery_success_rate: float = _get_float(
+        "OPERATING_STATE_RECOVERY_SUCCESS_RATE",
+        0.45,
+    )
+    operating_state_cautious_failure_rate: float = _get_float(
+        "OPERATING_STATE_CAUTIOUS_FAILURE_RATE",
+        0.35,
+    )
+    operating_state_recovery_failure_rate: float = _get_float(
+        "OPERATING_STATE_RECOVERY_FAILURE_RATE",
+        0.60,
+    )
+    operating_state_cautious_business_bans: int = _get_int(
+        "OPERATING_STATE_CAUTIOUS_BUSINESS_BANS",
+        1,
+    )
+    operating_state_recovery_business_bans: int = _get_int(
+        "OPERATING_STATE_RECOVERY_BUSINESS_BANS",
+        3,
+    )
+    operating_state_cautious_limit_factor: float = _get_float(
+        "OPERATING_STATE_CAUTIOUS_LIMIT_FACTOR",
+        0.5,
+    )
+    operating_state_recovery_limit_factor: float = _get_float(
+        "OPERATING_STATE_RECOVERY_LIMIT_FACTOR",
+        0.2,
+    )
 
     vnpy_scan_interval_sec: int = _get_int("VNPY_SCAN_INTERVAL_SEC", 300)
     vnpy_scan_pages: int = _get_int("VNPY_SCAN_PAGES", _get_int("MONITOR_PAGES", 1))

@@ -82,8 +82,8 @@
               <div class="battle-details">
                 <div v-if="member.targetRoleList && member.targetRoleList.length > 0" class="battles-list">
                   <div
-                    v-for="(battle, index) in member.targetRoleList"
-                    :key="index"
+                    v-for="(battle, battleIndex) in member.targetRoleList"
+                    :key="battleIndex"
                     class="battle-item"
                     :class="getBattleClass(battle)"
                   >
@@ -229,8 +229,8 @@
               <div class="battle-details">
                 <div v-if="member.targetRoleList && member.targetRoleList.length > 0" class="battles-list">
                   <div
-                    v-for="(battle, index) in member.targetRoleList"
-                    :key="index"
+                    v-for="(battle, battleIndex) in member.targetRoleList"
+                    :key="battleIndex"
                     class="battle-item"
                     :class="getBattleClass(battle)"
                   >
@@ -340,12 +340,12 @@ const battleRecords = ref(null);
 const expandedMembers = ref(new Set());
 const queryDate = ref("");
 
-const legionMatch = ref({
+const _legionMatch = ref({
   isRegistered: false,
 });
 
 // 格式化战力
-const formatPower = (power) => {
+const _formatPower = (power) => {
   if (!power)
     return "0";
   if (power >= 100000000) {
@@ -388,12 +388,12 @@ const handleImageError = (event) => {
 };
 
 const disabledDate = (current) => {
-  return (current.getDay() != 6 && current.getDay() != 0) || current > Date.now();
+  return (current.getDay() !== 6 && current.getDay() !== 0) || current > Date.now();
 };
 
 // 日期选择时调用查询战绩方法
 const fetchBattleRecordsByDate = (val) => {
-  if (undefined != val) {
+  if (val !== undefined) {
     queryDate.value = val;
   } else {
     queryDate.value = getLastSaturday();
@@ -464,7 +464,7 @@ const handleExport = async () => {
 
   try {
     if (exportmethod.value.includes("1")) {
-      const exportText = await formatBattleRecordsForExport(battleRecords.value.roleDetailsList, queryDate.value);
+      await formatBattleRecordsForExport(battleRecords.value.roleDetailsList, queryDate.value);
     }
     if (exportmethod.value.includes("2")) {
       exportToImage();
@@ -479,7 +479,7 @@ const handleExport = async () => {
 const exportToImage = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert("未找到要导出的DOM元素");
+    message.error("未找到要导出的 DOM 元素");
     return;
   }
 
@@ -505,7 +505,7 @@ const exportToImage = async () => {
     document.body.removeChild(link); // 下载后清理DOM
   } catch (err) {
     console.error("DOM转图片失败：", err);
-    alert("导出图片失败，请重试");
+    message.error("导出图片失败，请重试");
   }
 };
 

@@ -12,6 +12,7 @@ from ..services.autotrade import auto_trade_service
 from ..services.execution import execution_service
 from ..services.execution_retry import execution_retry_service
 from ..services.market_monitor import monitor_service
+from ..services.operating_state import operating_state_service
 from ..services.proxy_resolver import network_policy_status
 from ..services.supabase_sync import supabase_sync_service
 from ..vnpy_system.event_engine import event_engine
@@ -38,6 +39,7 @@ def health(request: Request) -> dict[str, Any]:
         "startup_services": getattr(request.app.state, "startup_services", {}),
         "network_policy": network_policy_status(),
         "monitor_health": monitor_status.get("health", {}),
+        "operating_state": operating_state_service.status(),
         "supabase_sync": supabase_sync_service.status(),
         "data_integrity": get_data_integrity_status(),
         "automation_guards": {

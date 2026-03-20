@@ -144,11 +144,9 @@
 <script setup>
 import { useDialog, useMessage } from "naive-ui";
 import { onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
 
 import { useAuthStore } from "@/stores/auth";
 
-const router = useRouter();
 const message = useMessage();
 const dialog = useDialog();
 const authStore = useAuthStore();
@@ -179,7 +177,7 @@ const preferences = reactive({
 });
 
 // 密码验证规则
-const passwordRules = {
+const _passwordRules = {
   currentPassword: [
     { required: true, message: "请输入当前密码", trigger: "blur" },
   ],
@@ -214,7 +212,7 @@ const saveProfile = async () => {
   try {
     // 这里应该调用API保存用户信息
     message.success("个人信息保存成功");
-  } catch (error) {
+  } catch {
     message.error("保存失败，请稍后重试");
   }
 };
@@ -233,12 +231,12 @@ const changePassword = async () => {
     Object.keys(passwordForm).forEach((key) => {
       passwordForm[key] = "";
     });
-  } catch (error) {
+  } catch {
     // 验证失败
   }
 };
 
-const savePreferences = () => {
+const _savePreferences = () => {
   // 保存偏好设置
   localStorage.setItem("userPreferences", JSON.stringify(preferences));
   message.success("偏好设置保存成功");
@@ -261,7 +259,7 @@ const updateTheme = (theme) => {
   }
 };
 
-const changeAvatar = () => {
+const _changeAvatar = () => {
   message.info("头像更换功能开发中...");
 };
 

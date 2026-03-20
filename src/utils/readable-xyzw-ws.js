@@ -1,7 +1,7 @@
 // 解析后的XYZW WebSocket通信库
 // 原文件: CTx_gHj7.js (混淆版本)
 
-import { c as useI18n, u as useState } from "./BUzHT0Ek.js";
+import { u as useState } from "./BUzHT0Ek.js";
 // 导入依赖模块
 import { G as createApp, a$ as createRef } from "./DpD38Hq9.js";
 
@@ -164,20 +164,9 @@ function formatTime(seconds) {
 }
 
 // 字符串相似度检查
-function checkStringSimilarity(str1, str2, threshold) {
-  if (!str1 || !str2)
-    return false;
-  return (
-    1
-    - calculateStringSimilarity(str1, str2)
-    / Math.max(str1.length, str2.length)
-    >= threshold
-  );
-}
-
 // 数值格式化函数 (支持万、亿单位)
 function formatNumber(num, decimals = 2) {
-  if (num === undefined || isNaN(num) || num <= 0)
+  if (num === undefined || Number.isNaN(num) || num <= 0)
     return "0";
 
   const billion = 100000000; // 1亿
@@ -210,7 +199,7 @@ function delay(milliseconds) {
 // 游戏消息模板定义
 const gameMessageTemplates = {
   // 心跳包
-  heart_beat: (client, ack, seq, params) => ({
+  heart_beat: (_client, ack, seq, _params) => ({
     ack,
     body: undefined,
     c: undefined,
@@ -420,20 +409,14 @@ const gameMessageTemplates = {
 };
 
 // 游戏逻辑处理函数 (从原始混淆代码中提取的核心逻辑)
-function processGameLogic(client) {
-  const app = createApp();
-  const state = useState();
-  const { message } = useI18n(["message", "dialog"]);
-
+function processGameLogic(_client) {
   // 处理问答逻辑
   const handleQuestionsLogic = (responseData) => {
     const questionList = responseData.body.questionList;
     const hasMatch = false;
-    const config = useState();
 
     // 遍历问题列表寻找匹配
     for (let i = 0; i < questionList.length; i++) {
-      const question = questionList[i];
       // todo
       // 这里应该有问题匹配逻辑，但在原代码中被混淆了
       // 原始逻辑涉及某个答案数组 v，可能需要根据实际需求补充
@@ -452,9 +435,7 @@ function processGameLogic(client) {
 const base64Utils = {
   // 字节长度计算
   byteLength(str) {
-    const parsed = this.parseBase64(str);
-    const validLength = parsed[0];
-    const paddingLength = parsed[1];
+    const [validLength] = this.parseBase64(str);
     return validLength;
   },
 
@@ -523,7 +504,7 @@ const base64Utils = {
     return [validLength, paddingLength];
   },
 
-  calculateLength(validLength, paddingLength, totalLength) {
+  calculateLength(validLength, paddingLength, _totalLength) {
     return Math.floor(((validLength + paddingLength) * 3) / 4);
   },
 
@@ -580,6 +561,7 @@ const createDataStore = () => {
 // 导出的主要功能模块
 export {
   createApp as appFactory, // A -> u
+  calculateStringSimilarity,
   useState as createGameState, // b -> a
   createDataStore as dataStoreFactory, // C -> e
   base64Utils as encodingUtils, // E -> g

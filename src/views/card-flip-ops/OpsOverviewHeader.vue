@@ -4,12 +4,10 @@
       <div class="hero-main">
         <div class="hero-eyebrow">Card Flip Operations</div>
         <h1>卡片倒卖操作台</h1>
-        <p>
-          把总览、人工审批、自动执行和风控处置收在一个工作台里。高频动作前置，低频调参收折叠。
-        </p>
+        <p>把总览、人工审核、自动执行和风控处置集中在一个工作台里，适合日常巡检、人工介入和批量维护。</p>
         <div class="role-hint">
           <n-tag size="small" :type="roleTagType">
-            {{ roleTagText }}
+            {{ resolvedRoleTagText }}
           </n-tag>
           <span v-if="isViewer">
             当前为只读角色，写入类动作会自动禁用。
@@ -44,7 +42,7 @@
             :loading="simulationTrainingLoading"
             @click="$emit('runSimulationTraining')"
           >
-            模拟训练
+            注入模拟样本
           </n-button>
 
           <n-button
@@ -84,7 +82,7 @@
           </n-button>
         </n-space>
         <div class="hero-actions-hint">
-          扫描上限即时生效，批量定价遵循当前模式。
+          扫描上限立即生效，批量定价会按当前模式生成建议，并在应用时刷新交易数据。
         </div>
       </div>
     </section>
@@ -122,14 +120,16 @@
       </div>
       <div class="stat-card profit">
         <div class="label">累计毛利</div>
-        <div class="value">￥{{ toMoney(metrics.gross_profit) }}</div>
+        <div class="value">¥{{ toMoney(metrics.gross_profit) }}</div>
       </div>
     </section>
   </div>
 </template>
 
 <script setup>
-defineProps({
+import { computed } from "vue";
+
+const props = defineProps({
   roleTagText: { type: String, required: true },
   roleTagType: { type: String, required: true },
   isViewer: { type: Boolean, default: false },
@@ -161,4 +161,12 @@ defineEmits([
   "applyBatchReprice",
   "refresh",
 ]);
+
+const resolvedRoleTagText = computed(() => {
+  if (props.isViewer)
+    return "viewer 只读模式";
+  if (props.roleTagType === "info")
+    return "ops 运营模式";
+  return "admin 管理模式";
+});
 </script>

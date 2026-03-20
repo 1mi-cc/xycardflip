@@ -73,7 +73,6 @@ const message = useMessage();
 // 响应式数据
 const isClimbing = ref(false);
 const climbTimeout = ref(null); // 用于超时重置状态
-const lastClimbResult = ref(null); // 最后一次爬塔结果
 
 // 计算属性 - 从gameData中获取塔相关信息
 const roleInfo = computed(() => {
@@ -202,7 +201,7 @@ const getTowerInfo = async () => {
     tokenStore.sendMessage(tokenId, "role_getroleinfo");
     // 直接请求塔信息
     tokenStore.sendMessage(tokenId, "tower_getinfo");
-  } catch (error) {
+  } catch {
     // 获取塔信息失败：静默，避免噪声
   }
 };
@@ -275,7 +274,7 @@ watch(
 onMounted(() => {
   // 检查WebSocket客户端
   if (tokenStore.selectedToken) {
-    const client = tokenStore.getWebSocketClient(tokenStore.selectedToken.id);
+    const _client = tokenStore.getWebSocketClient(tokenStore.selectedToken.id);
   }
 
   // 组件挂载时获取塔信息

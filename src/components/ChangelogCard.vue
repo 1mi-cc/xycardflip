@@ -79,7 +79,7 @@
 </template>
 
 <script setup>
-const props = defineProps({
+defineProps({
   entry: {
     type: Object,
     required: true,

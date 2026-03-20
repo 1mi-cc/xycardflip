@@ -95,7 +95,7 @@
 
     <div class="service-section">
       <div class="section-title">手动重试一次</div>
-      <div class="section-subtitle">常用于发布后兜底，默认参数沿用服务配置。</div>
+      <div class="section-subtitle">适合发布后补跑或人工兜底，默认参数沿用服务配置。</div>
       <n-space wrap>
         <n-select
           style="width: 150px"

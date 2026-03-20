@@ -21,28 +21,28 @@
         🎯 一键答题.
       </a-button>
       <a-button
-        v-if="!study.thisWeek && study.status == 'starting'"
+        v-if="!study.thisWeek && study.status === 'starting'"
         status="warning"
         :disabled="true"
       >
         正在获取题库...
       </a-button>
       <a-button
-        v-if="!study.thisWeek && study.status == 'answering'"
+        v-if="!study.thisWeek && study.status === 'answering'"
         status="warning"
         :disabled="true"
       >
         答题中...
       </a-button>
       <a-button
-        v-if="!study.thisWeek && study.status == 'claiming_rewards'"
+        v-if="!study.thisWeek && study.status === 'claiming_rewards'"
         status="warning"
         :disabled="true"
       >
         正在领取奖励...
       </a-button>
       <a-button
-        v-if="!study.thisWeek && study.status == 'completed'"
+        v-if="!study.thisWeek && study.status === 'completed'"
         status="warning"
         :disabled="true"
       >
@@ -74,7 +74,7 @@ const study = computed(() => tokenStore.gameData.studyStatus);
 const startStudy = async () => {
   if (!tokenStore.selectedToken || study.value.thisWeek)
     return;
-  if (study.value.status != "" && study.value.status != "idel")
+  if (study.value.status !== "" && study.value.status !== "idel")
     return;
   console.log("开始答题", study.value);
 

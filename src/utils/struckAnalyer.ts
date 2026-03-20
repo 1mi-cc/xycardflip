@@ -13,7 +13,7 @@ declare interface TermData {
  * @param record 收集器
  * @param terms 词条列表（正则表达式）
  * @param path 父级路径
- * @returns
+ * @returns {void} 将匹配到的词条写入收集器
  */
 const scanForTermData = (
   obj: object,
@@ -71,7 +71,7 @@ const analyzeDataStructure = (
 };
 
 // 辅助函数：尝试解析队伍数据
-const tryParseTeamData = (data: object, result: any, cmd) => {
+const tryParseTeamData = (data: object, result: any, _cmd) => {
   // 查找队伍相关字段
   const teamFields: TermData[] = [];
   scanForTermData(data, teamFields, [

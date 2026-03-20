@@ -7,7 +7,6 @@ import { g_utils } from "./bonProtocol.js";
 import { gameLogger, wsLogger } from "./logger.js";
 
 /** 生成 [min,max] 的随机整数 */
-const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 /** Promise 版 sleep */
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -559,7 +558,7 @@ export class XyzwWebSocketClient {
     if (typeof body === "object" && body.constructor === Object) {
       // 检查是否是数字键的对象（例如 {"0": 8, "1": 2, ...}）
       const keys = Object.keys(body);
-      return keys.length > 0 && keys.every((key) => !isNaN(Number.parseInt(key)));
+      return keys.length > 0 && keys.every((key) => !Number.isNaN(Number.parseInt(key)));
     }
 
     return false;
@@ -585,10 +584,10 @@ export class XyzwWebSocketClient {
         .sort((a, b) => a - b);
       if (keys.length > 0) {
         const maxIndex = Math.max(...keys);
-        const arr = new Array(maxIndex + 1).fill(0);
+        const arr = Array.from({ length: maxIndex + 1 }, () => 0);
         for (const [key, value] of Object.entries(body)) {
           const index = Number.parseInt(key);
-          if (!isNaN(index) && typeof value === "number") {
+          if (!Number.isNaN(index) && typeof value === "number") {
             arr[index] = value;
           }
         }
@@ -717,7 +716,7 @@ export class XyzwWebSocketClient {
       this.promises[requestSeq] = { resolve, reject, originalCmd: cmd };
 
       // 超时处理
-      const timer = setTimeout(() => {
+      setTimeout(() => {
         delete this.promises[requestSeq];
         reject(new Error(`请求超时: ${cmd} (${timeoutMs}ms)`));
       }, timeoutMs);

@@ -183,7 +183,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(["update:task", "execute", "toggle-status"]);
+const emit = defineEmits(["update:task", "execute", "toggleStatus"]);
 
 const message = useMessage();
 const showSettings = ref(false);
@@ -207,7 +207,7 @@ const getButtonText = () => {
 
 // 方法
 const toggleStatus = () => {
-  emit("toggle-status", props.task.id);
+  emit("toggleStatus", props.task.id);
 };
 
 const executeTask = async () => {

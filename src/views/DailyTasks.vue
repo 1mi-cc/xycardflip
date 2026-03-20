@@ -348,9 +348,6 @@ const refreshTasks = async () => {
 
 // 生成模拟任务数据
 const generateMockTasks = (roleId) => {
-  const role = gameRolesStore.gameRoles.find((r) => r.id === roleId);
-  const roleName = role?.name || "未知角色";
-
   return [
     {
       id: `task_${roleId}_daily_signin`,
@@ -574,7 +571,7 @@ const executeAllPendingTasks = async () => {
         try {
           await executeTask(task.id);
           successCount++;
-        } catch (error) {
+        } catch {
           failCount++;
         }
       }

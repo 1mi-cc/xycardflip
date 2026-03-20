@@ -24,12 +24,12 @@ export const wsConnections = ref({}); // WebSocket连接状态
 export const connectionLocks = ref(new Map()); // 连接操作锁，防止竞态条件
 export const activeConnections = ref(new Map()); // 跨标签页连接协调
 
-const selectedToken = computed(() =>
+const _selectedToken = computed(() =>
   gameTokens.value.find((token) => token.id === selectedTokenId.value),
 );
 
 // Token管理
-const addToken = (tokenData: RoleToken) => {
+const _addToken = (tokenData: RoleToken) => {
   const newToken = {
     id: `token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     name: tokenData.name,
@@ -49,7 +49,7 @@ const addToken = (tokenData: RoleToken) => {
   return newToken;
 };
 
-const updateToken = (tokenId: string, updates: RoleToken) => {
+const _updateToken = (tokenId: string, updates: RoleToken) => {
   const index = gameTokens.value.findIndex((token) => token.id === tokenId);
   if (index !== -1) {
     gameTokens.value[index] = {
@@ -62,7 +62,7 @@ const updateToken = (tokenId: string, updates: RoleToken) => {
   return false;
 };
 
-const removeToken = (tokenId) => {
+const _removeToken = (tokenId) => {
   gameTokens.value = gameTokens.value.filter((token) => token.id !== tokenId);
 
   // 关闭对应的WebSocket连接

@@ -108,14 +108,14 @@ const handleHelper = async () => {
     const batches = Math.floor(number.value / 10);
     const remainder = number.value % 10;
     for (let i = 0; i < batches; i++) {
-      const result = await tokenStore.sendMessageWithPromise(
+      const _result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "artifact_lottery",
         { type: type.value, lotteryNumber: 10, newFree: true },
       );
     }
     if (remainder > 0) {
-      const result = await tokenStore.sendMessageWithPromise(
+      const _result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "artifact_lottery",
         {

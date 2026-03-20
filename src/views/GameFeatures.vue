@@ -120,7 +120,7 @@ const pickArenaTargetId = (targets) => {
 };
 
 // 方法
-const handleFeatureAction = async (featureType) => {
+const _handleFeatureAction = async (featureType) => {
   if (!tokenStore.selectedToken) {
     message.warning("请先选择Token");
     router.push("/tokens");
@@ -233,7 +233,7 @@ const connectWebSocket = () => {
         await initializeGameData();
       }
     }, 2000);
-  } catch (error) {
+  } catch {
     console.error("WebSocket连接失败:", error);
     message.error("WebSocket连接失败");
   }
@@ -310,7 +310,7 @@ const initializeGameData = async () => {
       "fight_startlevel",
     );
     tokenStore.setBattleVersion(res?.battleData?.version);
-  } catch (error) {
+  } catch {
     // 静默处理初始化异常
   }
 };

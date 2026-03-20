@@ -145,14 +145,14 @@ const handleBoxHelper = async () => {
     const batches = Math.floor(number.value / 10);
     const remainder = number.value % 10;
     for (let i = 0; i < batches; i++) {
-      const result = await tokenStore.sendMessageWithPromise(
+      const _result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "item_openbox",
         { itemId: type.value, number: 10 },
       );
     }
     if (remainder > 0) {
-      const result = await tokenStore.sendMessageWithPromise(
+      const _result = await tokenStore.sendMessageWithPromise(
         tokenId,
         "item_openbox",
         { itemId: type.value, number: remainder },

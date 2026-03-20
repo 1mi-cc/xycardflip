@@ -25,7 +25,7 @@ const stringifyCardFlipError = (value) => {
     return value
       .map((item) => stringifyCardFlipError(item))
       .filter(Boolean)
-      .join("；");
+      .join("; ");
   }
   if (!value || typeof value !== "object") {
     return "";
@@ -37,13 +37,13 @@ const stringifyCardFlipError = (value) => {
       return text;
   }
 
-  const fieldPairs = Object.entries(value)
+  return Object.entries(value)
     .map(([key, fieldValue]) => {
       const text = stringifyCardFlipError(fieldValue);
       return text ? `${key}: ${text}` : "";
     })
-    .filter(Boolean);
-  return fieldPairs.join("；");
+    .filter(Boolean)
+    .join("; ");
 };
 
 cardFlipRequest.interceptors.response.use(
@@ -115,7 +115,12 @@ const cardFlipApi = {
       params: { mode, note },
     });
   },
-  repriceOpenTrades(mode = "balanced", limit = 100, apply = false, note = "batch auto pricing plan") {
+  repriceOpenTrades(
+    mode = "balanced",
+    limit = 100,
+    apply = false,
+    note = "batch auto pricing plan",
+  ) {
     return cardFlipRequest.post("/trades/reprice-open", null, {
       params: { mode, limit, apply, note },
     });
@@ -130,7 +135,11 @@ const cardFlipApi = {
       params: { note },
     });
   },
-  sendBlockedToReviewBatch(maxRiskScore = 45, limit = 200, note = "manual batch review override from ui") {
+  sendBlockedToReviewBatch(
+    maxRiskScore = 45,
+    limit = 200,
+    note = "manual batch review override from ui",
+  ) {
     return cardFlipRequest.post("/opportunities/send-to-review/batch", null, {
       params: {
         max_risk_score: maxRiskScore,
@@ -285,7 +294,11 @@ const cardFlipApi = {
     updateTradeState = true,
     note = "",
   ) {
-    const params = { dry_run: dryRun, force, update_trade_state: updateTradeState };
+    const params = {
+      dry_run: dryRun,
+      force,
+      update_trade_state: updateTradeState,
+    };
     if (confirmToken)
       params.confirm_token = confirmToken;
     if (listingUrl)
@@ -305,7 +318,11 @@ const cardFlipApi = {
     updateTradeState = true,
     note = "",
   ) {
-    const params = { dry_run: dryRun, force, update_trade_state: updateTradeState };
+    const params = {
+      dry_run: dryRun,
+      force,
+      update_trade_state: updateTradeState,
+    };
     if (confirmToken)
       params.confirm_token = confirmToken;
     if (typeof soldPrice === "number")
@@ -316,7 +333,13 @@ const cardFlipApi = {
       params,
     });
   },
-  retryFailedExecution(action = null, limit = 20, dryRun = true, force = false, confirmToken = "") {
+  retryFailedExecution(
+    action = null,
+    limit = 20,
+    dryRun = true,
+    force = false,
+    confirmToken = "",
+  ) {
     const params = { limit, dry_run: dryRun, force };
     if (action)
       params.action = action;

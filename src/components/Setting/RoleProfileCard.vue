@@ -281,7 +281,7 @@ const loadRoleData = async () => {
     // 优先请求角色信息
     try {
       await tokenStore.sendMessage(tokenId, "role_getroleinfo");
-    } catch (error) {}
+    } catch {}
   }
 };
 

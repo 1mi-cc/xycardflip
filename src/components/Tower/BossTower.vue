@@ -36,7 +36,6 @@ import MyCard from "../Common/MyCard.vue";
 
 const tokenStore = useTokenStore();
 const message = useMessage();
-const roleInfo = computed(() => tokenStore.gameData?.roleInfo || null);
 const dayOfWeek = new Date().getDay();
 
 const bossTowerInfo = computed(() => {
@@ -56,7 +55,7 @@ const extendbosstower = async () => {
     return message.warning("请先选择Token");
   const tokenId = tokenStore.selectedToken.id;
   state.value.isRunning = true;
-  if (dayOfWeek != 1 && dayOfWeek != 2) {
+  if (dayOfWeek !== 1 && dayOfWeek !== 2) {
     if (currentTower.value === 1 || currentTower.value === 2 || currentTower.value === 3) {
       try {
         state.value.isExtending = true;

@@ -175,12 +175,12 @@ const battleRecords = ref(null);
 const expandedMembers = ref(new Set());
 const queryDate = ref("");
 
-const legionMatch = ref({
+const _legionMatch = ref({
   isRegistered: false,
 });
 
 // 格式化战力
-const formatPower = (power) => {
+const _formatPower = (power) => {
   if (!power)
     return "0";
   if (power >= 100000000) {
@@ -193,7 +193,7 @@ const formatPower = (power) => {
 };
 
 // 获取战斗样式类
-const getBattleClass = (battle) => {
+const _getBattleClass = (battle) => {
   const classes = [];
   if (battle.newWinFlag === 2) {
     classes.push("battle-win");
@@ -240,7 +240,7 @@ const legionWarTypesw = (legionWarType) => {
 };
 
 // 切换成员详情展开状态
-const toggleMemberDetails = (roleId) => {
+const _toggleMemberDetails = (roleId) => {
   if (expandedMembers.value.has(roleId)) {
     expandedMembers.value.delete(roleId);
   } else {
@@ -249,7 +249,7 @@ const toggleMemberDetails = (roleId) => {
 };
 
 // 处理图片加载错误
-const handleImageError = (event) => {
+const _handleImageError = (event) => {
   event.target.style.display = "none";
 };
 
@@ -305,7 +305,7 @@ const handleRefresh = () => {
 };
 
 // 导出战绩
-const handleExport = async () => {
+const _handleExport = async () => {
   if (!battleRecords.value || !battleRecords.value.roleDetailsList) {
     message.warning("没有可导出的数据");
     return;

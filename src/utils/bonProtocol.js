@@ -508,7 +508,7 @@ export class BonDecoder {
       }
       case 9: {
         const len = this.dr.read7BitInt();
-        const arr = new Array(len);
+        const arr = Array.from({ length: len });
         for (let i = 0; i < len; i++) arr[i] = this.decode();
         return arr;
       }

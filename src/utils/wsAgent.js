@@ -320,11 +320,9 @@ export class WsAgent {
    * @private
    */
   _buildPacket(payload) {
-    const { cmd, body = {}, respKey } = payload;
+    const { cmd, body = {} } = payload;
 
     // 生成随机RTT (0-500ms)
-    const rtt = Math.floor(Math.random() * 500);
-
     const packet = {
       ack: this.ack,
       seq: cmd === this.heartbeatCmd ? 0 : this.seq++,
@@ -402,7 +400,7 @@ export class WsAgent {
     }
 
     // 清理等待的Promise
-    for (const [key, { reject, timeoutId }] of this.waitingPromises) {
+    for (const [, { reject, timeoutId }] of this.waitingPromises) {
       clearTimeout(timeoutId);
       reject(new Error("连接已关闭"));
     }

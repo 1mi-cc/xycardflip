@@ -1178,6 +1178,73 @@ def list_execution_logs(
         return cur.fetchall()
 
 
+def _parse_json_object(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def get_execution_log_summary(limit: int = 24) -> dict[str, Any]:
+    try:
+        rows = list_execution_logs(limit=max(1, min(500, int(limit))))
+    except sqlite3.OperationalError:
+        return {
+            "sample_size": 0,
+            "success_count": 0,
+            "failure_count": 0,
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "business_ban_count": 0,
+            "last_failure_at": "",
+        }
+    sample_size = len(rows)
+    failure_count = 0
+    business_ban_count = 0
+    last_failure_at = ""
+
+    for row in rows:
+        success = bool(row["success"])
+        if not success:
+            failure_count += 1
+            if not last_failure_at:
+                last_failure_at = str(row["created_at"] or "")
+
+        response_payload = _parse_json_object(row["response_json"])
+        business_ban_code = str(response_payload.get("business_ban_code") or "").strip()
+        error_text = " ".join(
+            part
+            for part in (
+                str(row["error"] or "").strip(),
+                str(response_payload.get("error") or "").strip(),
+            )
+            if part
+        ).lower()
+        if business_ban_code or "business ban" in error_text:
+            business_ban_count += 1
+
+    success_count = sample_size - failure_count
+    success_rate = (success_count / sample_size) if sample_size else 0.0
+    failure_rate = (failure_count / sample_size) if sample_size else 0.0
+    return {
+        "sample_size": sample_size,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "success_rate": round(success_rate, 4),
+        "failure_rate": round(failure_rate, 4),
+        "business_ban_count": business_ban_count,
+        "last_failure_at": last_failure_at,
+    }
+
+
 def get_latest_execution_log(
     *,
     trade_id: int,

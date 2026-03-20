@@ -335,7 +335,7 @@
               {{ heroModealTemp.HolyBeast ? '已激活' : '未激活' }}
             </n-descriptions-item>
             <n-descriptions-item label="鱼灵">
-              {{ heroModealTemp?.PearlInfo?.FishInfo?.name != undefined ? heroModealTemp.PearlInfo?.FishInfo?.name : '无' }}
+              {{ heroModealTemp?.PearlInfo?.FishInfo?.name !== undefined ? heroModealTemp.PearlInfo?.FishInfo?.name : '无' }}
             </n-descriptions-item>
             <n-descriptions-item label="鱼灵洗练">
               <div v-if="heroModealTemp?.PearlInfo?.slotMap?.length > 0">
@@ -349,7 +349,7 @@
               <div v-else>无</div>
             </n-descriptions-item>
             <n-descriptions-item label="鱼珠技能">
-              {{ heroModealTemp?.PearlInfo?.PearlSkill?.name != undefined ? heroModealTemp.PearlInfo?.PearlSkill?.name : '无' }}
+              {{ heroModealTemp?.PearlInfo?.PearlSkill?.name !== undefined ? heroModealTemp.PearlInfo?.PearlSkill?.name : '无' }}
             </n-descriptions-item>
           </n-descriptions>
         </div>
@@ -422,42 +422,18 @@ import {
 } from "@vicons/ionicons5";
 import html2canvas from "html2canvas";
 import { useMessage } from "naive-ui";
-import { computed, onMounted, ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 
 import { useTokenStore } from "@/stores/tokenStore";
-import { gettoday } from "@/utils/goldWarrankUtils";
 import { HERO_DICT, HeroFillInfo } from "@/utils/HeroList";
-
-const props = defineProps({
-  visible: {
-    type: Boolean,
-    default: false,
-  },
-  inline: {
-    type: Boolean,
-    default: false,
-  },
-});
-
-const emit = defineEmits(["update:visible"]);
 
 const message = useMessage();
 const tokenStore = useTokenStore();
 
-const showModal = computed({
-  get: () => props.visible,
-  set: (val) => emit("update:visible", val),
-});
-
 const exportDom = ref(null);
 const loading1 = ref(false);
 const loadingText = ref("正在查询对手信息...");
-const topranklist = ref(null);
-const expandedMembers = ref(new Set());
-const roleIdinput = ref("");
-const queryDate = ref("");
 const targetId = ref("");
-const teamArray = ref(null);
 // 切磋对手信息
 const memberData = ref(null);
 // 批量数量
@@ -493,35 +469,10 @@ const options = [
     value: 50,
   },
 ];
-const player_date = { name: "", power: "" };
-
-// 分页状态
-const currentPage = ref(1);
-const pageSize = ref(20); // 每页20条，共5页
-
-// 计算总页数
-const totalPages = computed(() => {
-  if (!topranklist.value)
-    return 0;
-  return Math.ceil(Object.keys(topranklist.value).length / pageSize.value);
-});
-
 const selectHeroInfo = (heroInfo) => {
   showHeroModal.value = true;
   heroModealTemp.value = heroInfo;
 };
-
-// 获取当前页的数据
-const currentPageData = computed(() => {
-  if (!topranklist.value)
-    return {};
-
-  const startIndex = (currentPage.value - 1) * pageSize.value;
-  const endIndex = startIndex + pageSize.value;
-  const entries = Object.entries(topranklist.value);
-
-  return Object.fromEntries(entries.slice(startIndex, endIndex));
-});
 // 格式化战力
 const formatPower = (power) => {
   if (!power)
@@ -533,30 +484,6 @@ const formatPower = (power) => {
     return `${(power / 10000).toFixed(2)}万`;
   }
   return power.toString();
-};
-
-// 获取战斗样式类
-const getBattleClass = (battle) => {
-  const classes = [];
-  if (battle.isWin) {
-    classes.push("battle-win");
-  } else {
-    classes.push("battle-loss");
-  }
-  return classes.join(" ");
-};
-
-const formatScore = (score) => {
-  return score.toFixed(0).toString();
-};
-
-const formatServerId = (ServerId) => {
-  return (ServerId - 27).toFixed(0).toString();
-};
-
-// 处理图片加载错误
-const handleImageError = (event) => {
-  event.target.style.display = "none";
 };
 
 // 切磋
@@ -577,7 +504,6 @@ const fetchfightPVP = async () => {
 
   loading1.value = true;
   loadingText.value = "正在进行切磋，请稍候...";
-  queryDate.value = gettoday();
 
   try {
     let winCount = 0;
@@ -596,7 +522,7 @@ const fetchfightPVP = async () => {
       // 处理掉将情况
       let leftCount = 0;
       result.battleData.result.sponsor.teamInfo.forEach((item) => {
-        if (item.hp == 0) {
+        if (item.hp === 0) {
           leftCount++;
         }
       });
@@ -604,7 +530,7 @@ const fetchfightPVP = async () => {
 
       let rightCount = 0;
       result.battleData.result.accept.teamInfo.forEach((item) => {
-        if (item.hp == 0) {
+        if (item.hp === 0) {
           rightCount++;
         }
       });
@@ -638,7 +564,6 @@ const fetchfightPVP = async () => {
     return teamData;
   } catch (error) {
     message.error(`查询失败: ${error.message}`);
-    topranklist.value = null;
   } finally {
     loading1.value = false;
     loadingText.value = "正在查询对手信息...";
@@ -666,7 +591,6 @@ const fetchTargetInfo = async () => {
 
   loading1.value = true;
   loadingText.value = "正在查询对手信息...";
-  queryDate.value = gettoday();
 
   try {
     const result = await tokenStore.sendMessageWithPromise(tokenId, "rank_getroleinfo", {
@@ -711,7 +635,6 @@ const fetchTargetInfo = async () => {
     return teamData;
   } catch (error) {
     message.error(`查询失败: ${error.message}`);
-    topranklist.value = null;
   } finally {
     loading1.value = false;
     loadingText.value = "正在查询对手信息...";
@@ -754,13 +677,12 @@ const getHeroInfo = (heroObj) => {
 const getEquipment = (equipment) => {
   let redCount = 0;
   let holeCount = 0;
-  const equipArr = [];
   // 此处遍历4件装备
   Object.values(equipment).forEach((equ) => {
     // 遍历每件装备的属性
     Object.values(equ.quenches).forEach((item) => {
       holeCount++;
-      if (item.colorId == 6) {
+      if (item.colorId === 6) {
         redCount++;
       }
     });
@@ -769,10 +691,6 @@ const getEquipment = (equipment) => {
 };
 
 // 处理分页大小改变
-const handlePageSizeChange = (size) => {
-  pageSize.value = size;
-  currentPage.value = 1; // 重置到第一页
-};
 // 刷新战绩
 const fightPVPRefresh = () => {
   fetchfightPVP();
@@ -785,14 +703,14 @@ const handleFightNumChange = (value) => {
     // 如果是字符串，转换为数字
     const num = Number.parseInt(value, 10);
     // 确保数字有效且大于0,尽量限制最大次数,万一谁请求打多了,可不是什么好事情
-    if (!isNaN(num) && num > 0 && num <= 50) {
+    if (!Number.isNaN(num) && num > 0 && num <= 50) {
       fightNum.value = num;
     } else {
       // 否则重置为默认值1
       fightNum.value = 1;
     }
   } else {
-    if (num > 0 && num < 50) {
+    if (typeof value === "number" && value > 0 && value <= 50) {
       // 如果已经是数字类型，直接使用
       fightNum.value = value;
     } else {
@@ -809,7 +727,7 @@ const getTargetInfo = () => {
 const handleExport1 = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert("未找到要导出的DOM元素");
+    message.error("未找到可导出的内容");
     return;
   }
 
@@ -861,14 +779,11 @@ const handleExport1 = async () => {
     document.body.removeChild(link);
   } catch (err) {
     console.error("导出图片失败:", err);
-    alert("导出图片失败，请重试");
+    message.error("导出图片失败，请重试");
   }
 };
 
 // 关闭弹窗
-const handleClose = () => {
-  expandedMembers.value.clear();
-};
 
 // 暴露方法给父组件
 defineExpose({

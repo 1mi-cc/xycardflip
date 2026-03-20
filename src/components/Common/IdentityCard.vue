@@ -115,7 +115,7 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import { useTokenStore } from "@/stores/tokenStore";
 
-const props = defineProps<{ visible?: boolean; embedded?: boolean }>();
+defineProps<{ visible?: boolean; embedded?: boolean }>();
 
 const emit = defineEmits(["close"]);
 

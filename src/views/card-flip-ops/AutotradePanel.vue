@@ -4,7 +4,7 @@
       <div class="service-copy">
         <div class="service-kicker">AutoTrade</div>
         <h3>审批引擎</h3>
-        <p>负责自动审批、自动买入、自动上架，是操作台里最常用的执行面板。</p>
+        <p>负责自动审批、自动买入和自动上架，是操作台里最常用的执行面板。</p>
         <div class="service-tags">
           <n-tag size="small" :type="autotradeStatus.running ? 'success' : 'default'">
             {{ autotradeStatus.running ? "运行中" : "已停止" }}
@@ -61,11 +61,11 @@
         <strong class="summary-value">{{ autotradeStatus.batch_size ?? "-" }}</strong>
       </div>
       <div class="summary-chip">
-        <span class="summary-label">最小评分</span>
+        <span class="summary-label">最低评分</span>
         <strong class="summary-value">{{ autotradeStatus.min_score ?? "-" }}</strong>
       </div>
       <div class="summary-chip">
-        <span class="summary-label">最小 ROI</span>
+        <span class="summary-label">最低 ROI</span>
         <strong class="summary-value">{{ toPercent(autotradeStatus.min_roi || 0) }}</strong>
       </div>
       <div class="summary-chip">
@@ -76,9 +76,9 @@
         <span class="summary-label">自动动作</span>
         <strong class="summary-value">
           买入={{ autotradeStatus.auto_execute_buy_on_approve ? "开" : "关" }}
-          · 买入模式={{ autotradeStatus.auto_execute_buy_dry_run ? "dry-run" : "live" }}
-          · 上架={{ autotradeStatus.auto_execute_list_on_buy_success ? "开" : "关" }}
-          · 上架模式={{ autotradeStatus.auto_execute_list_dry_run ? "dry-run" : "live" }}
+          / 买入模式={{ autotradeStatus.auto_execute_buy_dry_run ? "dry-run" : "live" }}
+          / 上架={{ autotradeStatus.auto_execute_list_on_buy_success ? "开" : "关" }}
+          / 上架模式={{ autotradeStatus.auto_execute_list_dry_run ? "dry-run" : "live" }}
         </strong>
       </div>
       <div class="summary-chip">
@@ -89,7 +89,7 @@
 
     <div class="service-section">
       <div class="section-title">单次执行</div>
-      <div class="section-subtitle">高频手动操作保留在主面板，参数调节放到折叠区。</div>
+      <div class="section-subtitle">高频手动操作放在这里，适合做单次补跑或发布后的快速验证。</div>
       <n-space wrap>
         <n-input
           placeholder="实盘确认口令"
@@ -181,7 +181,7 @@
               <n-button quaternary>
                 {{
                   executionStatus.live_max_buy_price > 0
-                    ? `买入上限 ￥${toMoney(executionStatus.live_max_buy_price)}`
+                    ? `买入上限 ¥${toMoney(executionStatus.live_max_buy_price)}`
                     : "买入上限 不限"
                 }}
               </n-button>
@@ -198,16 +198,16 @@
                 :disabled="executionConfigLoading"
                 @click="$emit('adjustExecutionNumber', 'live_min_list_profit_ratio', -0.01, 0, 3)"
               >
-                -1% 上架利润率
+                -1% 上架利润
               </n-button>
               <n-button quaternary>
-                上架利润率 {{ toPercent(executionStatus.live_min_list_profit_ratio || 0) }}
+                上架利润 {{ toPercent(executionStatus.live_min_list_profit_ratio || 0) }}
               </n-button>
               <n-button
                 :disabled="executionConfigLoading"
                 @click="$emit('adjustExecutionNumber', 'live_min_list_profit_ratio', 0.01, 0, 3)"
               >
-                +1% 上架利润率
+                +1% 上架利润
               </n-button>
             </n-button-group>
 
@@ -216,16 +216,16 @@
                 :disabled="executionConfigLoading"
                 @click="$emit('adjustExecutionNumber', 'live_min_sell_profit_ratio', -0.01, 0, 3)"
               >
-                -1% 卖出利润率
+                -1% 卖出利润
               </n-button>
               <n-button quaternary>
-                卖出利润率 {{ toPercent(executionStatus.live_min_sell_profit_ratio || 0) }}
+                卖出利润 {{ toPercent(executionStatus.live_min_sell_profit_ratio || 0) }}
               </n-button>
               <n-button
                 :disabled="executionConfigLoading"
                 @click="$emit('adjustExecutionNumber', 'live_min_sell_profit_ratio', 0.01, 0, 3)"
               >
-                +1% 卖出利润率
+                +1% 卖出利润
               </n-button>
             </n-button-group>
           </n-space>

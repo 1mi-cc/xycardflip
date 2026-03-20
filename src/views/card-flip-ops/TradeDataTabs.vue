@@ -11,7 +11,7 @@
           <div>
             <div class="section-title">待审核机会</div>
             <div class="section-subtitle">
-              这里保留人工审批与忽略入口，先看标的，再决定是否入场。
+              这里保留人工审批与忽略入口，先看标的，再决定是否进场。
             </div>
           </div>
           <n-tag size="small" type="info">{{ opportunities.length }} 条</n-tag>
@@ -27,8 +27,8 @@
               <tr>
                 <th>标题</th>
                 <th>当前价</th>
-                <th>预估售价</th>
-                <th>预估利润</th>
+                <th>预计售价</th>
+                <th>预计利润</th>
                 <th>ROI</th>
                 <th>评分</th>
                 <th>操作</th>
@@ -37,10 +37,10 @@
             <tbody>
               <tr v-for="item in opportunities" :key="item.opportunity_id">
                 <td class="title-cell">{{ item.title }}</td>
-                <td>￥{{ toMoney(item.list_price) }}</td>
-                <td>￥{{ toMoney(item.expected_sale_price) }}</td>
+                <td>¥{{ toMoney(item.list_price) }}</td>
+                <td>¥{{ toMoney(item.expected_sale_price) }}</td>
                 <td :class="{ good: item.expected_profit > 0 }">
-                  ￥{{ toMoney(item.expected_profit) }}
+                  ¥{{ toMoney(item.expected_profit) }}
                 </td>
                 <td :class="{ good: item.roi > 0 }">{{ toPercent(item.roi) }}</td>
                 <td>{{ item.score }}</td>
@@ -124,7 +124,7 @@
               <tr>
                 <th>标题</th>
                 <th>当前价</th>
-                <th>预估售价</th>
+                <th>预计售价</th>
                 <th>评分</th>
                 <th>风险分</th>
                 <th>风险等级</th>
@@ -135,8 +135,8 @@
             <tbody>
               <tr v-for="item in blockedOpportunities" :key="item.opportunity_id">
                 <td class="title-cell">{{ item.title }}</td>
-                <td>￥{{ toMoney(item.list_price) }}</td>
-                <td>￥{{ toMoney(item.expected_sale_price) }}</td>
+                <td>¥{{ toMoney(item.list_price) }}</td>
+                <td>¥{{ toMoney(item.expected_sale_price) }}</td>
                 <td>{{ item.score }}</td>
                 <td>{{ item.risk.score ?? "-" }}</td>
                 <td>
@@ -223,8 +223,8 @@
             <tbody>
               <tr v-for="trade in activeTrades" :key="trade.trade_id">
                 <td class="title-cell">{{ trade.title }}</td>
-                <td>￥{{ toMoney(trade.approved_buy_price) }}</td>
-                <td>￥{{ toMoney(trade.target_sell_price) }}</td>
+                <td>¥{{ toMoney(trade.approved_buy_price) }}</td>
+                <td>¥{{ toMoney(trade.target_sell_price) }}</td>
                 <td>
                   <n-tag size="small" :type="trade.status === 'listed_for_sale' ? 'success' : 'info'">
                     {{ getTradeStatusText(trade.status) }}
@@ -234,7 +234,7 @@
                 <td>
                   <div v-if="getPricingPreview(trade.trade_id)" class="pricing-preview">
                     <div class="pricing-main">
-                      ￥{{ toMoney(getPricingPreview(trade.trade_id).recommended_price) }}
+                      ¥{{ toMoney(getPricingPreview(trade.trade_id).recommended_price) }}
                       <n-tag
                         size="small"
                         :type="getActionType(getPricingPreview(trade.trade_id).action)"
@@ -263,7 +263,7 @@
                         type="primary"
                         @click="$emit('openMarkListed', trade)"
                       >
-                        标记已挂售
+                        标记已上架
                       </n-button>
                       <n-button
                         size="small"
@@ -380,14 +380,14 @@
             <tbody>
               <tr v-for="trade in soldTrades" :key="trade.trade_id">
                 <td class="title-cell">{{ trade.title }}</td>
-                <td>￥{{ toMoney(trade.approved_buy_price) }}</td>
-                <td>￥{{ toMoney(trade.sold_price) }}</td>
+                <td>¥{{ toMoney(trade.approved_buy_price) }}</td>
+                <td>¥{{ toMoney(trade.sold_price) }}</td>
                 <td
                   :class="{
                     good: (trade.sold_price || 0) > (trade.approved_buy_price || 0),
                   }"
                 >
-                  ￥{{ toMoney((trade.sold_price || 0) - (trade.approved_buy_price || 0)) }}
+                  ¥{{ toMoney((trade.sold_price || 0) - (trade.approved_buy_price || 0)) }}
                 </td>
                 <td>{{ trade.updated_at }}</td>
               </tr>

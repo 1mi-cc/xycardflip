@@ -268,16 +268,16 @@ SMTP_USE_TLS=true
 ```
 
 Behavior:
-- Daytime (08:00鈥?7:00): 15鈥?0s triangular random delay.
-- Evening peak (17:00鈥?4:00): 3鈥?s triangular random delay.
-- Night (00:00鈥?8:00): 25鈥?5s delay.
+- Daytime (08:00-17:00): 15-30s triangular random delay.
+- Evening peak (17:00-24:00): 3-8s triangular random delay.
+- Night (00:00-08:00): 25-45s delay.
 - Circuit breaker: on repeated errors / 403 the monitor stops, reports `circuit_open` via `/monitor/status`, and requires manual `/monitor/start` to resume.
 - Circuit alert: when circuit opens, an email is sent if SMTP is configured.
 
 ## 10. One-shot Xianyu spider
 
 `python scripts/xianyu_spider.py`  
-Uses the same parser as the monitor to fetch `MONITOR_PAGES` pages once, filters by `MONITOR_MAX_PRICE`, and inserts as `source=xianyu_spider` into the DB. Use it to蹇€熻ˉ鍏呰缁冩暟鎹垨鎵嬪姩瑙﹀彂涓€娆℃壒閲忓叆搴撱€?
+Uses the same parser as the monitor to fetch `MONITOR_PAGES` pages once, filters by `MONITOR_MAX_PRICE`, and inserts as `source=xianyu_spider` into the DB. Use it to quickly backfill training data or trigger one manual batch ingest.
 
 ## 11. Supabase coupling
 

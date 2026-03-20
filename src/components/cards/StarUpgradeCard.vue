@@ -154,7 +154,7 @@ const stopRunning = () => {
  * @param {{ delay: number }} mod 延迟设置（毫秒）
  * @returns {Promise<void>}
  */
-const executeUpgradeStarTask = async (mod) => {
+const _executeUpgradeStarTask = async (mod) => {
   const token = tokenStore.selectedToken;
   if (!token) {
     message.warning("请先选择Token");
@@ -220,10 +220,10 @@ const runHeroUpgrade = async (mod) => {
     for (const heroId of heroIds.value) {
       if (state.value.stopRequested)
         break;
-      let skip = false;
+      let _skip = false;
       for (let i = 1; i <= 10; i++) {
         if (state.value.stopRequested) {
-          skip = true;
+          _skip = true;
           break;
         }
         try {
@@ -238,9 +238,9 @@ const runHeroUpgrade = async (mod) => {
           addLog(`英雄ID:${heroId} 升星第${i}/10次`, ok ? "success" : "error");
           if (!ok)
             throw new Error("升星失败");
-        } catch (err) {
+        } catch {
           addLog(`英雄ID:${heroId} 升星第${i}/10次失败，跳过剩余次数`, "error");
-          skip = true;
+          _skip = true;
           break;
         }
         await sleep(mod.delay);
@@ -274,10 +274,10 @@ const runBookUpgrade = async (mod) => {
     for (const heroId of heroIds.value) {
       if (state.value.stopRequested)
         break;
-      let skip = false;
+      let _skip = false;
       for (let i = 1; i <= 10; i++) {
         if (state.value.stopRequested) {
-          skip = true;
+          _skip = true;
           break;
         }
         try {
@@ -295,12 +295,12 @@ const runBookUpgrade = async (mod) => {
           );
           if (!ok)
             throw new Error("图鉴升星失败");
-        } catch (err) {
+        } catch {
           addLog(
             `英雄ID:${heroId} 图鉴升星第${i}/10次失败，跳过剩余次数`,
             "error",
           );
-          skip = true;
+          _skip = true;
           break;
         }
         await sleep(mod.delay);
@@ -347,7 +347,7 @@ const runClaimRewards = async (mod) => {
         if (!ok)
           throw new Error("领取奖励失败");
         state.value.done++;
-      } catch (err) {
+      } catch {
         addLog(`领取图鉴奖励第${i}/10次失败，跳过剩余次数`, "error");
         state.value.done++;
         break;
@@ -360,7 +360,7 @@ const runClaimRewards = async (mod) => {
   }
 };
 
-const formatTime = (ts) => new Date(ts).toLocaleTimeString("zh-CN");
+const _formatTime = (ts) => new Date(ts).toLocaleTimeString("zh-CN");
 </script>
 
 <style scoped lang="scss">

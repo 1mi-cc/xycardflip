@@ -20,6 +20,7 @@ from app.services.autotrade import auto_trade_service
 from app.services.execution import execution_service
 from app.services.execution_retry import execution_retry_service
 from app.services.market_monitor import monitor_service
+from app.services.operating_state import operating_state_service
 import app.services.automation as automation_module
 
 
@@ -157,6 +158,22 @@ def test_execution_retry_guard_blocks_parallel_entry_points(isolated_sqlite: Pat
 
 def test_automation_run_once_reports_partial_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(monitor_service, "run_once", lambda: {"processed": 3})
+    monkeypatch.setattr(
+        operating_state_service,
+        "status",
+        lambda: {
+            "state": "normal",
+            "reasons": ["healthy"],
+            "recommendations": {
+                "scan_limit_factor": 1.0,
+                "autotrade_limit_factor": 1.0,
+                "execution_retry_limit_factor": 1.0,
+                "allow_autotrade": True,
+                "allow_execution_retry": True,
+                "require_manual_review": False,
+            },
+        },
+    )
 
     async def fake_scan_open_listings(*, limit: int = 0):
         return {"processed": limit}
@@ -192,6 +209,119 @@ def test_automation_run_once_reports_partial_success(monkeypatch: pytest.MonkeyP
     assert result["execution_retry"]["status_code"] == 500
     assert result["had_busy"] is True
     assert result["success"] is False
+
+
+def test_automation_run_once_recovery_skips_risky_stages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(monitor_service, "run_once", lambda: {"processed": 1})
+    monkeypatch.setattr(
+        operating_state_service,
+        "status",
+        lambda: {
+            "state": "recovery",
+            "reasons": ["monitor_circuit_open"],
+            "recommendations": {
+                "scan_limit_factor": 0.2,
+                "autotrade_limit_factor": 0.2,
+                "execution_retry_limit_factor": 0.2,
+                "allow_autotrade": False,
+                "allow_execution_retry": False,
+                "require_manual_review": True,
+            },
+        },
+    )
+
+    async def fake_scan_open_listings(*, limit: int = 0):
+        return {"processed": limit}
+
+    called = {"autotrade": 0, "execution_retry": 0}
+
+    def fake_autotrade_run_once(*args, **kwargs):
+        called["autotrade"] += 1
+        return {"approved": 1}
+
+    def fake_execution_retry_run_once(*args, **kwargs):
+        called["execution_retry"] += 1
+        return {"retried": 1}
+
+    monkeypatch.setattr(automation_module, "scan_open_listings", fake_scan_open_listings)
+    monkeypatch.setattr(auto_trade_service, "run_once", fake_autotrade_run_once)
+    monkeypatch.setattr(execution_retry_service, "run_once", fake_execution_retry_run_once)
+
+    result = automation_service.run_once(
+        include_monitor=True,
+        include_scan=True,
+        include_autotrade=True,
+        include_execution_retry=True,
+        include_supabase_sync=False,
+        force=False,
+        scan_limit=50,
+    )
+
+    assert result["operating_state"]["state"] == "recovery"
+    assert result["applied_limits"]["scan"]["effective"] == 10
+    assert result["autotrade"]["skipped"] is True
+    assert result["autotrade"]["reason"] == "operating_state_recovery"
+    assert result["execution_retry"]["skipped"] is True
+    assert result["execution_retry"]["reason"] == "operating_state_recovery"
+    assert called["autotrade"] == 0
+    assert called["execution_retry"] == 0
+
+
+def test_automation_run_once_cautious_scales_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(monitor_service, "run_once", lambda: {"processed": 1})
+    monkeypatch.setattr(
+        operating_state_service,
+        "status",
+        lambda: {
+            "state": "cautious",
+            "reasons": ["execution_health_cautious"],
+            "recommendations": {
+                "scan_limit_factor": 0.5,
+                "autotrade_limit_factor": 0.5,
+                "execution_retry_limit_factor": 0.5,
+                "allow_autotrade": True,
+                "allow_execution_retry": True,
+                "require_manual_review": True,
+            },
+        },
+    )
+
+    captured: dict[str, int] = {}
+
+    async def fake_scan_open_listings(*, limit: int = 0):
+        captured["scan_limit"] = limit
+        return {"processed": limit}
+
+    def fake_autotrade_run_once(*args, **kwargs):
+        captured["autotrade_limit"] = int(kwargs.get("limit") or 0)
+        return {"approved": 0}
+
+    def fake_execution_retry_run_once(*args, **kwargs):
+        captured["execution_retry_limit"] = int(kwargs.get("limit") or 0)
+        return {"retried": 0}
+
+    monkeypatch.setattr(automation_module, "scan_open_listings", fake_scan_open_listings)
+    monkeypatch.setattr(auto_trade_service, "run_once", fake_autotrade_run_once)
+    monkeypatch.setattr(execution_retry_service, "run_once", fake_execution_retry_run_once)
+
+    result = automation_service.run_once(
+        include_monitor=True,
+        include_scan=True,
+        include_autotrade=True,
+        include_execution_retry=True,
+        include_supabase_sync=False,
+        force=False,
+        scan_limit=40,
+        autotrade_limit=10,
+        execution_retry_limit=12,
+    )
+
+    assert result["operating_state"]["state"] == "cautious"
+    assert captured["scan_limit"] == 20
+    assert captured["autotrade_limit"] == 5
+    assert captured["execution_retry_limit"] == 6
+    assert result["applied_limits"]["autotrade"]["effective"] == 5
+    assert result["applied_limits"]["execution_retry"]["effective"] == 6
 
 
 def test_init_db_creates_trade_unique_index_when_clean(isolated_sqlite: Path) -> None:
@@ -236,6 +366,7 @@ def test_health_route_exposes_integrity_and_guard_status(isolated_sqlite: Path) 
     assert response.status_code == 200
     payload = response.json()
     assert "data_integrity" in payload
+    assert "operating_state" in payload
     assert "automation_guards" in payload
     assert "automation" in payload["automation_guards"]
     assert "execution_retry_replay" in payload["automation_guards"]

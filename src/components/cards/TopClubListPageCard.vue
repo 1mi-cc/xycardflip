@@ -115,7 +115,7 @@ const emit = defineEmits(["update:visible"]);
 const message = useMessage();
 const tokenStore = useTokenStore();
 
-const showModal = computed({
+const _showModal = computed({
   get: () => props.visible,
   set: (val) => emit("update:visible", val),
 });
@@ -123,10 +123,10 @@ const showModal = computed({
 const loading1 = ref(false);
 const topranklist = ref(null);
 const expandedMembers = ref(new Set());
-const roleIdinput = ref("");
+const _roleIdinput = ref("");
 const exportDom = ref(null);
 const queryDate = ref(gettoday());
-const player_date = { name: "", power: "" };
+const _playerDate = { name: "", power: "" };
 
 // 分页状态
 const currentPage = ref(1);
@@ -163,16 +163,16 @@ const formatPower = (power) => {
   return power.toString();
 };
 
-const formatScore = (score) => {
+const _formatScore = (score) => {
   return score.toFixed(0).toString();
 };
 
-const formatServerId = (ServerId) => {
+const _formatServerId = (ServerId) => {
   return (ServerId - 27).toFixed(0).toString();
 };
 
 // 处理图片加载错误
-const handleImageError = (event) => {
+const _handleImageError = (event) => {
   event.target.style.display = "none";
 };
 
@@ -219,7 +219,7 @@ const fetchtopranklist = async () => {
       );
       const roleIdCounts = [];
       const nameCounts = [];
-      for (const [ClubId, ClubData] of Object.entries(
+      for (const [_clubId, ClubData] of Object.entries(
         detail?.legionData?.members,
       )) {
         if (ClubData.roleId !== undefined) {
@@ -260,7 +260,7 @@ const topranklistRefresh = () => {
 };
 
 // 导出战绩
-const handleExport1 = async () => {
+const _handleExport1 = async () => {
   if (!topranklist.value) {
     message.warning("没有可导出的数据");
     return;
@@ -272,7 +272,7 @@ const handleExport1 = async () => {
 const exportToImage = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert("未找到要导出的DOM元素");
+    message.error("未找到可导出的内容");
     return;
   }
 
@@ -301,7 +301,7 @@ const exportToImage = async () => {
     document.body.removeChild(link);
   } catch (err) {
     console.error("DOM转图片失败：", err);
-    alert("导出图片失败，请重试");
+    message.error("导出图片失败，请重试");
   }
 };
 
@@ -312,7 +312,7 @@ const handlePageSizeChange = (size) => {
 };
 
 // 关闭弹窗
-const handleClose = () => {
+const _handleClose = () => {
   expandedMembers.value.clear();
 };
 

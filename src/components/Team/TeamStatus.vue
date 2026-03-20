@@ -365,7 +365,7 @@ const nextRankThreshold = computed(() => {
 });
 
 // 计算当前段位的进度百分比
-const progressPercentage = computed(() => {
+const _progressPercentage = computed(() => {
   const power = roleInfo.value.power || 0;
   const currentRank = rankInfo.value;
 
@@ -551,7 +551,7 @@ const selectTeam = async (teamId) => {
     currentTeam.value = teamId;
     message.success(`已切换到阵容 ${teamId}`);
     await refreshTeamData(true);
-  } catch (e) {
+  } catch {
     currentTeam.value = prev;
   } finally {
     switching.value = false;

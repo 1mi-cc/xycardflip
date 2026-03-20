@@ -1,6 +1,6 @@
 import type { EVM, Session } from ".";
 
-export const ClockPlugin = ({ onSome, $emit }: EVM) => {
+export const ClockPlugin = ({ onSome, $emit: _$emit }: EVM) => {
   onSome(
     ["system_claimhangupreward", "system_claimhanguprewardresp"],
     async (data: Session) => {

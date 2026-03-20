@@ -263,7 +263,7 @@ import ManualTokenForm from "./manual.vue";
 import UrlTokenForm from "./url.vue";
 
 const props = defineProps({
-  token: String,
+  importToken: String,
   name: String,
   server: String,
   wsUrl: String,
@@ -350,12 +350,12 @@ const handleDrop = (dropIndex) => {
   message.success("Token 顺序已更新");
 };
 
-const maskToken = (token) => {
-  if (!token)
+const maskToken = (tokenValue) => {
+  if (!tokenValue)
     return "";
-  if (token.length <= 12)
-    return token;
-  return `${token.slice(0, 6)}...${token.slice(-6)}`;
+  if (tokenValue.length <= 12)
+    return tokenValue;
+  return `${tokenValue.slice(0, 6)}...${tokenValue.slice(-6)}`;
 };
 
 const formatTime = (timestamp) => {
@@ -368,30 +368,30 @@ const goToDashboard = () => {
   router.push("/admin/dashboard");
 };
 
-const selectToken = (token, forceReconnect = false) => {
-  tokenStore.selectToken(token.id, forceReconnect);
-  message.success(`已切换到 ${token.name}`);
+const selectToken = (tokenItem, forceReconnect = false) => {
+  tokenStore.selectToken(tokenItem.id, forceReconnect);
+  message.success(`已切换到 ${tokenItem.name}`);
 };
 
-const startTaskManagement = async (token) => {
-  connectingTokens.value.add(token.id);
+const startTaskManagement = async (tokenItem) => {
+  connectingTokens.value.add(tokenItem.id);
   try {
-    tokenStore.selectToken(token.id, true);
+    tokenStore.selectToken(tokenItem.id, true);
     router.push("/admin/dashboard");
   } finally {
-    connectingTokens.value.delete(token.id);
+    connectingTokens.value.delete(tokenItem.id);
   }
 };
 
-const refreshToken = async (token) => {
-  if (!token.sourceUrl) {
+const refreshToken = async (tokenItem) => {
+  if (!tokenItem.sourceUrl) {
     message.info("手动导入或 BIN 导入的 Token 请重新上传原始内容");
     return;
   }
 
-  refreshingTokens.value.add(token.id);
+  refreshingTokens.value.add(tokenItem.id);
   try {
-    const response = await fetch(token.sourceUrl, {
+    const response = await fetch(tokenItem.sourceUrl, {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -402,26 +402,26 @@ const refreshToken = async (token) => {
     if (!payload?.token) {
       throw new Error("接口返回中没有 token 字段");
     }
-    tokenStore.updateToken(token.id, {
+    tokenStore.updateToken(tokenItem.id, {
       token: payload.token,
-      server: payload.server || token.server,
-      wsUrl: payload.wsUrl || token.wsUrl,
+      server: payload.server || tokenItem.server,
+      wsUrl: payload.wsUrl || tokenItem.wsUrl,
       lastUsed: new Date().toISOString(),
     });
-    message.success(`${token.name} 已刷新`);
+    message.success(`${tokenItem.name} 已刷新`);
   } catch (error) {
     message.error(error?.message || "刷新失败");
   } finally {
-    refreshingTokens.value.delete(token.id);
+    refreshingTokens.value.delete(tokenItem.id);
   }
 };
 
-const openEditModal = (token) => {
-  editingTokenId.value = token.id;
-  editForm.name = token.name || "";
-  editForm.token = token.token || "";
-  editForm.server = token.server || "";
-  editForm.wsUrl = token.wsUrl || "";
+const openEditModal = (tokenItem) => {
+  editingTokenId.value = tokenItem.id;
+  editForm.name = tokenItem.name || "";
+  editForm.token = tokenItem.token || "";
+  editForm.server = tokenItem.server || "";
+  editForm.wsUrl = tokenItem.wsUrl || "";
   showEditModal.value = true;
 };
 
@@ -441,27 +441,27 @@ const saveEdit = async () => {
   message.success("Token 已更新");
 };
 
-const removeToken = (token) => {
+const removeToken = (tokenItem) => {
   dialog.error({
     title: "删除 Token",
-    content: `确定要删除“${token.name}”吗？此操作无法恢复。`,
+    content: `确定要删除“${tokenItem.name}”吗？此操作无法恢复。`,
     positiveText: "删除",
     negativeText: "取消",
     onPositiveClick: () => {
-      tokenStore.removeToken(token.id);
+      tokenStore.removeToken(tokenItem.id);
       message.success("Token 已删除");
     },
   });
 };
 
-const upgradeToken = (token) => {
+const upgradeToken = (tokenItem) => {
   dialog.warning({
     title: "升级为长期有效",
-    content: `确定要把“${token.name}”升级为长期有效吗？升级后不会再按 24 小时规则清理。`,
+    content: `确定要把“${tokenItem.name}”升级为长期有效吗？升级后不会再按 24 小时规则清理。`,
     positiveText: "升级",
     negativeText: "取消",
     onPositiveClick: () => {
-      const success = tokenStore.upgradeTokenToPermanent(token.id);
+      const success = tokenStore.upgradeTokenToPermanent(tokenItem.id);
       if (success) {
         message.success("已升级为长期有效");
       } else {
@@ -471,43 +471,43 @@ const upgradeToken = (token) => {
   });
 };
 
-const disconnectToken = (token) => {
-  tokenStore.closeWebSocketConnection(token.id);
-  message.success(`${token.name} 已断开连接`);
+const disconnectToken = (tokenItem) => {
+  tokenStore.closeWebSocketConnection(tokenItem.id);
+  message.success(`${tokenItem.name} 已断开连接`);
 };
 
-const getTokenActions = (token) => [
+const getTokenActions = (tokenItem) => [
   { label: "选为当前账户", key: "select" },
   { label: "刷新 Token", key: "refresh" },
   { label: "编辑", key: "edit" },
-  ...(token.importMethod !== "url" ? [{ label: "升级为长期有效", key: "upgrade" }] : []),
+  ...(tokenItem.importMethod !== "url" ? [{ label: "升级为长期有效", key: "upgrade" }] : []),
   { label: "断开连接", key: "disconnect" },
   { label: "删除", key: "delete" },
 ];
 
-const handleTokenAction = async (key, token) => {
+const handleTokenAction = async (key, tokenItem) => {
   if (key === "select") {
-    selectToken(token);
+    selectToken(tokenItem);
     return;
   }
   if (key === "refresh") {
-    await refreshToken(token);
+    await refreshToken(tokenItem);
     return;
   }
   if (key === "edit") {
-    openEditModal(token);
+    openEditModal(tokenItem);
     return;
   }
   if (key === "upgrade") {
-    upgradeToken(token);
+    upgradeToken(tokenItem);
     return;
   }
   if (key === "disconnect") {
-    disconnectToken(token);
+    disconnectToken(tokenItem);
     return;
   }
   if (key === "delete") {
-    removeToken(token);
+    removeToken(tokenItem);
   }
 };
 
@@ -553,13 +553,13 @@ const importTokenFile = () => {
 };
 
 const refreshAllTokens = async () => {
-  const urlTokens = tokenStore.gameTokens.filter((token) => token.sourceUrl);
+  const urlTokens = tokenStore.gameTokens.filter((tokenItem) => tokenItem.sourceUrl);
   if (!urlTokens.length) {
     message.warning("没有可自动刷新的 Token");
     return;
   }
-  for (const token of urlTokens) {
-    await refreshToken(token);
+  for (const tokenItem of urlTokens) {
+    await refreshToken(tokenItem);
   }
 };
 
@@ -624,8 +624,8 @@ const handleUrlParams = async () => {
     return;
   }
 
-  if (props.token) {
-    const result = tokenStore.importBase64Token(props.name || "通过 URL 导入的 Token", props.token, {
+  if (props.importToken) {
+    const result = tokenStore.importBase64Token(props.name || "通过 URL 导入的 Token", props.importToken, {
       server: props.server || "",
       wsUrl: props.wsUrl || "",
       importMethod: "manual",
@@ -643,7 +643,7 @@ const handleUrlParams = async () => {
 onMounted(async () => {
   tokenStore.initTokenStore();
   showImportForm.value = !tokenStore.hasTokens;
-  if (props.token || props.api) {
+  if (props.importToken || props.api) {
     await handleUrlParams();
   }
 });

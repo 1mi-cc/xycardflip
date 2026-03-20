@@ -25,7 +25,13 @@ const queryPromise = (async () => {
  * @returns {Promise<Array>} 题目数据数组
  */
 export async function loadQuestionsData() {
-  return queryPromise;
+  if (questionsData)
+    return questionsData;
+  if (isLoading)
+    return queryPromise;
+
+  questionsData = await queryPromise;
+  return questionsData;
 }
 
 /**

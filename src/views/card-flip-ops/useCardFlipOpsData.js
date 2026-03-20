@@ -31,7 +31,7 @@ export function useCardFlipOpsData() {
       return value
         .map((item) => normalizeText(item))
         .filter(Boolean)
-        .join("；");
+        .join("; ");
     }
     if (!value || typeof value !== "object") {
       return "";
@@ -43,13 +43,13 @@ export function useCardFlipOpsData() {
         return text;
     }
 
-    const pairs = Object.entries(value)
+    return Object.entries(value)
       .map(([key, item]) => {
         const text = normalizeText(item);
         return text ? `${key}: ${text}` : "";
       })
-      .filter(Boolean);
-    return pairs.join("；");
+      .filter(Boolean)
+      .join("; ");
   };
 
   const getErrorMessage = (error, fallback = "请求失败，请稍后重试") =>

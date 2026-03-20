@@ -341,7 +341,7 @@ const fetchCarInfo = async () => {
       );
       const qty = roleRes?.role?.items?.[35002]?.quantity;
       refreshTickets.value = Number(qty || 0);
-    } catch (_) {}
+    } catch {}
     carRaw.value = res?.body ?? res;
     carFetched.value = true;
     if (!normalizeCars(carRaw.value).length) {
@@ -421,7 +421,7 @@ const refreshCar = async (car) => {
       refreshTickets.value = Number(
         roleRes?.role?.items?.[35002]?.quantity || 0,
       );
-    } catch (_) {}
+    } catch {}
   } catch (e) {
     message.error(`刷新失败：${e.message || "未知错误"}`);
   }
@@ -520,7 +520,7 @@ const claimCar = async (car) => {
     return message.warning("未到可收车时间（需超过4小时）");
   try {
     message.info("收车中...");
-    const resp = await tokenStore.sendMessageWithPromise(
+    await tokenStore.sendMessageWithPromise(
       token.id,
       "car_claim",
       { carId: String(car.id) },
@@ -607,7 +607,7 @@ const claimAllCars = async () => {
     for (const c of claimables) {
       try {
         await claimCar(c);
-      } catch (_) {}
+      } catch {}
       await new Promise((r) => setTimeout(r, 300));
     }
     await fetchCarInfo();

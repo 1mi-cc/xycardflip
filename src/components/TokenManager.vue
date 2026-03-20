@@ -301,7 +301,7 @@ const toggleWebSocket = (roleId, tokenData) => {
         tokenData.wsUrl,
       );
       message.success("正在建立WebSocket连接...");
-    } catch (error) {
+    } catch {
       message.error("建立WebSocket连接失败");
     }
   }
@@ -419,7 +419,7 @@ const removeToken = (roleId) => {
 };
 
 // 编辑Token（暂时显示提示信息，后续可以实现编辑功能）
-const editToken = (roleId, tokenData) => {
+const editToken = (_roleId, _tokenData) => {
   message.info("编辑功能正在开发中");
 };
 
@@ -428,7 +428,7 @@ const copyToken = async (token) => {
   try {
     await navigator.clipboard.writeText(token);
     message.success("Token已复制到剪贴板");
-  } catch (error) {
+  } catch {
     // 降级方案
     const textArea = document.createElement("textarea");
     textArea.value = token;
@@ -530,7 +530,7 @@ const importTokens = ({ file }) => {
       } else {
         message.error(result.message);
       }
-    } catch (error) {
+    } catch {
       message.error("导入失败：文件格式错误");
     }
   };

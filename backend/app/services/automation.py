@@ -12,6 +12,7 @@ from ..schemas import ListingIn, ValuationOut
 from .autotrade import auto_trade_service
 from .execution_retry import execution_retry_service
 from .market_monitor import monitor_service
+from .operating_state import operating_state_service
 from .opportunity_scan import scan_open_listings
 from .supabase_sync import supabase_sync_service
 
@@ -32,13 +33,17 @@ class AutomationService:
         autotrade = auto_trade_service.status()
         execution_retry = execution_retry_service.status()
         supabase_sync = supabase_sync_service.status()
+        operating_state = operating_state_service.status()
         autotrade_enabled = bool(autotrade.get("enabled"))
         execution_retry_enabled = bool(execution_retry.get("enabled"))
         supabase_enabled = bool(supabase_sync.get("enabled"))
         monitor_required = bool(settings.automation_default_include_monitor)
-        autotrade_required = bool(settings.automation_default_include_autotrade and autotrade_enabled)
+        autotrade_required = bool(
+            settings.automation_default_include_autotrade and autotrade_enabled
+        )
         execution_retry_required = bool(
-            settings.automation_default_include_execution_retry and execution_retry_enabled
+            settings.automation_default_include_execution_retry
+            and execution_retry_enabled
         )
         supabase_required = bool(
             settings.automation_default_include_supabase_sync and supabase_enabled
@@ -53,6 +58,7 @@ class AutomationService:
             "autotrade": autotrade,
             "execution_retry": execution_retry,
             "supabase_sync": supabase_sync,
+            "operating_state": operating_state,
             "busy": self._run_lock.locked(),
             "all_running": bool(
                 (not monitor_required or monitor.get("is_running"))
@@ -189,7 +195,24 @@ class AutomationService:
                     "stage": name,
                 }
             except Exception as exc:
-                return {"success": False, "busy": False, "error": str(exc), "stage": name, "status_code": 500}
+                return {
+                    "success": False,
+                    "busy": False,
+                    "error": str(exc),
+                    "stage": name,
+                    "status_code": 500,
+                }
+
+        def _state_skip(stage: str, state: str, reason: str) -> dict[str, Any]:
+            return {
+                "success": False,
+                "skipped": True,
+                "busy": False,
+                "stage": stage,
+                "state": state,
+                "reason": reason,
+                "status_code": 423,
+            }
 
         if not self._run_lock.acquire(blocking=False):
             self._mark_busy("run_once_in_progress")
@@ -200,10 +223,44 @@ class AutomationService:
             )
 
         try:
-            normalized_scan_limit = max(
+            requested_scan_limit = max(
                 1,
                 min(500, int(scan_limit or settings.automation_default_scan_limit)),
             )
+            autotrade_status = auto_trade_service.status()
+            execution_retry_status = execution_retry_service.status()
+            operating_state = operating_state_service.status()
+            recommendations = operating_state.get("recommendations", {})
+            state_name = str(operating_state.get("state") or "normal")
+
+            effective_scan_limit = requested_scan_limit
+            effective_autotrade_limit = autotrade_limit
+            effective_execution_retry_limit = execution_retry_limit
+
+            if not force:
+                effective_scan_limit = operating_state_service.scale_limit(
+                    scan_limit,
+                    settings.automation_default_scan_limit,
+                    float(recommendations.get("scan_limit_factor") or 1.0),
+                    maximum=500,
+                )
+                if include_autotrade and bool(recommendations.get("allow_autotrade", True)):
+                    effective_autotrade_limit = operating_state_service.scale_limit(
+                        autotrade_limit,
+                        int(autotrade_status.get("batch_size") or 1),
+                        float(recommendations.get("autotrade_limit_factor") or 1.0),
+                        maximum=500,
+                    )
+                if include_execution_retry and bool(
+                    recommendations.get("allow_execution_retry", True)
+                ):
+                    effective_execution_retry_limit = operating_state_service.scale_limit(
+                        execution_retry_limit,
+                        int(execution_retry_status.get("batch_size") or 1),
+                        float(recommendations.get("execution_retry_limit_factor") or 1.0),
+                        maximum=200,
+                    )
+
             result: dict[str, Any] = {
                 "include_monitor": include_monitor,
                 "include_scan": include_scan,
@@ -211,6 +268,35 @@ class AutomationService:
                 "include_execution_retry": include_execution_retry,
                 "include_supabase_sync": include_supabase_sync,
                 "force": force,
+                "operating_state": operating_state,
+                "applied_limits": {
+                    "scan": {
+                        "requested": requested_scan_limit,
+                        "effective": effective_scan_limit,
+                    },
+                    "autotrade": {
+                        "requested": int(
+                            autotrade_limit or autotrade_status.get("batch_size") or 1
+                        ),
+                        "effective": int(
+                            effective_autotrade_limit
+                            or autotrade_status.get("batch_size")
+                            or 1
+                        ),
+                    },
+                    "execution_retry": {
+                        "requested": int(
+                            execution_retry_limit
+                            or execution_retry_status.get("batch_size")
+                            or 1
+                        ),
+                        "effective": int(
+                            effective_execution_retry_limit
+                            or execution_retry_status.get("batch_size")
+                            or 1
+                        ),
+                    },
+                },
                 "monitor": {"skipped": not include_monitor},
                 "scan": {"skipped": not include_scan},
                 "autotrade": {"skipped": not include_autotrade},
@@ -223,25 +309,41 @@ class AutomationService:
             if include_scan:
                 result["scan"] = _run_stage(
                     "scan",
-                    lambda: asyncio.run(scan_open_listings(limit=normalized_scan_limit)),
+                    lambda: asyncio.run(scan_open_listings(limit=effective_scan_limit)),
                 )
             if include_autotrade:
-                result["autotrade"] = _run_stage(
-                    "autotrade",
-                    lambda: auto_trade_service.run_once(
-                        limit=autotrade_limit,
-                        force=force,
-                    ),
-                )
+                if not force and not bool(recommendations.get("allow_autotrade", True)):
+                    result["autotrade"] = _state_skip(
+                        "autotrade",
+                        state_name,
+                        f"operating_state_{state_name}",
+                    )
+                else:
+                    result["autotrade"] = _run_stage(
+                        "autotrade",
+                        lambda: auto_trade_service.run_once(
+                            limit=effective_autotrade_limit,
+                            force=force,
+                        ),
+                    )
             if include_execution_retry:
-                result["execution_retry"] = _run_stage(
-                    "execution_retry",
-                    lambda: execution_retry_service.run_once(
-                        limit=execution_retry_limit,
-                        service_force=force,
-                        confirm_token=confirm_token,
-                    ),
-                )
+                if not force and not bool(
+                    recommendations.get("allow_execution_retry", True)
+                ):
+                    result["execution_retry"] = _state_skip(
+                        "execution_retry",
+                        state_name,
+                        f"operating_state_{state_name}",
+                    )
+                else:
+                    result["execution_retry"] = _run_stage(
+                        "execution_retry",
+                        lambda: execution_retry_service.run_once(
+                            limit=effective_execution_retry_limit,
+                            service_force=force,
+                            confirm_token=confirm_token,
+                        ),
+                    )
             if include_supabase_sync:
                 result["supabase_sync"] = _run_stage(
                     "supabase_sync",
@@ -295,8 +397,11 @@ class AutomationService:
                 source="simulation_seed",
                 listing_id=f"sim-{seed_batch_id}-{index}",
                 seller_id=f"sim-seller-{(index % 3) + 1}",
-                title=f"模拟训练卡片 #{index + 1}",
-                description="自动生成的模拟样本，用于验证审批与执行链路。",
+                title=f"Simulation training card #{index + 1}",
+                description=(
+                    "Auto generated simulation sample used to verify the review and "
+                    "execution pipeline."
+                ),
                 list_price=list_price,
                 listed_at=timestamp,
                 status="open",
@@ -325,7 +430,12 @@ class AutomationService:
             )
 
             fee = settings.platform_fee_rate * expected_sale_price
-            net_profit = expected_sale_price - list_price - settings.default_shipping_cost - fee
+            net_profit = (
+                expected_sale_price
+                - list_price
+                - settings.default_shipping_cost
+                - fee
+            )
             roi = (net_profit / list_price) if list_price > 0 else 0.0
             score = round(max(80.0, min(99.0, 88.0 - (index * 0.8))), 2)
 

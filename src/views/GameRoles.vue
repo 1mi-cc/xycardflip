@@ -179,11 +179,9 @@
 import { Add, EllipsisHorizontal, PersonCircle } from "@vicons/ionicons5";
 import { useDialog, useMessage } from "naive-ui";
 import { onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
 
 import { useGameRolesStore } from "@/stores/gameRoles";
 
-const router = useRouter();
 const message = useMessage();
 const dialog = useDialog();
 const gameRolesStore = useGameRolesStore();
@@ -274,7 +272,7 @@ const editRole = (role) => {
   showAddModal.value = true;
 };
 
-const viewRoleDetails = (role) => {
+const viewRoleDetails = (_role) => {
   message.info("角色详情功能开发中...");
 };
 
@@ -322,7 +320,7 @@ const handleSubmit = async () => {
     } else {
       message.error(result.message);
     }
-  } catch (error) {
+  } catch {
     // 表单验证失败
   } finally {
     isSubmitting.value = false;

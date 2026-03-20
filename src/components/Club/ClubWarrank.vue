@@ -131,7 +131,7 @@
 
           <!-- 表格数据行 -->
           <div
-            v-for="(member, index) in filteredLegionList"
+            v-for="member in filteredLegionList"
             :key="member.id"
             class="table-row"
             :class="getAllianceClass(allianceincludes(member.announcement))"
@@ -162,7 +162,7 @@
             <div class="table-cell red-quench">{{ member.redQuench || 0 }}</div>
             <div class="table-cell first-3">
               <div class="hero-avatars">
-                <div v-for="(hero, index) in member.topHeroes" :key="index" class="hero-card">
+                <div v-for="(hero, heroIndex) in member.topHeroes" :key="heroIndex" class="hero-card">
                   <div class="hero-avatar-container" @click="handleHeroClick(hero)">
                     <img v-if="hero.headImg" class="hero-avatar" :alt="hero.name" :src="hero.headImg">
                     <div v-else class="hero-avatar-placeholder">{{ hero.name?.charAt(0) || '?' }}</div>
@@ -450,7 +450,7 @@
               {{ heroModealTemp.HolyBeast ? '已激活' : '未激活' }}
             </n-descriptions-item>
             <n-descriptions-item label="鱼灵">
-              {{ heroModealTemp?.PearlInfo?.FishInfo?.name != undefined ? heroModealTemp.PearlInfo?.FishInfo?.name : '无' }}
+              {{ heroModealTemp?.PearlInfo?.FishInfo?.name !== undefined ? heroModealTemp.PearlInfo?.FishInfo?.name : '无' }}
             </n-descriptions-item>
             <n-descriptions-item label="鱼灵洗练">
               <div v-if="heroModealTemp?.PearlInfo?.slotMap?.length > 0">
@@ -464,7 +464,7 @@
               <div v-else>无</div>
             </n-descriptions-item>
             <n-descriptions-item label="鱼珠技能">
-              {{ heroModealTemp?.PearlInfo?.PearlSkill?.name != undefined ? heroModealTemp.PearlInfo?.PearlSkill?.name : '无' }}
+              {{ heroModealTemp?.PearlInfo?.PearlSkill?.name !== undefined ? heroModealTemp.PearlInfo?.PearlSkill?.name : '无' }}
             </n-descriptions-item>
           </n-descriptions>
         </div>
@@ -556,7 +556,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(["update:visible"]);
+const _emit = defineEmits(["update:visible"]);
 
 const ScoreShow = ref(1);
 
@@ -565,9 +565,9 @@ const exportDom = ref(null);
 const message = useMessage();
 const tokenStore = useTokenStore();
 
-const showModal = computed({
+const _showModal = computed({
   get: () => props.visible,
-  set: (val) => emit("update:visible", val),
+  set: (val) => _emit("update:visible", val),
 });
 
 const loading1 = ref(false);
@@ -642,7 +642,7 @@ const getEquipment = (equipment) => {
     // 遍历每件装备的属性
     Object.values(equ.quenches).forEach((item) => {
       holeCount++;
-      if (item.colorId == 6) {
+      if (item.colorId === 6) {
         redCount++;
       }
     });
@@ -876,7 +876,7 @@ const handleHeroClick = (hero) => {
 // 验证切磋次数
 const validateFightCount = (value) => {
   const num = Number.parseInt(value);
-  isFightCountValid.value = !isNaN(num) && num >= 1 && num <= 100;
+  isFightCountValid.value = !Number.isNaN(num) && num >= 1 && num <= 100;
 };
 
 // 重置切磋结果
@@ -987,7 +987,7 @@ const handleDuel = async () => {
         // 检查我方掉将情况
         if (result.battleData.result?.sponsor?.teamInfo) {
           result.battleData.result.sponsor.teamInfo.forEach((item) => {
-            if (item.hp == 0) {
+            if (item.hp === 0) {
               leftCount++;
             }
           });
@@ -996,7 +996,7 @@ const handleDuel = async () => {
         // 检查敌方掉将情况
         if (result.battleData.result?.accept?.teamInfo) {
           result.battleData.result.accept.teamInfo.forEach((item) => {
-            if (item.hp == 0) {
+            if (item.hp === 0) {
               rightCount++;
             }
           });
@@ -1142,7 +1142,7 @@ const handleImageError = (event) => {
 };
 
 const disabledDate = (current) => {
-  return (current.getDay() != 6 && current.getDay() != 0) || current > Date.now();
+  return (current.getDay() !== 6 && current.getDay() !== 0) || current > Date.now();
 };
 
 // 联盟样式类
@@ -1176,7 +1176,7 @@ const getRedQuenchClass = (redQuench) => {
 
 // 日期选择时调用查询战绩方法
 const fetchBattleRecordsByDate = (val) => {
-  if (undefined != val) {
+  if (val !== undefined) {
     inputDate1.value = val;
   } else {
     inputDate1.value = getLastSaturday();
@@ -1203,7 +1203,7 @@ const fetchBattleRecords1 = async () => {
   loading1.value = true;
   queryDate.value = formatTimestamp1(inputDate1.value);
 
-  if (gettoday() == queryDate.value && new Date().getHours() < 21) {
+  if (gettoday() === queryDate.value && new Date().getHours() < 21) {
     const getbattlefield = await tokenStore.sendMessageWithPromise(tokenId, "legion_getbattlefield", {}, 10000);
     if (!getbattlefield.info) {
       battleRecords1.value = null;
@@ -1263,7 +1263,7 @@ const fetchBattleRecords1 = async () => {
             }, 5000);
 
             let holyBeast = 0;
-            for (const [heroId, heroData] of Object.entries(tempRoleInfo?.roleInfo?.heroes)) {
+            for (const [_heroId, heroData] of Object.entries(tempRoleInfo?.roleInfo?.heroes)) {
               if (heroData.hB?.active !== undefined) {
                 holyBeast++;
               }
@@ -1442,7 +1442,7 @@ const fetchBattleRecords1 = async () => {
             }, 5000);
 
             let holyBeast = 0;
-            for (const [heroId, heroData] of Object.entries(tempRoleInfo?.roleInfo?.heroes)) {
+            for (const [_heroId, heroData] of Object.entries(tempRoleInfo?.roleInfo?.heroes)) {
               if (heroData.hB?.active !== undefined) {
                 holyBeast++;
               }
@@ -1594,7 +1594,7 @@ const handleExport1 = async () => {
 
   try {
     if (exportmethod.value.includes("1")) {
-      const exportText = await formatWarrankRecordsForExport(
+      await formatWarrankRecordsForExport(
         battleRecords1.value.legionRankList,
         queryDate.value,
       );
@@ -1612,14 +1612,14 @@ const handleExport1 = async () => {
 const exportToImage = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert("未找到要导出的DOM元素");
+    message.error("未找到要导出的 DOM 元素");
     return;
   }
 
   try {
     // 保存原始样式
-    const originalHeight = exportDom.value.style.height;
-    const originalOverflow = exportDom.value.style.overflow;
+    const _originalHeight = exportDom.value.style.height;
+    const _originalOverflow = exportDom.value.style.overflow;
 
     // 临时调整表格容器高度，确保所有内容可见
     exportDom.value.style.height = "auto";
@@ -1654,16 +1654,16 @@ const exportToImage = async () => {
     document.body.removeChild(link);
   } catch (err) {
     console.error("DOM转图片失败：", err);
-    alert("导出图片失败，请重试");
+    message.error("导出图片失败，请重试");
   } finally {
     // 恢复原始样式
-    exportDom.value.style.height = originalHeight;
-    exportDom.value.style.overflow = originalOverflow;
+    exportDom.value.style.height = _originalHeight;
+    exportDom.value.style.overflow = _originalOverflow;
   }
 };
 
 // 关闭弹窗
-const handleClose = () => {
+const _handleClose = () => {
   expandedMembers.value.clear();
 };
 

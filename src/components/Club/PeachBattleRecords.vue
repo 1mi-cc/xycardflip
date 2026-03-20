@@ -208,12 +208,12 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:visible"]);
-const exportmethod = ref(["1"]);
+const _exportmethod = ref(["1"]);
 const exportDom = ref(null);
 const message = useMessage();
 const tokenStore = useTokenStore();
-const info = computed(() => tokenStore.gameData?.legionInfo || null);
-const club = computed(() => info.value?.info || null);
+const _info = computed(() => tokenStore.gameData?.legionInfo || null);
+const _club = computed(() => _info.value?.info || null);
 const showModal = computed({
   get: () => props.visible,
   set: (val) => emit("update:visible", val),
@@ -224,12 +224,12 @@ const battleRecords = ref(null);
 const expandedMembers = ref(new Set());
 const queryDate = ref("");
 
-const legionMatch = ref({
+const _legionMatch = ref({
   isRegistered: false,
 });
 
 // 格式化战力
-const formatPower = (power) => {
+const _formatPower = (power) => {
   if (!power)
     return "0";
   if (power >= 100000000) {
@@ -277,7 +277,7 @@ const getLastSunday = () => {
 };
 
 // 获取战斗样式类
-const getBattleClass = (battle) => {
+const _getBattleClass = (battle) => {
   const classes = [];
   if (battle.newWinFlag === 2) {
     classes.push("battle-win");
@@ -307,12 +307,12 @@ const handleImageError = (event) => {
 };
 
 const disabledDate = (current) => {
-  return (current.getDay() != 0) || current > Date.now();
+  return (current.getDay() !== 0) || current > Date.now();
 };
 
 // 日期选择时调用查询战绩方法
 const fetchBattleRecordsByDate = (val) => {
-  if (undefined != val) {
+  if (val !== undefined) {
     queryDate.value = val;
   } else {
     queryDate.value = getLastSunday();
@@ -407,7 +407,7 @@ const handleExport = async () => {
 const exportToImage = async () => {
   // 校验：确保DOM已正确绑定
   if (!exportDom.value) {
-    alert("未找到要导出的DOM元素");
+    message.error("未找到要导出的 DOM 元素");
     return;
   }
 
@@ -433,7 +433,7 @@ const exportToImage = async () => {
     document.body.removeChild(link); // 下载后清理DOM
   } catch (err) {
     console.error("DOM转图片失败：", err);
-    alert("导出图片失败，请重试");
+    message.error("导出图片失败，请重试");
   }
 };
 
