@@ -152,6 +152,13 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
             assert "risk_assessment" in calc_payload
             assert "opportunity_identification" in calc_payload
 
+            advanced_calc = client.get("/analysis/calculation/advanced")
+            assert advanced_calc.status_code == 200
+            advanced_payload = advanced_calc.json()
+            assert "momentum" in advanced_payload
+            assert "liquidity" in advanced_payload
+            assert "anomaly_detection" in advanced_payload
+
             decision = client.get("/analysis/decision/overview")
             assert decision.status_code == 200
             decision_payload = decision.json()
@@ -160,12 +167,30 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
             assert "risk_alerts" in decision_payload
             assert len(decision_payload["risk_alerts"]) >= 1
 
+            auto_reco = client.get("/analysis/automation/recommendation")
+            assert auto_reco.status_code == 200
+            auto_reco_payload = auto_reco.json()
+            assert "allow_run_once" in auto_reco_payload
+            assert "suggested_autotrade_limit" in auto_reco_payload
+            assert "autotrade_status" in auto_reco_payload
+
+            auto_run = client.post(
+                "/analysis/automation/run-once",
+                params={"force": True, "limit": 5},
+            )
+            assert auto_run.status_code == 200
+            auto_run_payload = auto_run.json()
+            assert "recommendation" in auto_run_payload
+            assert "result" in auto_run_payload
+
             report = client.get("/analysis/report")
             assert report.status_code == 200
             report_payload = report.json()
             assert "data_layer" in report_payload
             assert "calculation_layer" in report_payload
+            assert "advanced_calculation_layer" in report_payload
             assert "decision_layer" in report_payload
+            assert "automation_layer" in report_payload
             assert "report_text" in report_payload
 
             stream = client.get(

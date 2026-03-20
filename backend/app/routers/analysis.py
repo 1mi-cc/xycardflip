@@ -10,8 +10,18 @@ from fastapi.responses import StreamingResponse
 
 from .. import repositories as repo
 from ..database import get_conn
+from ..services.automation import automation_service
+from ..services.autotrade import auto_trade_service
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
+
+MAX_ANALYSIS_LIMIT = 500
+RECOMMENDATION_AUTOTRADE_CAP = 200
+DEFAULT_SUGGESTED_MIN_SCORE = 60.0
+HIGH_RISK_AVG_THRESHOLD = 50.0
+HIGH_RISK_SUGGESTED_MIN_SCORE = 70.0
+NEGATIVE_MOMENTUM_THRESHOLD = -3.0
+NEGATIVE_MOMENTUM_SUGGESTED_MIN_SCORE = 75.0
 
 
 def _parse_risk_score(note: str) -> float | None:
@@ -163,6 +173,73 @@ def _calculation_overview(limit: int) -> dict[str, Any]:
     }
 
 
+def _advanced_metrics(limit: int) -> dict[str, Any]:
+    history = _price_history(limit=limit)
+    prices = [float(item["price"]) for item in reversed(history) if float(item["price"]) > 0]
+    if len(prices) < 2:
+        return {
+            "momentum": {"short_term_pct": 0.0, "long_term_pct": 0.0},
+            "liquidity": {"trade_count": len(_trade_records(limit=limit)), "sales_count": len(prices)},
+            "anomaly_detection": {"spike_count": 0, "spike_ratio": 0.0},
+        }
+
+    short_window = prices[-min(3, len(prices)) :]
+    long_window = prices[-min(10, len(prices)) :]
+    short_avg = mean(short_window)
+    long_avg = mean(long_window)
+    base = long_avg if long_avg > 0 else short_avg
+    short_term_pct = round(((short_avg - base) / base) * 100, 2) if base > 0 else 0.0
+
+    first = prices[0]
+    long_term_pct = round(((prices[-1] - first) / first) * 100, 2) if first > 0 else 0.0
+
+    vol = _volatility(prices)
+    stddev = float(vol["stddev"])
+    price_avg = mean(prices)
+    threshold = (2 * stddev) if stddev > 0 else 0.0
+    spikes = 0
+    if threshold > 0:
+        spikes = sum(1 for price in prices if abs(price - price_avg) > threshold)
+
+    return {
+        "momentum": {"short_term_pct": short_term_pct, "long_term_pct": long_term_pct},
+        "liquidity": {"trade_count": len(_trade_records(limit=limit)), "sales_count": len(prices)},
+        "anomaly_detection": {
+            "spike_count": spikes,
+            "spike_ratio": round((spikes / len(prices)) if prices else 0.0, 4),
+        },
+    }
+
+
+def _automation_recommendation(limit: int) -> dict[str, Any]:
+    calc = _calculation_overview(limit=limit)
+    advanced = _advanced_metrics(limit=limit)
+    autotrade = auto_trade_service.status()
+    allow_run_once = bool(autotrade.get("enabled")) and not bool(autotrade.get("busy"))
+    recommended_autotrade_limit = max(
+        1,
+        min(RECOMMENDATION_AUTOTRADE_CAP, len(calc["opportunity_identification"])),
+    )
+
+    risk = calc["risk_assessment"]
+    momentum = advanced["momentum"]
+    # Keep the recommendation conservative under elevated risk or downtrend momentum.
+    suggested_min_score = DEFAULT_SUGGESTED_MIN_SCORE
+    if float(risk["average_risk_score"]) > HIGH_RISK_AVG_THRESHOLD:
+        suggested_min_score = HIGH_RISK_SUGGESTED_MIN_SCORE
+    if float(momentum["short_term_pct"]) < NEGATIVE_MOMENTUM_THRESHOLD:
+        suggested_min_score = max(suggested_min_score, NEGATIVE_MOMENTUM_SUGGESTED_MIN_SCORE)
+
+    return {
+        "allow_run_once": allow_run_once,
+        "suggested_autotrade_limit": recommended_autotrade_limit,
+        "suggested_min_score": suggested_min_score,
+        "risk_summary": risk,
+        "momentum": momentum,
+        "autotrade_status": autotrade,
+    }
+
+
 def _decision_overview(limit: int) -> dict[str, Any]:
     rows = repo.list_opportunities(limit=limit)
     signals: list[dict[str, Any]] = []
@@ -206,13 +283,13 @@ def _decision_overview(limit: int) -> dict[str, Any]:
 
 
 @router.get("/data/price-history")
-def get_price_history(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+def get_price_history(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     items = _price_history(limit=limit)
     return {"items": items, "count": len(items)}
 
 
 @router.get("/data/trade-records")
-def get_trade_records(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+def get_trade_records(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     items = _trade_records(limit=limit)
     return {"items": items, "count": len(items)}
 
@@ -223,24 +300,66 @@ def get_market_snapshot() -> dict[str, Any]:
 
 
 @router.get("/calculation/overview")
-def get_calculation_overview(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+def get_calculation_overview(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     return _calculation_overview(limit=limit)
 
 
+@router.get("/calculation/advanced")
+def get_advanced_calculation(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
+    return _advanced_metrics(limit=limit)
+
+
 @router.get("/decision/overview")
-def get_decision_overview(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+def get_decision_overview(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     return _decision_overview(limit=limit)
 
 
+@router.get("/automation/recommendation")
+def get_automation_recommendation(
+    limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)
+) -> dict[str, Any]:
+    return _automation_recommendation(limit=limit)
+
+
+@router.post("/automation/run-once")
+def run_automation_once_from_analysis(
+    force: bool = False,
+    include_monitor: bool = False,
+    include_scan: bool = False,
+    include_execution_retry: bool = False,
+    include_supabase_sync: bool = False,
+    limit: int = Query(default=0, ge=0, le=MAX_ANALYSIS_LIMIT),
+) -> dict[str, Any]:
+    recommendation = _automation_recommendation(limit=max(1, limit or 100))
+    suggested_limit = int(recommendation["suggested_autotrade_limit"])
+    effective_limit = max(1, min(MAX_ANALYSIS_LIMIT, limit or suggested_limit))
+    result = automation_service.run_once(
+        include_monitor=include_monitor,
+        include_scan=include_scan,
+        include_autotrade=True,
+        include_execution_retry=include_execution_retry,
+        include_supabase_sync=include_supabase_sync,
+        autotrade_limit=effective_limit,
+        force=force,
+    )
+    return {
+        "recommendation": recommendation,
+        "autotrade_limit_used": effective_limit,
+        "result": result,
+    }
+
+
 @router.get("/report")
-def generate_report(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+def generate_report(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     data_layer = {
         "price_history": _price_history(limit=limit),
         "trade_records": _trade_records(limit=limit),
         "market_snapshot": _market_snapshot(),
     }
     calculation_layer = _calculation_overview(limit=limit)
+    advanced_calculation = _advanced_metrics(limit=limit)
     decision_layer = _decision_overview(limit=limit)
+    automation_layer = _automation_recommendation(limit=limit)
     report_text = "\n".join(
         [
             "# Analysis Report",
@@ -249,12 +368,15 @@ def generate_report(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, 
             f"- trend: {calculation_layer['trend_analysis']['direction']}",
             f"- avg risk score: {calculation_layer['risk_assessment']['average_risk_score']}",
             f"- risk alerts: {len(decision_layer['risk_alerts'])}",
+            f"- suggested autotrade limit: {automation_layer['suggested_autotrade_limit']}",
         ]
     )
     return {
         "data_layer": data_layer,
         "calculation_layer": calculation_layer,
+        "advanced_calculation_layer": advanced_calculation,
         "decision_layer": decision_layer,
+        "automation_layer": automation_layer,
         "report_text": report_text,
     }
 
@@ -269,7 +391,9 @@ async def realtime_stream(
             payload = {
                 "market_snapshot": _market_snapshot(),
                 "calculation_layer": _calculation_overview(limit=50),
+                "advanced_calculation_layer": _advanced_metrics(limit=50),
                 "decision_layer": _decision_overview(limit=50),
+                "automation_layer": _automation_recommendation(limit=50),
             }
             try:
                 encoded = json.dumps(payload, ensure_ascii=False)
