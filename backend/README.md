@@ -36,16 +36,17 @@ Swagger UI: `http://127.0.0.1:8000/docs`
 12. `POST /trades/{trade_id}/apply-pricing-plan` apply suggested target sell price.
 13. `POST /trades/reprice-open` batch reprice open trades (dry-run by default).
 14. `POST /autotrade/run-once` auto-approve qualified pending opportunities once.
-15. `POST /autotrade/start|stop` and `GET /autotrade/status` for periodic auto-approval loop.
-16. `GET /execution/status` view execution adapter mode (`mock`/`webhook`).
-17. `POST /execution/buy/{trade_id}?dry_run=true|false&force=false|true` trigger buy execution adapter.
-18. `GET /execution/logs` inspect execution result logs.
-19. `POST /execution/retry-failed` replay latest failed executions once.
-20. `GET|POST /execution-retry/status|start|stop` manage scheduled failed-execution retry service.
-21. `POST /execution-retry/run-once` run one retry cycle with optional overrides.
-22. `GET|POST /automation/status|start|stop|run-once` orchestrate monitor + scan + autotrade + execution-retry.
-23. `GET|POST /supabase/status|start|stop|run-once|reset-cursors` sync local DB tables into Supabase.
-24. `GET /auth/user|/auth/userinfo|/user/profile` return frontend permission payload for menu filtering.
+15. `GET /analysis/*` access analytics data/calc/decision endpoints, advanced metrics, automation recommendation, SSE stream, and report output.
+16. `POST /autotrade/start|stop` and `GET /autotrade/status` for periodic auto-approval loop.
+17. `GET /execution/status` view execution adapter mode (`mock`/`webhook`).
+18. `POST /execution/buy/{trade_id}?dry_run=true|false&force=false|true` trigger buy execution adapter.
+19. `GET /execution/logs` inspect execution result logs.
+20. `POST /execution/retry-failed` replay latest failed executions once.
+21. `GET|POST /execution-retry/status|start|stop` manage scheduled failed-execution retry service.
+22. `POST /execution-retry/run-once` run one retry cycle with optional overrides.
+23. `GET|POST /automation/status|start|stop|run-once` orchestrate monitor + scan + autotrade + execution-retry.
+24. `GET|POST /supabase/status|start|stop|run-once|reset-cursors` sync local DB tables into Supabase.
+25. `GET /auth/user|/auth/userinfo|/user/profile` return frontend permission payload for menu filtering.
 
 ## 3. Gemini setup
 
