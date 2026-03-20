@@ -62,16 +62,7 @@ class MarketMonitorService:
         channel_keywords = [
             ch.strip() for ch in settings.monitor_virtual_goods_channels if ch and ch.strip()
         ]
-        all_keywords = base_keywords[:]
-        if settings.monitor_include_virtual_goods_channels:
-            for keyword in channel_keywords:
-                if keyword.lower() in {item.lower() for item in all_keywords}:
-                    continue
-                all_keywords.append(keyword)
-        if not all_keywords:
-            fallback = settings.monitor_keyword.strip()
-            if fallback:
-                all_keywords = [fallback]
+        all_keywords = self._resolved_monitor_keywords()
         with self._lock:
             return {
                 "is_running": self._is_running,
@@ -391,14 +382,17 @@ class MarketMonitorService:
 
     def _resolved_monitor_keywords(self) -> list[str]:
         keywords = [kw.strip() for kw in settings.monitor_keywords if kw and kw.strip()]
+        seen_lower = {item.lower() for item in keywords}
         if settings.monitor_include_virtual_goods_channels:
             for channel in settings.monitor_virtual_goods_channels:
                 keyword = channel.strip()
                 if not keyword:
                     continue
-                if keyword.lower() in {item.lower() for item in keywords}:
+                lowered = keyword.lower()
+                if lowered in seen_lower:
                     continue
                 keywords.append(keyword)
+                seen_lower.add(lowered)
         if keywords:
             return keywords
         fallback = settings.monitor_keyword.strip()

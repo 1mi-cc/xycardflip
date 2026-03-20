@@ -54,6 +54,11 @@ class AutoTradeService:
         self._auto_execute_list_dry_run = bool(settings.auto_execute_list_dry_run)
         self._auto_execute_list_discount_min_pct = float(settings.auto_execute_list_discount_min_pct)
         self._auto_execute_list_discount_max_pct = float(settings.auto_execute_list_discount_max_pct)
+        if self._auto_execute_list_discount_min_pct > self._auto_execute_list_discount_max_pct:
+            self._auto_execute_list_discount_min_pct, self._auto_execute_list_discount_max_pct = (
+                self._auto_execute_list_discount_max_pct,
+                self._auto_execute_list_discount_min_pct,
+            )
         self._auto_execute_sell_on_list_success = bool(settings.auto_execute_sell_on_list_success)
         self._auto_execute_sell_dry_run = bool(settings.auto_execute_sell_dry_run)
         self._auto_execute_sell_price_multiplier = float(settings.auto_execute_sell_price_multiplier)
@@ -116,6 +121,11 @@ class AutoTradeService:
                 self._auto_execute_sell_price_multiplier = max(
                     0.0,
                     min(5.0, float(auto_execute_sell_price_multiplier)),
+                )
+            if self._auto_execute_list_discount_min_pct > self._auto_execute_list_discount_max_pct:
+                self._auto_execute_list_discount_min_pct, self._auto_execute_list_discount_max_pct = (
+                    self._auto_execute_list_discount_max_pct,
+                    self._auto_execute_list_discount_min_pct,
                 )
         return self.status()
 
@@ -273,7 +283,7 @@ class AutoTradeService:
                 if settings.monitor_include_virtual_goods_channels:
                     channels = [ch.strip() for ch in settings.monitor_virtual_goods_channels if ch and ch.strip()]
                     if channels:
-                        note = f"{note}; channels={','.join(channels)}"
+                        note = f"{note}; monitored_channels={','.join(channels)}"
 
                 try:
                     approval = repo.approve_opportunity_idempotent(
@@ -305,15 +315,10 @@ class AutoTradeService:
                                 target_sell_price = float(
                                     current_trade["target_sell_price"] if current_trade else approved_buy_price
                                 )
-                                min_discount = min(
+                                discount_pct = random.uniform(
                                     auto_execute_list_discount_min_pct,
                                     auto_execute_list_discount_max_pct,
                                 )
-                                max_discount = max(
-                                    auto_execute_list_discount_min_pct,
-                                    auto_execute_list_discount_max_pct,
-                                )
-                                discount_pct = random.uniform(min_discount, max_discount)
                                 discounted_target_price = round(
                                     max(
                                         approved_buy_price + 0.01,
@@ -325,8 +330,8 @@ class AutoTradeService:
                                     trade_id=trade_id,
                                     target_sell_price=discounted_target_price,
                                     note=(
-                                        "auto discount list price "
-                                        f"{discount_pct:.2f}% for fast fill"
+                                        "auto-applied "
+                                        f"{discount_pct:.2f}% discount for fast sale"
                                     ),
                                 )
                                 list_exec_attempted += 1

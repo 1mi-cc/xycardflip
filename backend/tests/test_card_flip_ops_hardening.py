@@ -430,7 +430,14 @@ def test_autotrade_can_auto_list_discount_and_auto_sell(
     monkeypatch.setattr(execution_service, "execute_buy", fake_buy)
     monkeypatch.setattr(execution_service, "execute_list", fake_list)
     monkeypatch.setattr(execution_service, "execute_sell", fake_sell)
-    monkeypatch.setattr("app.services.autotrade.random.uniform", lambda a, b: 2.0)
+    captured_discount_bounds: dict[str, float] = {}
+
+    def fake_uniform(a: float, b: float) -> float:
+        captured_discount_bounds["min"] = float(a)
+        captured_discount_bounds["max"] = float(b)
+        return 2.0
+
+    monkeypatch.setattr("app.services.autotrade.random.uniform", fake_uniform)
 
     old_state = auto_trade_service.status()
     auto_trade_service.update_config(
@@ -474,8 +481,10 @@ def test_autotrade_can_auto_list_discount_and_auto_sell(
     assert len(calls["buy"]) == 1
     assert len(calls["list"]) == 1
     assert len(calls["sell"]) == 1
+    assert captured_discount_bounds == {"min": 1.0, "max": 3.0}
 
     trades = repo.list_trades(limit=10)
     trade = next(row for row in trades if int(row["opportunity_id"]) == opportunity_id)
-    assert float(trade["target_sell_price"]) == pytest.approx(176.4, rel=0, abs=1e-6)
-    assert float(calls["sell"][0]["sold_price"]) == pytest.approx(176.4, rel=0, abs=1e-6)
+    expected_discounted_price = round(180.0 * (1 - 0.02), 2)
+    assert float(trade["target_sell_price"]) == pytest.approx(expected_discounted_price, rel=0, abs=1e-6)
+    assert float(calls["sell"][0]["sold_price"]) == pytest.approx(expected_discounted_price, rel=0, abs=1e-6)
