@@ -36,6 +36,7 @@ Swagger UI: `http://127.0.0.1:8000/docs`
 12. `POST /trades/{trade_id}/apply-pricing-plan` apply suggested target sell price.
 13. `POST /trades/reprice-open` batch reprice open trades (dry-run by default).
 14. `POST /autotrade/run-once` auto-approve qualified pending opportunities once.
+15. `GET /analysis/*` access analytics data/calc/decision endpoints, SSE stream, and report output.
 15. `POST /autotrade/start|stop` and `GET /autotrade/status` for periodic auto-approval loop.
 16. `GET /execution/status` view execution adapter mode (`mock`/`webhook`).
 17. `POST /execution/buy/{trade_id}?dry_run=true|false&force=false|true` trigger buy execution adapter.
