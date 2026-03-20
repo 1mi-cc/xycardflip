@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import threading
 from datetime import datetime, timezone
 from typing import Any
@@ -51,6 +52,11 @@ class AutoTradeService:
         self._auto_execute_buy_dry_run = bool(settings.auto_execute_buy_dry_run)
         self._auto_execute_list_on_buy_success = bool(settings.auto_execute_list_on_buy_success)
         self._auto_execute_list_dry_run = bool(settings.auto_execute_list_dry_run)
+        self._auto_execute_list_discount_min_pct = float(settings.auto_execute_list_discount_min_pct)
+        self._auto_execute_list_discount_max_pct = float(settings.auto_execute_list_discount_max_pct)
+        self._auto_execute_sell_on_list_success = bool(settings.auto_execute_sell_on_list_success)
+        self._auto_execute_sell_dry_run = bool(settings.auto_execute_sell_dry_run)
+        self._auto_execute_sell_price_multiplier = float(settings.auto_execute_sell_price_multiplier)
 
     def update_config(
         self,
@@ -65,6 +71,11 @@ class AutoTradeService:
         auto_execute_buy_dry_run: bool | None = None,
         auto_execute_list_on_buy_success: bool | None = None,
         auto_execute_list_dry_run: bool | None = None,
+        auto_execute_list_discount_min_pct: float | None = None,
+        auto_execute_list_discount_max_pct: float | None = None,
+        auto_execute_sell_on_list_success: bool | None = None,
+        auto_execute_sell_dry_run: bool | None = None,
+        auto_execute_sell_price_multiplier: float | None = None,
     ) -> dict[str, Any]:
         with self._lock:
             if interval_sec is not None:
@@ -87,6 +98,25 @@ class AutoTradeService:
                 self._auto_execute_list_on_buy_success = bool(auto_execute_list_on_buy_success)
             if auto_execute_list_dry_run is not None:
                 self._auto_execute_list_dry_run = bool(auto_execute_list_dry_run)
+            if auto_execute_list_discount_min_pct is not None:
+                self._auto_execute_list_discount_min_pct = max(
+                    0.0,
+                    min(99.0, float(auto_execute_list_discount_min_pct)),
+                )
+            if auto_execute_list_discount_max_pct is not None:
+                self._auto_execute_list_discount_max_pct = max(
+                    0.0,
+                    min(99.0, float(auto_execute_list_discount_max_pct)),
+                )
+            if auto_execute_sell_on_list_success is not None:
+                self._auto_execute_sell_on_list_success = bool(auto_execute_sell_on_list_success)
+            if auto_execute_sell_dry_run is not None:
+                self._auto_execute_sell_dry_run = bool(auto_execute_sell_dry_run)
+            if auto_execute_sell_price_multiplier is not None:
+                self._auto_execute_sell_price_multiplier = max(
+                    0.0,
+                    min(5.0, float(auto_execute_sell_price_multiplier)),
+                )
         return self.status()
 
     def status(self) -> dict[str, Any]:
@@ -106,6 +136,11 @@ class AutoTradeService:
                 "auto_execute_buy_dry_run": self._auto_execute_buy_dry_run,
                 "auto_execute_list_on_buy_success": self._auto_execute_list_on_buy_success,
                 "auto_execute_list_dry_run": self._auto_execute_list_dry_run,
+                "auto_execute_list_discount_min_pct": self._auto_execute_list_discount_min_pct,
+                "auto_execute_list_discount_max_pct": self._auto_execute_list_discount_max_pct,
+                "auto_execute_sell_on_list_success": self._auto_execute_sell_on_list_success,
+                "auto_execute_sell_dry_run": self._auto_execute_sell_dry_run,
+                "auto_execute_sell_price_multiplier": self._auto_execute_sell_price_multiplier,
                 "last_run_at": self._last_run_at,
                 "last_error": self._last_error,
                 "last_busy_at": self._last_busy_at,
@@ -178,6 +213,11 @@ class AutoTradeService:
                 auto_execute_buy_dry_run = self._auto_execute_buy_dry_run
                 auto_execute_list_on_buy_success = self._auto_execute_list_on_buy_success
                 auto_execute_list_dry_run = self._auto_execute_list_dry_run
+                auto_execute_list_discount_min_pct = self._auto_execute_list_discount_min_pct
+                auto_execute_list_discount_max_pct = self._auto_execute_list_discount_max_pct
+                auto_execute_sell_on_list_success = self._auto_execute_sell_on_list_success
+                auto_execute_sell_dry_run = self._auto_execute_sell_dry_run
+                auto_execute_sell_price_multiplier = self._auto_execute_sell_price_multiplier
 
             batch_limit = configured_batch_size
             if limit is not None:
@@ -199,6 +239,9 @@ class AutoTradeService:
             list_exec_attempted = 0
             list_exec_succeeded = 0
             list_exec_failed = 0
+            sell_exec_attempted = 0
+            sell_exec_succeeded = 0
+            sell_exec_failed = 0
 
             for row in rows:
                 if approved >= batch_limit:
@@ -227,6 +270,10 @@ class AutoTradeService:
                     f"{settings.auto_approve_note}; score={score:.2f}; roi={roi:.4f}; "
                     f"risk_score={risk_score if risk_score is not None else 'na'}"
                 )
+                if settings.monitor_include_virtual_goods_channels:
+                    channels = [ch.strip() for ch in settings.monitor_virtual_goods_channels if ch and ch.strip()]
+                    if channels:
+                        note = f"{note}; channels={','.join(channels)}"
 
                 try:
                     approval = repo.approve_opportunity_idempotent(
@@ -254,14 +301,67 @@ class AutoTradeService:
                         if exec_res.get("success"):
                             buy_exec_succeeded += 1
                             if auto_execute_list_on_buy_success:
+                                current_trade = repo.get_trade(trade_id)
+                                target_sell_price = float(
+                                    current_trade["target_sell_price"] if current_trade else approved_buy_price
+                                )
+                                min_discount = min(
+                                    auto_execute_list_discount_min_pct,
+                                    auto_execute_list_discount_max_pct,
+                                )
+                                max_discount = max(
+                                    auto_execute_list_discount_min_pct,
+                                    auto_execute_list_discount_max_pct,
+                                )
+                                discount_pct = random.uniform(min_discount, max_discount)
+                                discounted_target_price = round(
+                                    max(
+                                        approved_buy_price + 0.01,
+                                        target_sell_price * (1 - discount_pct / 100.0),
+                                    ),
+                                    2,
+                                )
+                                repo.update_trade_target_price(
+                                    trade_id=trade_id,
+                                    target_sell_price=discounted_target_price,
+                                    note=(
+                                        "auto discount list price "
+                                        f"{discount_pct:.2f}% for fast fill"
+                                    ),
+                                )
                                 list_exec_attempted += 1
                                 list_res = execution_service.execute_list(
                                     trade_id=trade_id,
                                     dry_run=auto_execute_list_dry_run,
-                                    note="auto listed after buy execution",
+                                    note=(
+                                        "auto listed after buy execution; "
+                                        f"discount={discount_pct:.2f}%"
+                                    ),
                                 )
                                 if list_res.get("success"):
                                     list_exec_succeeded += 1
+                                    if auto_execute_sell_on_list_success:
+                                        sell_exec_attempted += 1
+                                        sell_price = round(
+                                            max(
+                                                approved_buy_price + 0.01,
+                                                discounted_target_price * auto_execute_sell_price_multiplier,
+                                            ),
+                                            2,
+                                        )
+                                        sell_res = execution_service.execute_sell(
+                                            trade_id=trade_id,
+                                            dry_run=auto_execute_sell_dry_run,
+                                            sold_price=sell_price,
+                                            note=(
+                                                "auto sell after list success; "
+                                                f"sell_multiplier={auto_execute_sell_price_multiplier:.4f}"
+                                            ),
+                                        )
+                                        if sell_res.get("success"):
+                                            sell_exec_succeeded += 1
+                                        else:
+                                            sell_exec_failed += 1
                                 else:
                                     list_exec_failed += 1
                         else:
@@ -296,6 +396,10 @@ class AutoTradeService:
                 "list_exec_succeeded": list_exec_succeeded,
                 "list_exec_failed": list_exec_failed,
                 "list_exec_dry_run": auto_execute_list_dry_run,
+                "sell_exec_attempted": sell_exec_attempted,
+                "sell_exec_succeeded": sell_exec_succeeded,
+                "sell_exec_failed": sell_exec_failed,
+                "sell_exec_dry_run": auto_execute_sell_dry_run,
             }
         finally:
             self._run_lock.release()

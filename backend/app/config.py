@@ -410,6 +410,17 @@ class Settings:
         os.getenv("XIAN_YU_KEYWORDS", ""),
         os.getenv("XIAN_YU_KEYWORD", "\u54b8\u9c7c\u4e4b\u738b\u529f\u6cd5"),
     )
+    monitor_include_virtual_goods_channels: bool = _get_bool(
+        "MONITOR_INCLUDE_VIRTUAL_GOODS_CHANNELS",
+        True,
+    )
+    monitor_virtual_goods_channels: tuple[str, ...] = _parse_csv_tokens(
+        os.getenv("VIRTUAL_GOODS_CHANNELS", "\u62fc\u591a\u591a\u7279\u4ef7,\u4eac\u4e1c\u79d2\u6740"),
+        fallback=(
+            "\u62fc\u591a\u591a\u7279\u4ef7",
+            "\u4eac\u4e1c\u79d2\u6740",
+        ),
+    )
     monitor_max_price: float = _get_float("MONITOR_MAX_PRICE", 100.0)
     monitor_day_delay_min: float = _get_float("MONITOR_DAY_DELAY_MIN", 15.0)
     monitor_day_delay_max: float = _get_float("MONITOR_DAY_DELAY_MAX", 30.0)
@@ -613,6 +624,23 @@ class Settings:
         "AUTO_EXECUTE_LIST_ON_BUY_SUCCESS", False
     )
     auto_execute_list_dry_run: bool = _get_bool("AUTO_EXECUTE_LIST_DRY_RUN", True)
+    auto_execute_list_discount_min_pct: float = _get_float(
+        "AUTO_EXECUTE_LIST_DISCOUNT_MIN_PCT",
+        1.0,
+    )
+    auto_execute_list_discount_max_pct: float = _get_float(
+        "AUTO_EXECUTE_LIST_DISCOUNT_MAX_PCT",
+        3.0,
+    )
+    auto_execute_sell_on_list_success: bool = _get_bool(
+        "AUTO_EXECUTE_SELL_ON_LIST_SUCCESS",
+        False,
+    )
+    auto_execute_sell_dry_run: bool = _get_bool("AUTO_EXECUTE_SELL_DRY_RUN", True)
+    auto_execute_sell_price_multiplier: float = _get_float(
+        "AUTO_EXECUTE_SELL_PRICE_MULTIPLIER",
+        1.0,
+    )
     auto_start_autotrade: bool = _get_bool("AUTO_START_AUTOTRADE", False)
     auto_start_execution_retry: bool = _get_bool("AUTO_START_EXECUTION_RETRY", False)
 
@@ -630,4 +658,3 @@ class Settings:
 
 
 settings = Settings()
-

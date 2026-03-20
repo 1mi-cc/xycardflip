@@ -58,7 +58,20 @@ class MarketMonitorService:
         self._cookie_provider = CookieProvider()
 
     def status(self) -> dict[str, Any]:
-        monitor_keywords = self._resolved_monitor_keywords()
+        base_keywords = [kw.strip() for kw in settings.monitor_keywords if kw and kw.strip()]
+        channel_keywords = [
+            ch.strip() for ch in settings.monitor_virtual_goods_channels if ch and ch.strip()
+        ]
+        all_keywords = base_keywords[:]
+        if settings.monitor_include_virtual_goods_channels:
+            for keyword in channel_keywords:
+                if keyword.lower() in {item.lower() for item in all_keywords}:
+                    continue
+                all_keywords.append(keyword)
+        if not all_keywords:
+            fallback = settings.monitor_keyword.strip()
+            if fallback:
+                all_keywords = [fallback]
         with self._lock:
             return {
                 "is_running": self._is_running,
@@ -73,8 +86,10 @@ class MarketMonitorService:
                 "consecutive_errors": self._consecutive_errors,
                 "consecutive_403": self._consecutive_403,
                 "error_count": self._error_count,
-                "keyword": monitor_keywords[0] if monitor_keywords else settings.monitor_keyword,
-                "keywords": monitor_keywords,
+                "keyword": all_keywords[0] if all_keywords else settings.monitor_keyword,
+                "keywords": all_keywords,
+                "base_keywords": base_keywords,
+                "channel_keywords": channel_keywords,
                 "max_price": settings.monitor_max_price,
                 "auto_scan_after_ingest": settings.monitor_auto_scan_after_ingest,
                 "auto_scan_limit": settings.monitor_auto_scan_limit,
@@ -376,6 +391,14 @@ class MarketMonitorService:
 
     def _resolved_monitor_keywords(self) -> list[str]:
         keywords = [kw.strip() for kw in settings.monitor_keywords if kw and kw.strip()]
+        if settings.monitor_include_virtual_goods_channels:
+            for channel in settings.monitor_virtual_goods_channels:
+                keyword = channel.strip()
+                if not keyword:
+                    continue
+                if keyword.lower() in {item.lower() for item in keywords}:
+                    continue
+                keywords.append(keyword)
         if keywords:
             return keywords
         fallback = settings.monitor_keyword.strip()
