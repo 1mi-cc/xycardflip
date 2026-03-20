@@ -58,7 +58,11 @@ class MarketMonitorService:
         self._cookie_provider = CookieProvider()
 
     def status(self) -> dict[str, Any]:
-        monitor_keywords = self._resolved_monitor_keywords()
+        base_keywords = [kw.strip() for kw in settings.monitor_keywords if kw and kw.strip()]
+        channel_keywords = [
+            ch.strip() for ch in settings.monitor_virtual_goods_channels if ch and ch.strip()
+        ]
+        all_keywords = self._resolved_monitor_keywords()
         with self._lock:
             return {
                 "is_running": self._is_running,
@@ -73,8 +77,10 @@ class MarketMonitorService:
                 "consecutive_errors": self._consecutive_errors,
                 "consecutive_403": self._consecutive_403,
                 "error_count": self._error_count,
-                "keyword": monitor_keywords[0] if monitor_keywords else settings.monitor_keyword,
-                "keywords": monitor_keywords,
+                "keyword": all_keywords[0] if all_keywords else settings.monitor_keyword,
+                "keywords": all_keywords,
+                "base_keywords": base_keywords,
+                "channel_keywords": channel_keywords,
                 "max_price": settings.monitor_max_price,
                 "auto_scan_after_ingest": settings.monitor_auto_scan_after_ingest,
                 "auto_scan_limit": settings.monitor_auto_scan_limit,
@@ -376,6 +382,17 @@ class MarketMonitorService:
 
     def _resolved_monitor_keywords(self) -> list[str]:
         keywords = [kw.strip() for kw in settings.monitor_keywords if kw and kw.strip()]
+        seen_lower = {item.lower() for item in keywords}
+        if settings.monitor_include_virtual_goods_channels:
+            for channel in settings.monitor_virtual_goods_channels:
+                keyword = channel.strip()
+                if not keyword:
+                    continue
+                lowered = keyword.lower()
+                if lowered in seen_lower:
+                    continue
+                keywords.append(keyword)
+                seen_lower.add(lowered)
         if keywords:
             return keywords
         fallback = settings.monitor_keyword.strip()

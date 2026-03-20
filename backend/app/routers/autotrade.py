@@ -19,6 +19,11 @@ class AutoTradeConfigPatch(BaseModel):
     auto_execute_buy_dry_run: bool | None = None
     auto_execute_list_on_buy_success: bool | None = None
     auto_execute_list_dry_run: bool | None = None
+    auto_execute_list_discount_min_pct: float | None = None
+    auto_execute_list_discount_max_pct: float | None = None
+    auto_execute_sell_on_list_success: bool | None = None
+    auto_execute_sell_dry_run: bool | None = None
+    auto_execute_sell_price_multiplier: float | None = None
 
 
 @router.get("/status")
@@ -57,4 +62,9 @@ def update_config(payload: AutoTradeConfigPatch) -> dict:
         auto_execute_buy_dry_run=payload.auto_execute_buy_dry_run,
         auto_execute_list_on_buy_success=payload.auto_execute_list_on_buy_success,
         auto_execute_list_dry_run=payload.auto_execute_list_dry_run,
+        auto_execute_list_discount_min_pct=payload.auto_execute_list_discount_min_pct,
+        auto_execute_list_discount_max_pct=payload.auto_execute_list_discount_max_pct,
+        auto_execute_sell_on_list_success=payload.auto_execute_sell_on_list_success,
+        auto_execute_sell_dry_run=payload.auto_execute_sell_dry_run,
+        auto_execute_sell_price_multiplier=payload.auto_execute_sell_price_multiplier,
     )

@@ -370,3 +370,121 @@ def test_health_route_exposes_integrity_and_guard_status(isolated_sqlite: Path) 
     assert "automation_guards" in payload
     assert "automation" in payload["automation_guards"]
     assert "execution_retry_replay" in payload["automation_guards"]
+
+
+def test_monitor_status_includes_virtual_goods_channels() -> None:
+    old_include = settings.monitor_include_virtual_goods_channels
+    old_keywords = settings.monitor_keywords
+    old_channels = settings.monitor_virtual_goods_channels
+    try:
+        object.__setattr__(settings, "monitor_include_virtual_goods_channels", True)
+        object.__setattr__(settings, "monitor_keywords", ("咸鱼之王功法",))
+        object.__setattr__(settings, "monitor_virtual_goods_channels", ("拼多多特价", "京东秒杀"))
+        status = monitor_service.status()
+        assert "拼多多特价" in status["keywords"]
+        assert "京东秒杀" in status["keywords"]
+        assert status["channel_keywords"] == ["拼多多特价", "京东秒杀"]
+    finally:
+        object.__setattr__(settings, "monitor_include_virtual_goods_channels", old_include)
+        object.__setattr__(settings, "monitor_keywords", old_keywords)
+        object.__setattr__(settings, "monitor_virtual_goods_channels", old_channels)
+
+
+def test_autotrade_can_auto_list_discount_and_auto_sell(
+    isolated_sqlite: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opportunity_id = _seed_pending_opportunity(index=4)
+    calls: dict[str, list[dict[str, object]]] = {"buy": [], "list": [], "sell": []}
+
+    def fake_buy(*, trade_id: int, dry_run: bool = True, force: bool = False, confirm_token: str | None = None):
+        calls["buy"].append({"trade_id": trade_id, "dry_run": dry_run})
+        return {"success": True}
+
+    def fake_list(
+        *,
+        trade_id: int,
+        dry_run: bool = True,
+        force: bool = False,
+        confirm_token: str | None = None,
+        listing_url: str = "",
+        note: str = "",
+        update_trade_state: bool = True,
+    ):
+        calls["list"].append({"trade_id": trade_id, "dry_run": dry_run, "note": note})
+        return {"success": True}
+
+    def fake_sell(
+        *,
+        trade_id: int,
+        dry_run: bool = True,
+        force: bool = False,
+        confirm_token: str | None = None,
+        sold_price: float | None = None,
+        note: str = "",
+        update_trade_state: bool = True,
+    ):
+        calls["sell"].append({"trade_id": trade_id, "dry_run": dry_run, "sold_price": sold_price, "note": note})
+        return {"success": True}
+
+    monkeypatch.setattr(execution_service, "execute_buy", fake_buy)
+    monkeypatch.setattr(execution_service, "execute_list", fake_list)
+    monkeypatch.setattr(execution_service, "execute_sell", fake_sell)
+    captured_discount_bounds: dict[str, float] = {}
+
+    def fake_uniform(a: float, b: float) -> float:
+        captured_discount_bounds["min"] = float(a)
+        captured_discount_bounds["max"] = float(b)
+        return 2.0
+
+    monkeypatch.setattr("app.services.autotrade.random.uniform", fake_uniform)
+
+    old_state = auto_trade_service.status()
+    auto_trade_service.update_config(
+        batch_size=1,
+        min_score=50,
+        min_roi=0.01,
+        require_risk_score=False,
+        auto_execute_buy_on_approve=True,
+        auto_execute_buy_dry_run=True,
+        auto_execute_list_on_buy_success=True,
+        auto_execute_list_dry_run=True,
+        auto_execute_list_discount_min_pct=1.0,
+        auto_execute_list_discount_max_pct=3.0,
+        auto_execute_sell_on_list_success=True,
+        auto_execute_sell_dry_run=True,
+        auto_execute_sell_price_multiplier=1.0,
+    )
+    try:
+        result = auto_trade_service.run_once(force=True, limit=1)
+    finally:
+        auto_trade_service.update_config(
+            batch_size=int(old_state["batch_size"]),
+            min_score=float(old_state["min_score"]),
+            min_roi=float(old_state["min_roi"]),
+            require_risk_score=bool(old_state["require_risk_score"]),
+            auto_execute_buy_on_approve=bool(old_state["auto_execute_buy_on_approve"]),
+            auto_execute_buy_dry_run=bool(old_state["auto_execute_buy_dry_run"]),
+            auto_execute_list_on_buy_success=bool(old_state["auto_execute_list_on_buy_success"]),
+            auto_execute_list_dry_run=bool(old_state["auto_execute_list_dry_run"]),
+            auto_execute_list_discount_min_pct=float(old_state.get("auto_execute_list_discount_min_pct", 1.0)),
+            auto_execute_list_discount_max_pct=float(old_state.get("auto_execute_list_discount_max_pct", 3.0)),
+            auto_execute_sell_on_list_success=bool(old_state.get("auto_execute_sell_on_list_success", False)),
+            auto_execute_sell_dry_run=bool(old_state.get("auto_execute_sell_dry_run", True)),
+            auto_execute_sell_price_multiplier=float(old_state.get("auto_execute_sell_price_multiplier", 1.0)),
+        )
+
+    assert result["approved"] == 1
+    assert result["buy_exec_succeeded"] == 1
+    assert result["list_exec_succeeded"] == 1
+    assert result["sell_exec_succeeded"] == 1
+    assert len(calls["buy"]) == 1
+    assert len(calls["list"]) == 1
+    assert len(calls["sell"]) == 1
+    assert captured_discount_bounds == {"min": 1.0, "max": 3.0}
+
+    trades = repo.list_trades(limit=10)
+    trade = next(row for row in trades if int(row["opportunity_id"]) == opportunity_id)
+    expected_discounted_price = round(180.0 * (1 - 0.02), 2)
+    assert float(trade["target_sell_price"]) == pytest.approx(expected_discounted_price, rel=0, abs=1e-6)
+    assert float(calls["sell"][0]["sold_price"]) == pytest.approx(expected_discounted_price, rel=0, abs=1e-6)
