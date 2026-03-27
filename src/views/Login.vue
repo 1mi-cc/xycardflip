@@ -29,6 +29,15 @@
           </div>
         </div>
 
+        <n-alert
+          v-if="setupStatus?.bootstrap_password_mode"
+          class="setup-alert"
+          type="warning"
+          :bordered="false"
+        >
+          First launch detected. Set a fixed local admin password before regular use.
+        </n-alert>
+
         <n-form ref="loginFormRef" label-placement="top" :model="loginForm" :rules="loginRules">
           <n-form-item label="用户名" path="username">
             <n-input placeholder="管理员或用户账号" v-model:value="loginForm.username"></n-input>
@@ -46,20 +55,106 @@
             <n-button secondary @click="router.push('/register')">注册普通用户</n-button>
             <n-button type="primary" :loading="authStore.isLoading" @click="handleLogin">登录</n-button>
           </div>
+          <div v-if="setupStatus?.bootstrap_password_mode" class="setup-actions">
+            <n-button tertiary type="warning" @click="showSetupModal = true">
+              First-run setup
+            </n-button>
+          </div>
           <p class="credentials-hint">
             默认管理员账号：<code>operator</code>，密码：<code>admin123456</code>
           </p>
         </n-form>
       </section>
     </div>
+
+    <n-modal
+      preset="card"
+      style="width: min(680px, 96vw)"
+      title="First-run setup"
+      v-model:show="showSetupModal"
+    >
+      <n-space vertical size="large">
+        <n-alert
+          v-if="setupStatus?.bootstrap_password_mode"
+          type="warning"
+          :bordered="false"
+        >
+          Bootstrap password mode is active. Set a fixed admin password now so you do not need to rely on the generated credential file.
+        </n-alert>
+
+        <n-alert
+          v-for="item in startupChecks"
+          :key="item.code"
+          :bordered="false"
+          :type="item.severity === 'critical' ? 'error' : item.severity === 'warning' ? 'warning' : 'info'"
+        >
+          {{ item.message }}
+        </n-alert>
+
+        <n-form label-placement="top" :model="setupForm">
+          <n-form-item label="Admin password">
+            <n-input
+              placeholder="At least 6 characters"
+              show-password-on="click"
+              type="password"
+              v-model:value="setupForm.ui_auth_password"
+            ></n-input>
+          </n-form-item>
+          <n-form-item label="Admin nickname">
+            <n-input v-model:value="setupForm.ui_auth_nickname"></n-input>
+          </n-form-item>
+          <n-form-item label="Gemini API key">
+            <n-input
+              placeholder="Optional"
+              show-password-on="click"
+              type="password"
+              v-model:value="setupForm.gemini_api_key"
+            ></n-input>
+          </n-form-item>
+          <n-form-item label="Gemini key source path">
+            <n-input
+              placeholder="Optional external gemini-balance directory"
+              v-model:value="setupForm.gemini_key_source_path"
+            ></n-input>
+          </n-form-item>
+          <n-form-item label="Enable auto-tune auto apply">
+            <n-switch v-model:value="setupForm.auto_tune_auto_apply_enabled"></n-switch>
+          </n-form-item>
+          <n-form-item label="Auto-tune cooldown (hours)">
+            <n-input-number
+              style="width: 100%"
+              v-model:value="setupForm.auto_tune_cooldown_hours"
+              :max="240"
+              :min="0"
+            ></n-input-number>
+          </n-form-item>
+          <n-form-item label="Closed batches required">
+            <n-input-number
+              style="width: 100%"
+              v-model:value="setupForm.auto_tune_min_closed_batches"
+              :max="10"
+              :min="1"
+            ></n-input-number>
+          </n-form-item>
+        </n-form>
+
+        <div class="setup-actions">
+          <n-button @click="showSetupModal = false">Close</n-button>
+          <n-button type="primary" :loading="setupLoading" @click="handleSetupSave">
+            Save setup
+          </n-button>
+        </div>
+      </n-space>
+    </n-modal>
   </div>
 </template>
 
 <script setup>
 import { useMessage } from "naive-ui";
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import systemSettingsApi from "@/api/systemSettings";
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
@@ -67,10 +162,25 @@ const route = useRoute();
 const message = useMessage();
 const authStore = useAuthStore();
 const loginFormRef = ref(null);
+const showSetupModal = ref(false);
+const setupLoading = ref(false);
+const setupStatus = ref(null);
 
 const loginForm = reactive({
   username: "",
   password: "",
+});
+
+const setupForm = reactive({
+  ui_auth_password: "",
+  ui_auth_nickname: "Local Admin",
+  gemini_api_key: "",
+  gemini_key_source_path: "",
+  auto_tune_auto_apply_enabled: false,
+  auto_tune_cooldown_hours: 24,
+  auto_tune_min_closed_batches: 2,
+  auto_tune_latest_min_sold_count: 5,
+  auto_tune_previous_min_sold_count: 3,
 });
 
 const loginRules = {
@@ -84,6 +194,60 @@ const loginRules = {
     message: "请输入密码",
     trigger: ["blur", "input"],
   },
+};
+
+const startupChecks = computed(() =>
+  Array.isArray(setupStatus.value?.startup_checks?.items)
+    ? setupStatus.value.startup_checks.items
+    : [],
+);
+
+const syncSetupForm = (status) => {
+  const values = status?.values || {};
+  setupForm.ui_auth_password = "";
+  setupForm.ui_auth_nickname = values.ui_auth_nickname || "Local Admin";
+  setupForm.gemini_api_key = "";
+  setupForm.gemini_key_source_path = values.gemini_key_source_path || "";
+  setupForm.auto_tune_auto_apply_enabled = Boolean(values.auto_tune_auto_apply_enabled);
+  setupForm.auto_tune_cooldown_hours = Number(values.auto_tune_cooldown_hours || 24);
+  setupForm.auto_tune_min_closed_batches = Number(values.auto_tune_min_closed_batches || 2);
+  setupForm.auto_tune_latest_min_sold_count = Number(values.auto_tune_latest_min_sold_count || 5);
+  setupForm.auto_tune_previous_min_sold_count = Number(values.auto_tune_previous_min_sold_count || 3);
+};
+
+const loadSetupStatus = async () => {
+  try {
+    const payload = await systemSettingsApi.getStatus();
+    setupStatus.value = payload;
+    syncSetupForm(payload);
+    if (payload?.bootstrap_password_mode)
+      showSetupModal.value = true;
+  } catch {
+    setupStatus.value = null;
+  }
+};
+
+const handleSetupSave = async () => {
+  if (setupForm.ui_auth_password && setupForm.ui_auth_password.length < 6) {
+    message.warning("Admin password must be at least 6 characters");
+    return;
+  }
+  try {
+    setupLoading.value = true;
+    const payload = await systemSettingsApi.apply({ ...setupForm });
+    setupStatus.value = payload?.status || setupStatus.value;
+    syncSetupForm(payload?.status || setupStatus.value);
+    if (setupStatus.value?.values?.ui_auth_username)
+      loginForm.username = setupStatus.value.values.ui_auth_username;
+    if (setupForm.ui_auth_password)
+      loginForm.password = setupForm.ui_auth_password;
+    message.success("First-run setup saved");
+    showSetupModal.value = false;
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : "Failed to save setup");
+  } finally {
+    setupLoading.value = false;
+  }
 };
 
 const handleLogin = async () => {
@@ -108,6 +272,8 @@ onMounted(async () => {
   await authStore.initAuth();
   if (authStore.isAuthenticated)
     router.replace(authStore.getDefaultHomeRoute());
+  else
+    await loadSetupStatus();
 });
 </script>
 
@@ -225,11 +391,22 @@ onMounted(async () => {
   }
 }
 
+.setup-alert {
+  margin-bottom: 16px;
+}
+
 .auth-actions {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   margin-top: 8px;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 @media (max-width: 900px) {

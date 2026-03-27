@@ -15,10 +15,19 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Swagger UI: `http://127.0.0.1:8000/docs`
+
+SQLite runtime defaults:
+
+```env
+SQLITE_JOURNAL_MODE=WAL
+SQLITE_SYNCHRONOUS=NORMAL
+SQLITE_BUSY_TIMEOUT_MS=5000
+DB_WRITE_BATCH_SIZE=50
+```
 
 ## 2. Core flow
 
@@ -41,12 +50,21 @@ Swagger UI: `http://127.0.0.1:8000/docs`
 17. `GET /execution/status` view execution adapter mode (`mock`/`webhook`).
 18. `POST /execution/buy/{trade_id}?dry_run=true|false&force=false|true` trigger buy execution adapter.
 19. `GET /execution/logs` inspect execution result logs.
-20. `POST /execution/retry-failed` replay latest failed executions once.
-21. `GET|POST /execution-retry/status|start|stop` manage scheduled failed-execution retry service.
-22. `POST /execution-retry/run-once` run one retry cycle with optional overrides.
-23. `GET|POST /automation/status|start|stop|run-once` orchestrate monitor + scan + autotrade + execution-retry.
-24. `GET|POST /supabase/status|start|stop|run-once|reset-cursors` sync local DB tables into Supabase.
-25. `GET /auth/user|/auth/userinfo|/user/profile` return frontend permission payload for menu filtering.
+20. `GET /execution/readiness` validate whether webhook live execution is actually ready.
+21. `POST /execution/retry-failed` replay latest failed executions once.
+22. `GET|POST /execution-retry/status|start|stop` manage scheduled failed-execution retry service.
+23. `POST /execution-retry/run-once` run one retry cycle with optional overrides.
+24. `POST /trades/forward-validation/batches` start a forward-validation sample batch.
+25. `GET|POST /trades/forward-validation/batches|{id}/close` inspect or close validation batches.
+26. `GET|POST /automation/status|start|stop|run-once` orchestrate monitor + scan + autotrade + execution-retry.
+27. `GET|POST /supabase/status|start|stop|run-once|reset-cursors` sync local DB tables into Supabase.
+28. `GET /auth/user|/auth/userinfo|/user/profile` return frontend permission payload for menu filtering.
+29. `GET /health` exposes a minimal public liveness snapshot.
+30. `GET /health/ready` provides readiness status for Uptime Kuma / external probes.
+31. `GET /autotrade/tuning-history|tuning-activity|tuning-daily-report|tuning-evaluation` inspect threshold audit trail, recent decisions, 24h report, and current auto-tune guard state.
+32. `POST /autotrade/tuning/apply` apply a manual threshold tune with persistence.
+33. `POST /autotrade/tuning-history/{id}/rollback` revert one recorded threshold tune.
+34. `GET /setup/status|audit|test-gemini` and `POST /setup/apply` support first-run setup flow.
 
 ## 3. Gemini setup
 
@@ -54,10 +72,14 @@ Set in `.env`:
 
 ```env
 GEMINI_API_KEY=your_key_here
+GEMINI_KEY_SOURCE_PATH=C:\path\to\gemini-balance
 GEMINI_MODEL=gemini-2.0-flash
 ```
 
-Without API key, the extractor automatically switches to rule-based mode.
+If `GEMINI_KEY_SOURCE_PATH` points to a `gemini-balance` directory or its `.env`,
+the backend reads `API_KEYS=[...]` from that file and reuses the same key pool for
+its own local round-robin Gemini calls. If neither local key nor external source
+is configured, the extractor automatically switches to rule-based mode.
 
 ## 4. Example payload
 
@@ -90,6 +112,7 @@ Without API key, the extractor automatically switches to rule-based mode.
 - Default status is `pending_review`; optional auto-approval exists via `/autotrade/*` (disabled by default).
 - No real exchange buy/sell execution API exists yet (mark-listed/mark-sold are still operation records).
 - Execution adapter is now available with `mock`/`webhook` provider and `dry_run` support.
+- `GET /execution/readiness` summarizes whether real webhook execution is live-ready or still missing config.
 - Execution API now includes `/execution/buy|list|sell/{trade_id}` and writes full logs to `execution_logs`.
 - Failed executions can be replayed via `/execution/retry-failed`.
 - Failed-execution replay now has a background loop via `/execution-retry/*`.
@@ -98,6 +121,26 @@ Without API key, the extractor automatically switches to rule-based mode.
 - Background services can auto-start on API boot via `AUTO_START_*`.
 - Auto-approval can optionally trigger buy execution via `AUTO_EXECUTE_BUY_ON_APPROVE`.
 - All approvals are traceable in `opportunities` and `trades`.
+- Forward validation batches let you enroll the next 30-100 approved trades automatically and review realized hit rate / holding days.
+- Auto-tune can optionally apply threshold changes after a forward-validation batch is closed, but only if guardrails pass.
+- Auto-tune decisions are written to both a tuning history table and an activity feed so you can audit why the system tuned, skipped, or blocked itself.
+
+### Auto-tune env
+
+```env
+AUTO_TUNE_AUTO_APPLY_ENABLED=false
+AUTO_TUNE_COOLDOWN_HOURS=24
+AUTO_TUNE_MIN_CLOSED_BATCHES=2
+AUTO_TUNE_LATEST_MIN_SOLD_COUNT=5
+AUTO_TUNE_PREVIOUS_MIN_SOLD_COUNT=3
+```
+
+Behavior:
+- `AUTO_TUNE_AUTO_APPLY_ENABLED=true` lets the backend auto-apply a threshold tune when you close a forward-validation batch.
+- `AUTO_TUNE_COOLDOWN_HOURS` prevents repeated retuning too frequently.
+- `AUTO_TUNE_MIN_CLOSED_BATCHES` requires enough closed validation batches before auto-apply is allowed.
+- `AUTO_TUNE_LATEST_MIN_SOLD_COUNT` and `AUTO_TUNE_PREVIOUS_MIN_SOLD_COUNT` enforce minimum sold-trade evidence on recent closed batches.
+- If a guardrail blocks auto-apply, the block reason is still recorded in the activity feed and appears in the 24h tuning report.
 
 ### Execution env
 
@@ -145,7 +188,7 @@ When `EXECUTION_WEBHOOK_SECRET` is set, webhook requests include:
 
 ```env
 UI_AUTH_USERNAME=operator
-UI_AUTH_PASSWORD=admin123456
+UI_AUTH_PASSWORD=
 UI_AUTH_NICKNAME=本地操作员
 UI_AUTH_DEFAULT_ROLE=admin
 UI_AUTH_SESSION_HOURS=72
@@ -158,6 +201,14 @@ UI_ROLE_PERMISSIONS_OPS=dashboard:view,cardflip:view,task:view,task:batch,messag
 UI_ROLE_PERMISSIONS_VIEWER=dashboard:view,cardflip:view,token:view,profile:view
 ```
 
+If `UI_AUTH_PASSWORD` is left empty on first boot, the backend creates a one-time bootstrap admin password at:
+
+```text
+<sqlite_dir>/bootstrap_admin_credentials.json
+```
+
+Existing seeded admin accounts are no longer force-reset on every startup.
+
 ## 6. Smoke test
 
 Run the end-to-end smoke script:
@@ -168,6 +219,15 @@ python scripts/smoke_test.py
 ```
 
 Expected output: `smoke_test_passed`
+
+Read-only database diagnostics:
+
+```bash
+cd backend
+python scripts/db_diagnostics.py
+```
+
+Public `/health` intentionally omits internal startup details, proxy runtime state, and private infrastructure URLs.
 
 ## 7. Market monitor loop script
 

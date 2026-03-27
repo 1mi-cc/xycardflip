@@ -154,6 +154,15 @@ const myRoutes = [
         },
       },
       {
+        path: "system-settings",
+        name: "SystemSettings",
+        component: () => import("@/views/SystemSettings.vue"),
+        meta: {
+          title: "绯荤粺璁剧疆",
+          permission: "system:settings",
+        },
+      },
+      {
         path: "daily-tasks",
         name: "DailyTasks",
         component: () => import("@/views/DailyTasks.vue"),

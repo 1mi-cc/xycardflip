@@ -25,5 +25,9 @@ After packaging, files are generated under:
 
 - Packaging uses PyInstaller in `backend/.venv_pack`.
 - The generated `.env` in release removes `SQLITE_PATH` so packaged app uses writable defaults.
+- The generated release `.env` leaves `UI_AUTH_PASSWORD` empty by default.
+- On first launch, if `UI_AUTH_PASSWORD` is still empty, the app writes a one-time bootstrap password to `data/bootstrap_admin_credentials.json`.
+- If you want the packaged app to auto-apply threshold tuning after forward-validation batches close, set `AUTO_TUNE_AUTO_APPLY_ENABLED=true` in the release `.env` and keep the cooldown / sample guard values explicit.
+- The packaged app now exposes tuning history, tuning activity feed, and a 24h auto-tune report inside the card-flip ops console, so operators can audit why thresholds changed or why auto-tune was blocked.
 - To disable browser auto-open, set `NO_AUTO_OPEN_BROWSER=1` before launching.
 

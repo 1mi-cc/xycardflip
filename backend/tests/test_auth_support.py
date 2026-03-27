@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth_utils import hash_password
 from app.config import settings
+from app.database import get_conn
+from app.database import get_seed_admin_bootstrap_path
 from app.database import init_db
 from app.main import create_app
 
@@ -21,7 +25,7 @@ def isolated_auth_sqlite(tmp_path: Path):
     object.__setattr__(settings, "sqlite_path", str(tmp_path / "auth_support.db"))
     object.__setattr__(settings, "ui_auth_username", "admin")
     object.__setattr__(settings, "ui_auth_password", "admin123456")
-    object.__setattr__(settings, "ui_auth_nickname", "系统管理员")
+    object.__setattr__(settings, "ui_auth_nickname", "System Admin")
     object.__setattr__(settings, "ui_auth_allow_registration", True)
     init_db()
 
@@ -54,7 +58,68 @@ def test_seed_admin_can_login_and_fetch_profile(isolated_auth_sqlite: Path) -> N
 
         me = client.get("/auth/user", headers=_bearer(payload["token"]))
         assert me.status_code == 200
-        assert me.json()["data"]["user"]["nickname"] == "系统管理员"
+        assert me.json()["data"]["user"]["nickname"] == "System Admin"
+
+
+def test_seed_admin_password_is_not_reset_on_reinit(isolated_auth_sqlite: Path) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE lower(username) = lower(?)",
+            (hash_password("changed-pass-123"), "admin"),
+        )
+
+    object.__setattr__(settings, "ui_auth_password", "rotated-by-config")
+    init_db()
+
+    with TestClient(create_app()) as client:
+        preserved = client.post(
+            "/auth/login",
+            json={"username": "admin", "password": "changed-pass-123"},
+        )
+        rotated = client.post(
+            "/auth/login",
+            json={"username": "admin", "password": "rotated-by-config"},
+        )
+
+    assert preserved.status_code == 200
+    assert rotated.status_code == 401
+
+
+def test_seed_admin_without_configured_password_uses_bootstrap_secret(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    old_username = settings.ui_auth_username
+    old_password = settings.ui_auth_password
+    old_nickname = settings.ui_auth_nickname
+
+    object.__setattr__(settings, "sqlite_path", str(tmp_path / "bootstrap_auth.db"))
+    object.__setattr__(settings, "ui_auth_username", "bootstrap_admin")
+    object.__setattr__(settings, "ui_auth_password", "")
+    object.__setattr__(settings, "ui_auth_nickname", "Bootstrap Admin")
+    init_db()
+
+    try:
+        bootstrap_path = get_seed_admin_bootstrap_path()
+        bootstrap_payload = json.loads(bootstrap_path.read_text(encoding="utf-8"))
+        bootstrap_password = str(bootstrap_payload["password"])
+
+        with TestClient(create_app()) as client:
+            weak_default = client.post(
+                "/auth/login",
+                json={"username": "bootstrap_admin", "password": "admin123456"},
+            )
+            bootstrap = client.post(
+                "/auth/login",
+                json={"username": "bootstrap_admin", "password": bootstrap_password},
+            )
+
+        assert weak_default.status_code == 401
+        assert bootstrap.status_code == 200
+        assert bootstrap_password != "admin123456"
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+        object.__setattr__(settings, "ui_auth_username", old_username)
+        object.__setattr__(settings, "ui_auth_password", old_password)
+        object.__setattr__(settings, "ui_auth_nickname", old_nickname)
 
 
 def test_user_ticket_flow_and_admin_management(isolated_auth_sqlite: Path) -> None:
@@ -65,7 +130,7 @@ def test_user_ticket_flow_and_admin_management(isolated_auth_sqlite: Path) -> No
                 "username": "farmer_user",
                 "email": "farmer@example.com",
                 "password": "secret123",
-                "nickname": "农户甲",
+                "nickname": "Farmer User",
             },
         )
         assert register.status_code == 200
@@ -81,10 +146,10 @@ def test_user_ticket_flow_and_admin_management(isolated_auth_sqlite: Path) -> No
             "/support/tickets",
             headers=_bearer(user_token),
             json={
-                "title": "模拟盘打不开",
+                "title": "Simulator panel does not open",
                 "category": "bug",
                 "priority": "high",
-                "description": "今天打开模拟盘一直转圈，想上报给管理员处理。",
+                "description": "The simulator panel keeps spinning and never finishes loading.",
             },
         )
         assert create_ticket.status_code == 200
@@ -120,7 +185,7 @@ def test_user_ticket_flow_and_admin_management(isolated_auth_sqlite: Path) -> No
         reply = client.post(
             f"/support/tickets/{ticket_id}/reply",
             headers=_bearer(admin_token),
-            json={"message": "已定位到前端缓存问题，请重启到最新版本。"},
+            json={"message": "Issue identified as stale frontend cache. Please restart on the latest build."},
         )
         assert reply.status_code == 200
         assert reply.json()["data"]["ticket"]["lastReplyBy"] == "admin"
@@ -129,7 +194,7 @@ def test_user_ticket_flow_and_admin_management(isolated_auth_sqlite: Path) -> No
         assert detail.status_code == 200
         messages = detail.json()["data"]["messages"]
         assert len(messages) == 2
-        assert messages[-1]["message"].startswith("已定位到前端缓存问题")
+        assert messages[-1]["message"].startswith("Issue identified as stale frontend cache")
 
         forbidden = client.patch(
             f"/support/tickets/{ticket_id}",

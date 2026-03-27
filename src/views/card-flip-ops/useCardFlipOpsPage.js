@@ -78,6 +78,13 @@ export function useCardFlipOpsPage() {
     return "admin";
   });
 
+  const operatorIdentity = computed(() => {
+    const info = authStore.userInfo || {};
+    return String(
+      info.nickname || info.username || currentRoleKey.value || "operator",
+    ).trim() || "operator";
+  });
+
   const isViewer = computed(() => currentRoleKey.value === "viewer");
   const canOperate = computed(() => !isViewer.value);
   const canMaintain = computed(() => currentRoleKey.value === "admin");
@@ -127,6 +134,10 @@ export function useCardFlipOpsPage() {
   const autotradeStatusLoading = ref(false);
   const autotradeActionLoading = ref("");
   const autotradeConfigLoading = ref(false);
+  const sellerControlActionLoading = ref("");
+  const sellerControlBatchActionLoading = ref("");
+  const sellerControlPresetActionLoading = ref("");
+  const sellerControlPresetHistoryLoading = ref(false);
   const executionConfigLoading = ref(false);
   const automationStatusLoading = ref(false);
   const automationActionLoading = ref("");
@@ -135,6 +146,12 @@ export function useCardFlipOpsPage() {
   const executionRetryServiceActionLoading = ref("");
   const executionRetryConfigLoading = ref(false);
   const simulationTrainingLoading = ref(false);
+  const strategyProfileLoading = ref(false);
+  const forwardValidationActionLoading = ref("");
+  const tuningHistoryLoading = ref(false);
+  const tuningHistoryActionLoading = ref("");
+  const tuningActivityLoading = ref(false);
+  const tuningDailyReportLoading = ref(false);
   const activeTab = ref("opportunities");
   const executionLogsInitialized = ref(false);
   const shardErrors = reactive({
@@ -171,6 +188,24 @@ export function useCardFlipOpsPage() {
   const automationScanLimit = ref(0);
   const automationAutotradeLimit = ref(0);
   const automationExecutionRetryLimit = ref(0);
+  const strategyProfile = ref("balanced");
+  const strategyThresholds = ref({
+    min_score: 0,
+    min_roi: 0,
+    max_risk_score: 0,
+    allow_blocked_review: true,
+    auto_reject_unqualified: false,
+  });
+  const autotradeTuningHistory = ref([]);
+  const autotradeTuningActivity = ref([]);
+  const autotradeTuningDailyReport = ref({
+    hours: 24,
+    activity_count: 0,
+    counts_by_type: {},
+    latest_activity: null,
+    top_blocked_reasons: [],
+    items: [],
+  });
   const defaultExecutionLogFilters = {
     trade_id: "",
     action: "all",
@@ -184,6 +219,11 @@ export function useCardFlipOpsPage() {
     { label: "平衡模式", value: "balanced" },
     { label: "快速出货", value: "fast_exit" },
     { label: "利润优先", value: "profit_max" },
+  ];
+  const strategyProfileOptions = [
+    { label: "Balanced", value: "balanced" },
+    { label: "Aggressive", value: "aggressive" },
+    { label: "Conservative", value: "conservative" },
   ];
   const executionActionOptions = [
     { label: "全部动作", value: "all" },
@@ -221,7 +261,38 @@ export function useCardFlipOpsPage() {
     auto_execute_buy_dry_run: true,
     auto_execute_list_on_buy_success: false,
     auto_execute_list_dry_run: true,
+    max_consecutive_losses: 3,
+    daily_loss_limit: 100,
+    loss_recovery_enabled: true,
+    loss_recovery_cooldown_hours: 12,
+    loss_recovery_state: {
+      enabled: true,
+      active: false,
+      event_id: null,
+      source: "",
+    },
+    source_position_controls: [],
+    seller_control_presets: [],
+    profit_guard: {
+      enabled: true,
+      blocked: false,
+      reasons: [],
+      max_consecutive_losses: 3,
+      daily_loss_limit: 100,
+      current_consecutive_losses: 0,
+      current_loss_total: 0,
+      today_realized_net_profit: 0,
+      today_sold_count: 0,
+      last_7d_realized_net_profit: 0,
+      best_source_7d: null,
+      weakest_source_7d: null,
+    },
     last_run_at: "",
+  });
+  const sellerControlPresetHistory = ref({
+    preset: null,
+    items: [],
+    limit: 20,
   });
   const executionStatus = ref({
     provider: "mock",
@@ -249,6 +320,17 @@ export function useCardFlipOpsPage() {
   });
   const healthStatus = ref({
     status: "unknown",
+    gemini_runtime: {
+      enabled: false,
+      source_type: "none",
+      key_count: 0,
+      local_key_count: 0,
+      external_key_count: 0,
+      external_source_configured: false,
+      external_source_found: false,
+      resolved_key_source_path: "",
+      rate_limited_key_count: 0,
+    },
     data_integrity: {
       ok: true,
       message: "",
@@ -291,6 +373,75 @@ export function useCardFlipOpsPage() {
     active_trades_count: 0,
     sold_count: 0,
     gross_profit: 0,
+    realized_net_profit: 0,
+    profit_hit_rate: 0,
+    avg_holding_days: 0,
+    median_holding_days: 0,
+    avg_realized_roi: 0,
+    total_trade_count: 0,
+    profitable_sold_count: 0,
+    forward_validation: {
+      active_batch: null,
+      recent_batches: [],
+    },
+    execution_readiness: {
+      provider: "mock",
+      live_ready: false,
+      missing: [],
+    },
+    profit_cockpit: {
+      today: {
+        sold_count: 0,
+        realized_gross_profit: 0,
+        realized_net_profit: 0,
+        profitable_sold_count: 0,
+        profit_hit_rate: 0,
+        avg_realized_roi: 0,
+      },
+      last_7d: {
+        sold_count: 0,
+        realized_gross_profit: 0,
+        realized_net_profit: 0,
+        profitable_sold_count: 0,
+        profit_hit_rate: 0,
+        avg_realized_roi: 0,
+      },
+      inventory: {
+        active_trade_count: 0,
+        listed_trade_count: 0,
+        approved_trade_count: 0,
+        deployed_capital: 0,
+        target_exit_value: 0,
+        expected_exit_spread: 0,
+      },
+      best_source_7d: null,
+      weakest_source_7d: null,
+      source_leaderboard_7d: [],
+      best_seller_7d: null,
+      weakest_seller_7d: null,
+      seller_leaderboard_7d: [],
+      best_seller_all_time: null,
+      seller_attribution_all_time: [],
+      seller_controls: {
+        active_freeze_count: 0,
+        active_observe_count: 0,
+        items: [],
+        recent_events: [],
+        daily_report: {
+          event_count: 0,
+          counts_by_type: {},
+          latest_event: null,
+          hottest_sellers: [],
+          items: [],
+        },
+      },
+      loss_streak: {
+        current_consecutive_losses: 0,
+        current_loss_total: 0,
+        latest_sold_at: "",
+        latest_source: "",
+      },
+    },
   });
 
   const approveModalVisible = ref(false);
@@ -320,6 +471,13 @@ export function useCardFlipOpsPage() {
   const batchPricingModalVisible = ref(false);
   const batchPricingResult = ref(null);
   const pricingPreviewMap = ref({});
+  const forwardValidationModalVisible = ref(false);
+  const forwardValidationForm = ref({
+    name: "",
+    target_sample_size: 30,
+    note: "",
+    auto_enroll: true,
+  });
   const listingModalVisible = ref(false);
   const listingPayload = ref(null);
   const listingLoading = ref(false);
@@ -447,6 +605,342 @@ export function useCardFlipOpsPage() {
     }
     return "";
   });
+  const startupCheckAlert = computed(() => {
+    const checks = healthStatus.value?.startup_checks || {};
+    const items = Array.isArray(checks.items) ? checks.items : [];
+    if (!items.length)
+      return "";
+    const prioritized = ["critical", "warning", "info"];
+    const sorted = [...items].sort(
+      (left, right) =>
+        prioritized.indexOf(String(left?.severity || "info"))
+        - prioritized.indexOf(String(right?.severity || "info")),
+    );
+    const first = sorted[0];
+    const remaining = sorted.length - 1;
+    return remaining > 0
+      ? `${first.message} (+${remaining} more checks)`
+      : String(first.message || "");
+  });
+  const startupCheckAlertType = computed(() => {
+    const status = String(healthStatus.value?.startup_checks?.status || "ok");
+    if (status === "critical")
+      return "error";
+    if (status === "warning")
+      return "warning";
+    return "info";
+  });
+  const geminiRuntime = computed(() => healthStatus.value?.gemini_runtime || {});
+  const geminiAlert = computed(() => {
+    const runtime = geminiRuntime.value;
+    if (!runtime)
+      return "";
+    if (runtime.external_source_configured && !runtime.external_source_found) {
+      return "Gemini pool path is configured but the external key source is missing.";
+    }
+    if (!runtime.enabled) {
+      return "Gemini AI is unavailable. Feature extraction will fall back to non-AI logic.";
+    }
+    const keyCount = Number(runtime.key_count || 0);
+    const rateLimitedCount = Number(runtime.rate_limited_key_count || 0);
+    if (keyCount > 0 && rateLimitedCount >= keyCount) {
+      return "All Gemini keys are temporarily rate-limited. AI throughput is degraded until cooldown clears.";
+    }
+    if (runtime.source_type === "local_env" && keyCount > 0) {
+      return "Gemini is running on local fallback keys, not the external pool.";
+    }
+    return "";
+  });
+  const geminiAlertType = computed(() => {
+    const runtime = geminiRuntime.value;
+    if (runtime.external_source_configured && !runtime.external_source_found)
+      return "error";
+    if (!runtime.enabled)
+      return "warning";
+    const keyCount = Number(runtime.key_count || 0);
+    const rateLimitedCount = Number(runtime.rate_limited_key_count || 0);
+    if (keyCount > 0 && rateLimitedCount >= keyCount)
+      return "warning";
+    return "info";
+  });
+  const geminiStatusText = computed(() => {
+    const runtime = geminiRuntime.value;
+    const keyCount = Number(runtime.key_count || 0);
+    const rateLimitedCount = Number(runtime.rate_limited_key_count || 0);
+    if (runtime.external_source_configured && !runtime.external_source_found)
+      return "Pool missing";
+    if (!runtime.enabled)
+      return "Unavailable";
+    if (keyCount > 0 && rateLimitedCount >= keyCount)
+      return "All limited";
+    if (runtime.source_type === "external_pool")
+      return `${keyCount} pool keys`;
+    if (runtime.source_type === "mixed")
+      return `${keyCount} mixed keys`;
+    if (runtime.source_type === "local_env")
+      return `${keyCount} local keys`;
+    return `${keyCount} keys`;
+  });
+  const geminiStatusVariant = computed(() => {
+    const runtime = geminiRuntime.value;
+    const keyCount = Number(runtime.key_count || 0);
+    const rateLimitedCount = Number(runtime.rate_limited_key_count || 0);
+    if (runtime.external_source_configured && !runtime.external_source_found)
+      return "warning";
+    if (!runtime.enabled)
+      return "warning";
+    if (keyCount > 0 && rateLimitedCount >= keyCount)
+      return "warning";
+    return "profit";
+  });
+  const profitProtectionAlert = computed(() => {
+    const guard = autotradeStatus.value?.profit_guard || {};
+    if (!guard.enabled || !guard.blocked)
+      return "";
+    const reasons = Array.isArray(guard.reasons) ? guard.reasons.filter(Boolean) : [];
+    return reasons.length
+      ? `Loss protection blocked AutoTrade: ${reasons.slice(0, 2).join(" | ")}`
+      : "Loss protection blocked AutoTrade.";
+  });
+  const profitProtectionAlertType = computed(() => {
+    const guard = autotradeStatus.value?.profit_guard || {};
+    return guard.blocked ? "error" : "warning";
+  });
+  const profitProtectionStatusText = computed(() => {
+    const recoveryState = autotradeStatus.value?.loss_recovery_state || {};
+    const guard = autotradeStatus.value?.profit_guard || {};
+    if (!guard.enabled)
+      return "Disabled";
+    if (guard.blocked)
+      return "Blocked";
+    if (recoveryState.active)
+      return "Recovery";
+    return "Armed";
+  });
+  const tuningBroadcast = computed(() => {
+    const latest = autotradeTuningDailyReport.value?.latest_activity;
+    if (!latest)
+      return null;
+    const decisionType = String(latest.decision_type || "").trim();
+    const summary = String(latest.summary || "").trim();
+    const createdAt = String(latest.created_at || "").trim();
+    const details = latest.details || {};
+
+    const type = ({
+      auto_tune_applied: "success",
+      loss_recovery_tighten: "warning",
+      loss_recovery_release: "success",
+      tuning_applied: "success",
+      tuning_rollback: "warning",
+      auto_tune_blocked: "warning",
+      auto_tune_disabled: "info",
+    })[decisionType] || "info";
+
+    const title = ({
+      auto_tune_applied: "Auto-tune applied",
+      loss_recovery_tighten: "Loss recovery tighten",
+      loss_recovery_release: "Loss recovery released",
+      tuning_applied: "Threshold tune applied",
+      tuning_rollback: "Threshold tune rolled back",
+      auto_tune_blocked: "Auto-tune blocked",
+      auto_tune_disabled: "Auto-tune skipped",
+    })[decisionType] || "Tuning update";
+
+    const reasonText = Array.isArray(details.guard_reasons) && details.guard_reasons.length
+      ? details.guard_reasons.slice(0, 2).join(" | ")
+      : "";
+
+    return {
+      type,
+      title,
+      content: reasonText
+        ? `${summary}${summary ? " | " : ""}${reasonText}`
+        : summary || "Latest tuning activity recorded",
+      timestamp: createdAt,
+      decisionType,
+    };
+  });
+  const sellerPresetRecommendationDismissedSignature = ref("");
+  const sellerPresetRecommendationDismissedAt = ref("");
+  const sellerPresetRecommendationStorageKey = computed(
+    () => `cardflip:seller-preset-recommendation:dismissed:${operatorIdentity.value}`,
+  );
+  const resolveSellerPresetRecommendationItems = (basePreset, sourceFilter = "") => {
+    let items = Array.isArray(metrics.value?.profit_cockpit?.seller_attribution_all_time)
+      ? metrics.value.profit_cockpit.seller_attribution_all_time.slice(0, 6)
+      : [];
+    if (basePreset === "manual") {
+      items = items.filter((item) => Boolean(item?.current_control?.metadata?.manual_actor));
+    } else if (basePreset === "losing") {
+      items = items.filter((item) =>
+        Number(item?.realized_net_profit || 0) <= 0
+        || Number(item?.avg_realized_roi || 0) < 0,
+      );
+    } else if (basePreset === "observe") {
+      items = items.filter((item) =>
+        String(item?.current_control?.state || item?.seller_lane || "") === "observe",
+      );
+    } else if (basePreset === "frozen") {
+      items = items.filter((item) =>
+        String(item?.current_control?.state || "") === "frozen",
+      );
+    } else if (basePreset === "source") {
+      items = items.filter((item) => String(item?.source || "") === String(sourceFilter || ""));
+    } else if (basePreset === "clear") {
+      items = [];
+    }
+    return items;
+  };
+  const isSellerPresetRecommendationActionable = (preset) => {
+    const stats = preset?.recent_stats || {};
+    const runCount = Number(stats.run_count || 0);
+    const score = Number(preset?.effectiveness_score || 0);
+    const currentHits = resolveSellerPresetRecommendationItems(
+      preset?.base_preset,
+      preset?.source_filter,
+    ).length;
+    return runCount >= 2 && score >= 0.45 && currentHits > 0;
+  };
+  const sellerPresetRecommendation = computed(() => {
+    const presets = Array.isArray(autotradeStatus.value?.seller_control_presets)
+      ? [...autotradeStatus.value.seller_control_presets]
+      : [];
+    presets.sort((left, right) => {
+      const leftRank = Number(left?.effectiveness_rank || 0);
+      const rightRank = Number(right?.effectiveness_rank || 0);
+      if (leftRank > 0 && rightRank > 0 && leftRank !== rightRank)
+        return leftRank - rightRank;
+      if (leftRank > 0 && rightRank <= 0)
+        return -1;
+      if (leftRank <= 0 && rightRank > 0)
+        return 1;
+      return Number(right?.effectiveness_score || 0) - Number(left?.effectiveness_score || 0);
+    });
+    const preset = presets.find((item) => isSellerPresetRecommendationActionable(item));
+    if (!preset)
+      return null;
+    const matchedItems = resolveSellerPresetRecommendationItems(
+      preset.base_preset,
+      preset.source_filter,
+    ).map((item) => ({
+      source: item.source,
+      seller_id: item.seller_id,
+    }));
+    const stats = preset.recent_stats || {};
+    return {
+      ...preset,
+      matched_items_now: matchedItems,
+      summary: `Recommended preset ${preset.name} · #${Number(preset.effectiveness_rank || 0)} · score ${Number(preset.effectiveness_score || 0).toFixed(2)}`,
+      reason_text: `${matchedItems.length} sellers match now · recent avg ${Number(stats.avg_processed_count || 0).toFixed(1)} processed / ${Number(stats.avg_matched_count || 0).toFixed(1)} matched at ${toPercent(stats.avg_processed_rate || 0)} over ${Number(stats.run_count || 0)} runs`,
+    };
+  });
+  const sellerPresetRecommendationSignature = computed(() => {
+    const recommendation = sellerPresetRecommendation.value;
+    if (!recommendation)
+      return "";
+    return [
+      recommendation.id,
+      Number(recommendation.effectiveness_score || 0).toFixed(4),
+      recommendation.current_match_count,
+      recommendation.last_applied_at || "",
+    ].join(":");
+  });
+  const sellerPresetRecommendationVisible = computed(() => {
+    const signature = sellerPresetRecommendationSignature.value;
+    return Boolean(signature) && signature !== sellerPresetRecommendationDismissedSignature.value;
+  });
+  const sellerPresetRecommendationDismissed = computed(() =>
+    Boolean(
+      sellerPresetRecommendation.value
+      && sellerPresetRecommendationSignature.value
+      && sellerPresetRecommendationSignature.value === sellerPresetRecommendationDismissedSignature.value,
+    ),
+  );
+  const sellerPresetRecommendationLoading = computed(() =>
+    Boolean(
+      sellerPresetRecommendation.value
+      && sellerControlBatchActionLoading.value === sellerPresetRecommendation.value.action,
+    ),
+  );
+  const formatSellerPresetRecommendationDismissedAt = (value) => {
+    if (!value)
+      return "";
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return String(value);
+    }
+  };
+  const sellerPresetRecommendationDismissedText = computed(() => {
+    if (!sellerPresetRecommendationDismissed.value || !sellerPresetRecommendation.value)
+      return "";
+    const dismissedAt = formatSellerPresetRecommendationDismissedAt(
+      sellerPresetRecommendationDismissedAt.value,
+    );
+    const label = sellerPresetRecommendation.value?.name
+      ? `${sellerPresetRecommendation.value.name} hidden`
+      : "Recommendation hidden";
+    return dismissedAt
+      ? `${label} since ${dismissedAt}. It will return when rank, score, hits, or last run changes.`
+      : `${label} until rank, score, hits, or last run changes.`;
+  });
+  const parseSellerPresetRecommendationDismissal = (rawValue) => {
+    if (!rawValue)
+      return { signature: "", dismissedAt: "" };
+    try {
+      const parsed = JSON.parse(rawValue);
+      if (parsed && typeof parsed === "object") {
+        return {
+          signature: String(parsed.signature || ""),
+          dismissedAt: String(parsed.dismissed_at || parsed.dismissedAt || ""),
+        };
+      }
+    } catch {}
+    return {
+      signature: String(rawValue || ""),
+      dismissedAt: "",
+    };
+  };
+  const loadSellerPresetRecommendationDismissal = () => {
+    if (typeof window === "undefined")
+      return;
+    try {
+      const stored = parseSellerPresetRecommendationDismissal(
+        window.localStorage.getItem(sellerPresetRecommendationStorageKey.value) || "",
+      );
+      sellerPresetRecommendationDismissedSignature.value = stored.signature;
+      sellerPresetRecommendationDismissedAt.value = stored.dismissedAt;
+    } catch {
+      sellerPresetRecommendationDismissedSignature.value = "";
+      sellerPresetRecommendationDismissedAt.value = "";
+    }
+  };
+  const dismissSellerPresetRecommendation = () => {
+    const signature = sellerPresetRecommendationSignature.value;
+    const dismissedAt = new Date().toISOString();
+    sellerPresetRecommendationDismissedSignature.value = signature;
+    sellerPresetRecommendationDismissedAt.value = dismissedAt;
+    if (typeof window === "undefined")
+      return;
+    try {
+      window.localStorage.setItem(
+        sellerPresetRecommendationStorageKey.value,
+        JSON.stringify({
+          signature,
+          dismissed_at: dismissedAt,
+        }),
+      );
+    } catch {}
+  };
+  const restoreSellerPresetRecommendation = () => {
+    sellerPresetRecommendationDismissedSignature.value = "";
+    sellerPresetRecommendationDismissedAt.value = "";
+    if (typeof window === "undefined")
+      return;
+    try {
+      window.localStorage.removeItem(sellerPresetRecommendationStorageKey.value);
+    } catch {}
+  };
   const dataIntegrityAlert = computed(() => {
     const integrity = healthStatus.value?.data_integrity || {};
     if (integrity.ok)
@@ -509,8 +1003,10 @@ export function useCardFlipOpsPage() {
       autotradeStatus.value = status || autotradeStatus.value;
       if (successText)
         message.success(successText);
+      return status;
     } catch (error) {
       showActionError("更新 AutoTrade 参数失败", error);
+      return null;
     } finally {
       autotradeConfigLoading.value = false;
     }
@@ -535,6 +1031,22 @@ export function useCardFlipOpsPage() {
   const toggleAutotradeFlag = async (key) => {
     await updateAutotradeConfig({
       [key]: !autotradeStatus.value?.[key],
+    });
+  };
+
+  const toggleAutoTuneAutoApply = async () => {
+    await updateAutotradeConfig({
+      tuning_auto_apply_enabled: !autotradeStatus.value?.tuning_auto_apply_enabled,
+    });
+  };
+
+  const adjustAutoTuneCooldown = async (delta) => {
+    const current = Number(autotradeStatus.value?.tuning_cooldown_hours ?? 0);
+    const next = clamp(Number((current + delta).toFixed(0)), 0, 24 * 365);
+    if (next === current)
+      return;
+    await updateAutotradeConfig({
+      tuning_cooldown_hours: next,
     });
   };
 
@@ -684,6 +1196,247 @@ export function useCardFlipOpsPage() {
     return params;
   };
 
+  const strategyProfileLabelMap = {
+    aggressive: "Aggressive",
+    balanced: "Balanced",
+    conservative: "Conservative",
+  };
+
+  const buildForwardValidationBatchName = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const profileLabel = strategyProfileLabelMap[strategyProfile.value] || "Balanced";
+    return `${profileLabel} validation ${stamp}`;
+  };
+
+  const resetForwardValidationForm = () => {
+    forwardValidationForm.value = {
+      name: buildForwardValidationBatchName(),
+      target_sample_size: 30,
+      note: `profile=${strategyProfile.value}`,
+      auto_enroll: true,
+    };
+  };
+
+  const getValidationTuneSource = () => {
+    const forwardValidation = metrics.value?.forward_validation || {};
+    const recentBatches = Array.isArray(forwardValidation.recent_batches)
+      ? forwardValidation.recent_batches
+      : [];
+    return recentBatches.find((batch) => batch?.status === "closed")
+      || forwardValidation.active_batch
+      || null;
+  };
+
+  const roundTuneFloat = (value, digits = 4) =>
+    Number(Number(value || 0).toFixed(digits));
+
+  const buildValidationTuneProposal = (source, currentConfig) => {
+    if (!source)
+      return null;
+
+    const soldCount = Number(source.sold_count || 0);
+    const hitRate = Number(source.profit_hit_rate || 0);
+    const avgRoi = Number(source.avg_realized_roi || 0);
+    const holdingDays = Number(source.avg_holding_days || 0);
+    const recentNetProfit = Number(source.realized_net_profit || 0);
+    const current = { ...currentConfig };
+    const next = { ...currentConfig };
+    const reasons = [
+      `Source ${source.name || `batch #${source.id}`}`,
+      `Sold ${soldCount}`,
+      `Hit ${toPercent(hitRate)}`,
+      `ROI ${toPercent(avgRoi)}`,
+      `Hold ${Number(holdingDays || 0).toFixed(1)}d`,
+    ];
+
+    let title = "Hold current thresholds";
+    let summary = "Validation does not justify threshold changes yet.";
+    let tagType = "info";
+    let direction = "hold";
+
+    if (soldCount < 3) {
+      return {
+        title: "Need more sold samples",
+        summary: "Wait until this validation set has at least 3 sold trades before micro-tuning thresholds.",
+        tagType,
+        direction,
+        reasons,
+        shouldApply: false,
+        current,
+        next,
+        delta: {
+          min_score: 0,
+          min_roi: 0,
+          max_risk_score: 0,
+        },
+      };
+    }
+
+    if (recentNetProfit < 0 || hitRate < 0.4 || avgRoi < 0) {
+      next.min_score = clamp(current.min_score + 4, 0, 100);
+      next.min_roi = roundTuneFloat(clamp(current.min_roi + 0.02, 0, 3));
+      next.max_risk_score = clamp(current.max_risk_score - 5, 0, 100);
+      title = "Tighten entry quality";
+      summary = "Validation is underperforming. Raise score/ROI gates and reduce tolerated risk.";
+      tagType = "warning";
+      direction = "tighten";
+    } else if (hitRate >= 0.65 && avgRoi >= 0.12 && holdingDays > 0 && holdingDays <= 5) {
+      next.min_score = clamp(current.min_score - 4, 0, 100);
+      next.min_roi = roundTuneFloat(clamp(current.min_roi - 0.015, 0, 3));
+      next.max_risk_score = clamp(current.max_risk_score + 4, 0, 100);
+      title = "Widen the funnel";
+      summary = "This batch is clearing quickly with healthy ROI. You can admit more candidates.";
+      tagType = "success";
+      direction = "widen";
+    } else if (holdingDays >= 10 && avgRoi < 0.08) {
+      next.min_score = clamp(current.min_score + 2, 0, 100);
+      next.min_roi = roundTuneFloat(clamp(current.min_roi + 0.01, 0, 3));
+      next.max_risk_score = clamp(current.max_risk_score - 3, 0, 100);
+      title = "Protect capital turnover";
+      summary = "Holding time is too long for the realized ROI. Slightly tighten the entry gate.";
+      tagType = "warning";
+      direction = "tighten";
+    } else if (hitRate >= 0.55 && avgRoi >= 0.08 && holdingDays > 0 && holdingDays <= 7) {
+      next.min_score = clamp(current.min_score - 2, 0, 100);
+      next.min_roi = roundTuneFloat(clamp(current.min_roi - 0.005, 0, 3));
+      next.max_risk_score = clamp(current.max_risk_score + 2, 0, 100);
+      title = "Small aggressive nudge";
+      summary = "Validation is healthy. A modest widening should increase throughput without changing regime.";
+      tagType = "success";
+      direction = "widen";
+    }
+
+    const delta = {
+      min_score: roundTuneFloat(next.min_score - current.min_score, 0),
+      min_roi: roundTuneFloat(next.min_roi - current.min_roi, 4),
+      max_risk_score: roundTuneFloat(next.max_risk_score - current.max_risk_score, 0),
+    };
+
+    const shouldApply = Object.values(delta).some((value) => Math.abs(Number(value || 0)) > 0);
+
+    return {
+      title,
+      summary,
+      tagType,
+      direction,
+      reasons,
+      sourceName: source.name || `batch #${source.id}`,
+      sourceId: source.id || null,
+      shouldApply,
+      current,
+      next,
+      delta,
+    };
+  };
+
+  const validationCurrentConfig = computed(() => ({
+    min_score: Number(autotradeStatus.value?.min_score ?? 0),
+    min_roi: Number(autotradeStatus.value?.min_roi ?? 0),
+    max_risk_score: Number(autotradeStatus.value?.max_risk_score ?? 0),
+  }));
+
+  const validationAutoTuneProposal = computed(() => {
+    const source = getValidationTuneSource();
+    if (!source)
+      return null;
+    return buildValidationTuneProposal(source, validationCurrentConfig.value);
+  });
+
+  const validationAutoTuneGuard = computed(() => {
+    const proposal = validationAutoTuneProposal.value;
+    if (!proposal) {
+      return {
+        ready: false,
+        reasons: ["No validation batch available"],
+      };
+    }
+
+    const forwardValidation = metrics.value?.forward_validation || {};
+    const recentBatches = Array.isArray(forwardValidation.recent_batches)
+      ? forwardValidation.recent_batches
+      : [];
+    const closedBatchRequirement = Math.max(
+      1,
+      Number(autotradeStatus.value?.tuning_min_closed_batches || 2),
+    );
+    const latestSoldRequirement = Math.max(
+      1,
+      Number(autotradeStatus.value?.tuning_latest_min_sold_count || 5),
+    );
+    const previousSoldRequirement = Math.max(
+      1,
+      Number(autotradeStatus.value?.tuning_previous_min_sold_count || 3),
+    );
+    const cooldownHours = Math.max(
+      0,
+      Number(autotradeStatus.value?.tuning_cooldown_hours || 0),
+    );
+    const closedBatches = recentBatches
+      .filter((batch) => batch?.status === "closed")
+      .slice(0, closedBatchRequirement);
+    const reasons = [];
+
+    if (!proposal.shouldApply)
+      reasons.push("Current batch does not justify a threshold change");
+
+    const latestSoldCount = Number(closedBatches[0]?.sold_count || 0);
+    if (latestSoldCount < latestSoldRequirement) {
+      reasons.push(
+        `Latest closed batch needs at least ${latestSoldRequirement} sold trades`,
+      );
+    }
+
+    if (closedBatches.length < closedBatchRequirement) {
+      reasons.push(
+        `Need ${closedBatchRequirement} closed validation batches before applying auto-tune`,
+      );
+    } else {
+      const previousSoldCount = Number(closedBatches[1]?.sold_count || 0);
+      if (closedBatchRequirement >= 2 && previousSoldCount < previousSoldRequirement) {
+        reasons.push(
+          `Previous closed batch needs at least ${previousSoldRequirement} sold trades`,
+        );
+      }
+
+      const latestSignal = buildValidationTuneProposal(
+        closedBatches[0],
+        validationCurrentConfig.value,
+      );
+      const previousSignal = buildValidationTuneProposal(
+        closedBatches[1],
+        validationCurrentConfig.value,
+      );
+
+      if (
+        latestSignal
+        && previousSignal
+        && latestSignal.direction !== previousSignal.direction
+      ) {
+        reasons.push(
+          `Last ${Math.min(2, closedBatchRequirement)} closed batches disagree (${latestSignal.direction} vs ${previousSignal.direction})`,
+        );
+      }
+    }
+
+    const latestTuningEvent = autotradeTuningHistory.value[0];
+    if (latestTuningEvent?.created_at && cooldownHours > 0) {
+      const createdAt = new Date(latestTuningEvent.created_at);
+      if (!Number.isNaN(createdAt.getTime())) {
+        const elapsedHours = (Date.now() - createdAt.getTime()) / 3600000;
+        if (elapsedHours < cooldownHours) {
+          reasons.push(
+            `Cooldown active for another ${Math.max(0, cooldownHours - elapsedHours).toFixed(1)}h`,
+          );
+        }
+      }
+    }
+
+    return {
+      ready: reasons.length === 0,
+      reasons: reasons.length ? reasons : ["Guardrails passed"],
+    };
+  });
+
   const showActionError = (prefix, error) => {
     const text = getErrorMessage(error);
     if (isBusyError(error)) {
@@ -744,6 +1497,73 @@ export function useCardFlipOpsPage() {
       if (!silent && isLatestRequest("overview", requestId)) {
         overviewLoading.value = false;
       }
+    }
+  };
+  const loadStrategyProfile = async (silent = false) => {
+    if (!silent)
+      strategyProfileLoading.value = true;
+    try {
+      const status = await cardFlipApi.getStrategyProfile();
+      strategyProfile.value = status?.strategy_profile || strategyProfile.value;
+      strategyThresholds.value
+        = status?.strategy_thresholds || strategyThresholds.value;
+      return status;
+    } catch (error) {
+      if (!silent)
+        showActionError("Load strategy preset failed", error);
+      return null;
+    } finally {
+      if (!silent)
+        strategyProfileLoading.value = false;
+    }
+  };
+  const loadAutotradeTuningHistory = async (silent = false) => {
+    if (!silent)
+      tuningHistoryLoading.value = true;
+    try {
+      const result = await cardFlipApi.listAutotradeTuningHistory(30);
+      autotradeTuningHistory.value = Array.isArray(result?.items) ? result.items : [];
+      return result;
+    } catch (error) {
+      if (!silent)
+        showActionError("Load tuning history failed", error);
+      return null;
+    } finally {
+      if (!silent)
+        tuningHistoryLoading.value = false;
+    }
+  };
+  const loadAutotradeTuningActivity = async (silent = false) => {
+    if (!silent)
+      tuningActivityLoading.value = true;
+    try {
+      const result = await cardFlipApi.listAutotradeTuningActivity(50);
+      autotradeTuningActivity.value = Array.isArray(result?.items) ? result.items : [];
+      return result;
+    } catch (error) {
+      if (!silent)
+        showActionError("Load tuning activity failed", error);
+      return null;
+    } finally {
+      if (!silent)
+        tuningActivityLoading.value = false;
+    }
+  };
+  const loadAutotradeTuningDailyReport = async (silent = false) => {
+    if (!silent)
+      tuningDailyReportLoading.value = true;
+    try {
+      const result = await cardFlipApi.getAutotradeTuningDailyReport(24);
+      autotradeTuningDailyReport.value
+        = result || autotradeTuningDailyReport.value;
+      return result;
+    } catch (error) {
+      if (!silent)
+        showActionError("Load tuning daily report failed", error);
+      return null;
+    } finally {
+      if (!silent)
+        tuningDailyReportLoading.value = false;
     }
   };
   const loadAutomationStatus = async (silent = false) => {
@@ -1254,12 +2074,188 @@ export function useCardFlipOpsPage() {
     }
   };
 
+  const applyStrategyProfile = async (profile) => {
+    if (!profile || strategyProfileLoading.value)
+      return;
+    strategyProfileLoading.value = true;
+    try {
+      const status = await cardFlipApi.setStrategyProfile(profile);
+      strategyProfile.value = status?.strategy_profile || profile;
+      strategyThresholds.value
+        = status?.strategy_thresholds || strategyThresholds.value;
+      const thresholds = status?.strategy_thresholds || {};
+      const autotradePresetUpdated = await updateAutotradeConfig({
+        min_score: Number(thresholds.min_score ?? autotradeStatus.value?.min_score ?? 0),
+        min_roi: Number(thresholds.min_roi ?? autotradeStatus.value?.min_roi ?? 0),
+        max_risk_score: Number(
+          thresholds.max_risk_score ?? autotradeStatus.value?.max_risk_score ?? 0,
+        ),
+      });
+      if (!autotradePresetUpdated)
+        return;
+      message.success(
+        `Preset applied: ${(strategyProfileLabelMap[strategyProfile.value] || strategyProfile.value)} | ROI >= ${toPercent(thresholds.min_roi)} | score >= ${Number(thresholds.min_score || 0).toFixed(0)}`,
+      );
+    } catch (error) {
+      showActionError("Apply strategy preset failed", error);
+    } finally {
+      strategyProfileLoading.value = false;
+    }
+  };
+
+  const openForwardValidationBatchModal = () => {
+    resetForwardValidationForm();
+    forwardValidationModalVisible.value = true;
+  };
+
+  const submitForwardValidationBatch = async () => {
+    forwardValidationActionLoading.value = "create";
+    try {
+      const payload = {
+        name: String(forwardValidationForm.value.name || "").trim(),
+        target_sample_size: Number(forwardValidationForm.value.target_sample_size || 0),
+        note: String(forwardValidationForm.value.note || "").trim(),
+        auto_enroll: Boolean(forwardValidationForm.value.auto_enroll),
+      };
+      await cardFlipApi.createForwardValidationBatch(payload);
+      forwardValidationModalVisible.value = false;
+      message.success("Validation batch created");
+      await refreshOverviewAndLists();
+    } catch (error) {
+      showActionError("Create validation batch failed", error);
+    } finally {
+      forwardValidationActionLoading.value = "";
+    }
+  };
+
+  const closeForwardValidationBatch = async (batch) => {
+    if (!batch?.id)
+      return;
+    if (
+      !await confirmAction(
+        `Close validation batch "${batch.name}" now?`,
+        "Close validation batch",
+      )
+    ) {
+      return;
+    }
+    forwardValidationActionLoading.value = "close";
+    try {
+      const result = await cardFlipApi.closeForwardValidationBatch(batch.id);
+      const autoTune = result?.auto_tune || {};
+      if (autoTune.applied) {
+        const eventId = autoTune?.event?.id ? ` #${autoTune.event.id}` : "";
+        message.success(`Validation batch closed, auto-tune applied${eventId}`);
+      } else if (autoTune.enabled && autoTune.reason === "guard_blocked") {
+        const guardReasons = autoTune?.evaluation?.guard?.reasons || [];
+        message.warning(
+          `Validation batch closed, auto-tune blocked: ${guardReasons.slice(0, 2).join(" | ") || "guardrails active"}`,
+        );
+      } else if (autoTune.reason === "auto_apply_disabled") {
+        message.info("Validation batch closed, auto-tune is currently disabled");
+      } else {
+        message.success("Validation batch closed");
+      }
+      await Promise.allSettled([
+        refreshOverviewAndLists(),
+        loadAutotradeTuningActivity(true),
+        loadAutotradeTuningDailyReport(true),
+      ]);
+    } catch (error) {
+      showActionError("Close validation batch failed", error);
+    } finally {
+      forwardValidationActionLoading.value = "";
+    }
+  };
+
+  const applyValidationAutoTune = async (
+    proposal = validationAutoTuneProposal.value,
+  ) => {
+    if (!proposal?.shouldApply)
+      return;
+    if (!validationAutoTuneGuard.value.ready) {
+      message.warning(
+        `Auto-tune blocked: ${validationAutoTuneGuard.value.reasons.join("; ")}`,
+      );
+      return;
+    }
+    const confirmText = [
+      `Apply validation-based threshold tune now?`,
+      `min_score ${proposal.current.min_score} -> ${proposal.next.min_score}`,
+      `min_roi ${toPercent(proposal.current.min_roi)} -> ${toPercent(proposal.next.min_roi)}`,
+      `max_risk_score ${proposal.current.max_risk_score} -> ${proposal.next.max_risk_score}`,
+    ].join("\n");
+    if (!await confirmAction(confirmText, "Apply threshold tune"))
+      return;
+    tuningHistoryActionLoading.value = "apply";
+    try {
+      const result = await cardFlipApi.applyAutotradeTuning({
+        source: "validation_auto_tune",
+        applied_by: operatorIdentity.value,
+        note: `${proposal.title}; ${proposal.sourceName}`,
+        min_score: proposal.next.min_score,
+        min_roi: proposal.next.min_roi,
+        max_risk_score: proposal.next.max_risk_score,
+        require_risk_score: Boolean(autotradeStatus.value?.require_risk_score),
+      });
+      autotradeStatus.value = result?.status || autotradeStatus.value;
+      message.success("Validation threshold tune applied");
+      await Promise.allSettled([
+        refreshOverviewAndLists(),
+        loadAutotradeTuningHistory(true),
+        loadAutotradeTuningActivity(true),
+        loadAutotradeTuningDailyReport(true),
+      ]);
+    } catch (error) {
+      showActionError("Apply threshold tune failed", error);
+    } finally {
+      tuningHistoryActionLoading.value = "";
+    }
+  };
+
+  const rollbackAutotradeTune = async (event) => {
+    if (!event?.id)
+      return;
+    const confirmText = [
+      `Rollback tuning event #${event.id}?`,
+      `min_score ${event.next_config?.min_score} -> ${event.previous_config?.min_score}`,
+      `min_roi ${toPercent(event.next_config?.min_roi)} -> ${toPercent(event.previous_config?.min_roi)}`,
+      `max_risk_score ${event.next_config?.max_risk_score} -> ${event.previous_config?.max_risk_score}`,
+    ].join("\n");
+    if (!await confirmAction(confirmText, "Rollback threshold tune"))
+      return;
+    tuningHistoryActionLoading.value = `rollback:${event.id}`;
+    try {
+      const result = await cardFlipApi.rollbackAutotradeTuning(event.id, {
+        source: "tuning_rollback",
+        applied_by: operatorIdentity.value,
+        note: `rollback event #${event.id}`,
+      });
+      autotradeStatus.value = result?.status || autotradeStatus.value;
+      message.success(`Rolled back tuning event #${event.id}`);
+      await Promise.allSettled([
+        refreshOverviewAndLists(),
+        loadAutotradeTuningHistory(true),
+        loadAutotradeTuningActivity(true),
+        loadAutotradeTuningDailyReport(true),
+      ]);
+    } catch (error) {
+      showActionError("Rollback threshold tune failed", error);
+    } finally {
+      tuningHistoryActionLoading.value = "";
+    }
+  };
+
   const loadData = async () => {
     loading.value = true;
     try {
       await Promise.allSettled([
         loadHealth(true),
         loadOverview(true),
+        loadStrategyProfile(true),
+        loadAutotradeTuningHistory(true),
+        loadAutotradeTuningActivity(true),
+        loadAutotradeTuningDailyReport(true),
         loadAutomationStatus(true),
         loadAutotradeStatus(true),
         loadExecutionRetryServiceStatus(true),
@@ -1359,6 +2355,272 @@ export function useCardFlipOpsPage() {
       showActionError("AutoTrade 单次执行失败", error);
     } finally {
       autotradeActionLoading.value = "";
+    }
+  };
+
+  const applySellerControlAction = async ({
+    source,
+    sellerId,
+    action,
+    reason = "",
+    durationHours = null,
+  }) => {
+    const normalizedSource = String(source || "").trim();
+    const normalizedSellerId = String(sellerId || "").trim();
+    if (!normalizedSource || !normalizedSellerId || !action)
+      return null;
+    const sellerLabel = `${normalizedSource}/${normalizedSellerId}`;
+    const actionLabelMap = {
+      freeze: "Freeze",
+      observe: "Observe",
+      normal: "Restore",
+    };
+    const actionLabel = actionLabelMap[action] || action;
+    if (
+      !await confirmAction(
+        `${actionLabel} seller ${sellerLabel}?`,
+        "Seller control action",
+      )
+    ) {
+      return null;
+    }
+    sellerControlActionLoading.value = `${action}:${sellerLabel}`;
+    try {
+      const result = await cardFlipApi.applySellerControlManualAction({
+        source: normalizedSource,
+        seller_id: normalizedSellerId,
+        action,
+        reason: String(reason || "").trim(),
+        actor: operatorIdentity.value,
+        duration_hours: durationHours,
+      });
+      if (result?.status) {
+        autotradeStatus.value = {
+          ...autotradeStatus.value,
+          seller_controls: result.status,
+        };
+      }
+      message.success(`${actionLabel} applied to ${sellerLabel}`);
+      await Promise.allSettled([
+        loadOverview(true),
+        loadAutotradeStatus(true),
+      ]);
+      return result;
+    } catch (error) {
+      showActionError(`Seller ${actionLabel.toLowerCase()} failed`, error);
+      return null;
+    } finally {
+      sellerControlActionLoading.value = "";
+    }
+  };
+
+  const applySellerControlBatchAction = async ({
+    items,
+    action,
+    reason = "",
+    durationHours = null,
+  }) => {
+    const normalizedItems = Array.isArray(items)
+      ? items
+          .map((item) => ({
+            source: String(item?.source || "").trim(),
+            seller_id: String(item?.seller_id || "").trim(),
+          }))
+          .filter((item) => item.source && item.seller_id)
+      : [];
+    if (!normalizedItems.length || !action)
+      return null;
+    const actionLabelMap = {
+      freeze: "Freeze",
+      observe: "Observe",
+      normal: "Restore",
+    };
+    const actionLabel = actionLabelMap[action] || action;
+    if (
+      !await confirmAction(
+        `${actionLabel} ${normalizedItems.length} sellers?`,
+        "Seller batch action",
+      )
+    ) {
+      return null;
+    }
+    sellerControlBatchActionLoading.value = action;
+    try {
+      const result = await cardFlipApi.applySellerControlBatchAction({
+        items: normalizedItems,
+        action,
+        reason: String(reason || "").trim(),
+        actor: operatorIdentity.value,
+        duration_hours: durationHours,
+      });
+      if (result?.status) {
+        autotradeStatus.value = {
+          ...autotradeStatus.value,
+          seller_controls: result.status,
+        };
+      }
+      message.success(`${actionLabel} applied to ${result?.processed || normalizedItems.length} sellers`);
+      await Promise.allSettled([
+        loadOverview(true),
+        loadAutotradeStatus(true),
+      ]);
+      return result;
+    } catch (error) {
+      showActionError(`Seller batch ${actionLabel.toLowerCase()} failed`, error);
+      return null;
+    } finally {
+      sellerControlBatchActionLoading.value = "";
+    }
+  };
+
+  const applySellerControlPreset = async ({
+    presetId,
+    items,
+    action,
+    reason = "",
+    durationHours = null,
+  }) => {
+    const result = await applySellerControlBatchAction({
+      items,
+      action,
+      reason,
+      durationHours,
+    });
+    if (!result)
+      return null;
+    await recordSellerControlPresetRun({
+      presetId,
+      action,
+      reason,
+      durationHours,
+      matchedCount: Array.isArray(items) ? items.length : 0,
+      processedCount: Number(result?.processed || 0),
+      matchedItems: items,
+    });
+    return result;
+  };
+  const applyRecommendedSellerPreset = async () => {
+    const recommendation = sellerPresetRecommendation.value;
+    if (!recommendation)
+      return null;
+    return applySellerControlPreset({
+      presetId: recommendation.id,
+      items: recommendation.matched_items_now,
+      action: recommendation.action,
+      reason: recommendation.reason,
+      durationHours: recommendation.duration_hours,
+    });
+  };
+
+  const saveSellerControlPreset = async ({
+    name,
+    basePreset,
+    sourceFilter = "",
+    action,
+    reason = "",
+    durationHours = null,
+  }) => {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName || !basePreset || !action)
+      return null;
+    sellerControlPresetActionLoading.value = `save:${normalizedName}`;
+    try {
+      const result = await cardFlipApi.upsertSellerControlPreset({
+        name: normalizedName,
+        base_preset: basePreset,
+        source_filter: String(sourceFilter || "").trim(),
+        action,
+        reason: String(reason || "").trim(),
+        actor: operatorIdentity.value,
+        duration_hours: durationHours,
+      });
+      autotradeStatus.value = {
+        ...autotradeStatus.value,
+        seller_control_presets: result?.items || autotradeStatus.value?.seller_control_presets || [],
+      };
+      message.success(`Seller preset saved: ${normalizedName}`);
+      await loadAutotradeStatus(true);
+      return result;
+    } catch (error) {
+      showActionError("Save seller preset failed", error);
+      return null;
+    } finally {
+      sellerControlPresetActionLoading.value = "";
+    }
+  };
+
+  const deleteSellerControlPreset = async (presetId) => {
+    if (!presetId)
+      return null;
+    if (!await confirmAction("Delete this seller preset?", "Delete seller preset"))
+      return null;
+    sellerControlPresetActionLoading.value = `delete:${presetId}`;
+    try {
+      const result = await cardFlipApi.deleteSellerControlPreset(presetId);
+      autotradeStatus.value = {
+        ...autotradeStatus.value,
+        seller_control_presets: result?.items || [],
+      };
+      message.success("Seller preset deleted");
+      await loadAutotradeStatus(true);
+      return result;
+    } catch (error) {
+      showActionError("Delete seller preset failed", error);
+      return null;
+    } finally {
+      sellerControlPresetActionLoading.value = "";
+    }
+  };
+
+  const recordSellerControlPresetRun = async ({
+    presetId,
+    action,
+    reason = "",
+    durationHours = null,
+    matchedCount = 0,
+    processedCount = 0,
+    matchedItems = [],
+  }) => {
+    if (!presetId || !action)
+      return null;
+    try {
+      const result = await cardFlipApi.recordSellerControlPresetRun(presetId, {
+        action,
+        actor: operatorIdentity.value,
+        reason: String(reason || "").trim(),
+        duration_hours: durationHours,
+        matched_count: matchedCount,
+        processed_count: processedCount,
+        matched_items: matchedItems,
+      });
+      autotradeStatus.value = {
+        ...autotradeStatus.value,
+        seller_control_presets: result?.items || autotradeStatus.value?.seller_control_presets || [],
+      };
+      return result;
+    } catch (error) {
+      showActionError("Record seller preset run failed", error);
+      return null;
+    }
+  };
+
+  const loadSellerControlPresetHistory = async (presetId, limit = 20) => {
+    if (!presetId)
+      return null;
+    sellerControlPresetHistoryLoading.value = true;
+    try {
+      const result = await cardFlipApi.listSellerControlPresetRuns(presetId, limit);
+      sellerControlPresetHistory.value = {
+        preset: result?.preset || null,
+        items: result?.items || [],
+        limit: Number(result?.limit || limit),
+      };
+      return result;
+    } catch (error) {
+      showActionError("Load seller preset history failed", error);
+      return null;
+    } finally {
+      sellerControlPresetHistoryLoading.value = false;
     }
   };
 
@@ -1501,9 +2763,12 @@ export function useCardFlipOpsPage() {
     scanLoading.value = true;
     try {
       const res = await cardFlipApi.scanOpportunities(scanLimit.value);
+      const sourceBudgetText = Array.isArray(res?.source_budget) && res.source_budget.length
+        ? ` | budget ${res.source_budget.slice(0, 2).map((item) => `${item.source}:${item.quota}/${item.available}`).join(" / ")}`
+        : "";
       notifyDedup(
         "success",
-        `扫描完成: 处理 ${res.processed} 条, 待审核 ${res.pending_review} 条, 风控拦截 ${res.blocked_risk || 0} 条`,
+        `扫描完成: 处理 ${res.processed} 条, 待审核 ${res.pending_review} 条, 风控拦截 ${res.blocked_risk || 0} 条${sourceBudgetText}`,
       );
       await refreshOverviewAndLists();
     } catch (error) {
@@ -1514,17 +2779,10 @@ export function useCardFlipOpsPage() {
   };
 
   const refreshCookie = async () => {
-    if (
-      !await confirmAction(
-        "将刷新闲鱼 Cookie，过程中会关闭 Chrome/Edge。确认继续？",
-        "刷新 Cookie",
-      )
-    ) {
-      return;
-    }
     cookieRefreshLoading.value = true;
     try {
-      const res = await cardFlipApi.refreshMonitorCookie(true);
+      message.info("正在刷新 Cookie，请稍候...");
+      const res = await cardFlipApi.refreshMonitorCookie(false);
       if (res.success) {
         message.success(
           `Cookie 刷新成功: 长度 ${res.cookie_len || 0}, _m_h5_tk=${res.has_m_h5_tk ? "ok" : "missing"}, _m_h5_tk_enc=${res.has_m_h5_tk_enc ? "ok" : "missing"}`,
@@ -1872,6 +3130,14 @@ export function useCardFlipOpsPage() {
     }
   });
 
+  watch(
+    sellerPresetRecommendationStorageKey,
+    () => {
+      loadSellerPresetRecommendationDismissal();
+    },
+    { immediate: true },
+  );
+
   onMounted(loadData);
 
   return {
@@ -1904,6 +3170,10 @@ export function useCardFlipOpsPage() {
     autotradeStatusLoading,
     autotradeActionLoading,
     autotradeConfigLoading,
+    sellerControlActionLoading,
+    sellerControlBatchActionLoading,
+    sellerControlPresetActionLoading,
+    sellerControlPresetHistoryLoading,
     executionConfigLoading,
     automationStatusLoading,
     automationActionLoading,
@@ -1912,6 +3182,12 @@ export function useCardFlipOpsPage() {
     executionRetryServiceActionLoading,
     executionRetryConfigLoading,
     simulationTrainingLoading,
+    strategyProfileLoading,
+    forwardValidationActionLoading,
+    tuningHistoryLoading,
+    tuningHistoryActionLoading,
+    tuningActivityLoading,
+    tuningDailyReportLoading,
     activeTab,
     executionLogsInitialized,
     shardErrors,
@@ -1939,9 +3215,17 @@ export function useCardFlipOpsPage() {
     automationScanLimit,
     automationAutotradeLimit,
     automationExecutionRetryLimit,
+    strategyProfile,
+    strategyThresholds,
+    autotradeTuningHistory,
+    autotradeTuningActivity,
+    autotradeTuningDailyReport,
+    validationAutoTuneProposal,
+    validationAutoTuneGuard,
     defaultExecutionLogFilters,
     executionLogFilters,
     pricingModeOptions,
+    strategyProfileOptions,
     executionActionOptions,
     executionModeOptions,
     executionResultOptions,
@@ -1951,6 +3235,7 @@ export function useCardFlipOpsPage() {
     automationStatus,
     healthStatus,
     executionRetryServiceStatus,
+    sellerControlPresetHistory,
     opportunities,
     blockedOpportunities,
     activeTrades,
@@ -1968,6 +3253,8 @@ export function useCardFlipOpsPage() {
     batchPricingModalVisible,
     batchPricingResult,
     pricingPreviewMap,
+    forwardValidationModalVisible,
+    forwardValidationForm,
     listingModalVisible,
     listingPayload,
     listingLoading,
@@ -1988,11 +3275,30 @@ export function useCardFlipOpsPage() {
     rawListingJson,
     monitorStopReason,
     monitorCookieStatusHint,
+    startupCheckAlert,
+    startupCheckAlertType,
+    geminiAlert,
+    geminiAlertType,
+    geminiStatusText,
+    geminiStatusVariant,
+    profitProtectionAlert,
+    profitProtectionAlertType,
+    profitProtectionStatusText,
+    sellerPresetRecommendation,
+    sellerPresetRecommendationVisible,
+    sellerPresetRecommendationDismissed,
+    sellerPresetRecommendationDismissedText,
+    sellerPresetRecommendationLoading,
+    tuningBroadcast,
     dataIntegrityAlert,
     guardAlert,
     executionProviderOptions,
     loadHealth,
     loadOverview,
+    loadStrategyProfile,
+    loadAutotradeTuningHistory,
+    loadAutotradeTuningActivity,
+    loadAutotradeTuningDailyReport,
     loadAutomationStatus,
     loadAutotradeStatus,
     loadExecutionRetryServiceStatus,
@@ -2015,6 +3321,16 @@ export function useCardFlipOpsPage() {
     startAutotrade,
     stopAutotrade,
     runAutotradeOnce,
+    applySellerControlAction,
+    applySellerControlBatchAction,
+    applySellerControlPreset,
+    applyRecommendedSellerPreset,
+    dismissSellerPresetRecommendation,
+    restoreSellerPresetRecommendation,
+    saveSellerControlPreset,
+    deleteSellerControlPreset,
+    recordSellerControlPresetRun,
+    loadSellerControlPresetHistory,
     executeTradeBuy,
     executeTradeList,
     executeTradeSell,
@@ -2035,6 +3351,14 @@ export function useCardFlipOpsPage() {
     applyTradePricing,
     previewBatchReprice,
     applyBatchReprice,
+    applyStrategyProfile,
+    openForwardValidationBatchModal,
+    submitForwardValidationBatch,
+    closeForwardValidationBatch,
+    applyValidationAutoTune,
+    rollbackAutotradeTune,
+    toggleAutoTuneAutoApply,
+    adjustAutoTuneCooldown,
     adjustAutotradeNumber,
     adjustAutotradeRoi,
     toggleAutotradeFlag,

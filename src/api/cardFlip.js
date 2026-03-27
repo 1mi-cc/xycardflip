@@ -240,6 +240,31 @@ const cardFlipApi = {
   updateAutotradeConfig(payload = {}) {
     return cardFlipRequest.post("/autotrade/config", payload);
   },
+  applySellerControlManualAction(payload = {}) {
+    return cardFlipRequest.post("/autotrade/seller-controls/manual-action", payload);
+  },
+  applySellerControlBatchAction(payload = {}) {
+    return cardFlipRequest.post("/autotrade/seller-controls/batch-manual-action", payload);
+  },
+  listSellerControlPresets(limit = 50) {
+    return cardFlipRequest.get("/autotrade/seller-controls/presets", {
+      params: { limit },
+    });
+  },
+  listSellerControlPresetRuns(presetId, limit = 20) {
+    return cardFlipRequest.get(`/autotrade/seller-controls/presets/${presetId}/runs`, {
+      params: { limit },
+    });
+  },
+  upsertSellerControlPreset(payload = {}) {
+    return cardFlipRequest.post("/autotrade/seller-controls/presets", payload);
+  },
+  deleteSellerControlPreset(presetId) {
+    return cardFlipRequest.delete(`/autotrade/seller-controls/presets/${presetId}`);
+  },
+  recordSellerControlPresetRun(presetId, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/seller-controls/presets/${presetId}/record-run`, payload);
+  },
   getExecutionRetryStatus() {
     return cardFlipRequest.get("/execution-retry/status");
   },
@@ -273,6 +298,9 @@ const cardFlipApi = {
   },
   getExecutionStatus() {
     return cardFlipRequest.get("/execution/status");
+  },
+  getExecutionReadiness() {
+    return cardFlipRequest.get("/execution/readiness");
   },
   updateExecutionConfig(payload = {}) {
     return cardFlipRequest.post("/execution/config", payload);
@@ -354,6 +382,46 @@ const cardFlipApi = {
         limit: clampListLimit(params.limit, 100),
       },
     });
+  },
+  createForwardValidationBatch(payload) {
+    return cardFlipRequest.post("/trades/forward-validation/batches", payload);
+  },
+  listForwardValidationBatches(limit = 20) {
+    return cardFlipRequest.get("/trades/forward-validation/batches", {
+      params: { limit },
+    });
+  },
+  closeForwardValidationBatch(batchId) {
+    return cardFlipRequest.post(`/trades/forward-validation/batches/${batchId}/close`);
+  },
+  getStrategyProfile() {
+    return cardFlipRequest.get("/vnpy/strategy-profile");
+  },
+  setStrategyProfile(profile) {
+    return cardFlipRequest.post("/vnpy/strategy-profile", null, {
+      params: { profile },
+    });
+  },
+  listAutotradeTuningHistory(limit = 30) {
+    return cardFlipRequest.get("/autotrade/tuning-history", {
+      params: { limit },
+    });
+  },
+  listAutotradeTuningActivity(limit = 50) {
+    return cardFlipRequest.get("/autotrade/tuning-activity", {
+      params: { limit },
+    });
+  },
+  getAutotradeTuningDailyReport(hours = 24) {
+    return cardFlipRequest.get("/autotrade/tuning-daily-report", {
+      params: { hours },
+    });
+  },
+  applyAutotradeTuning(payload) {
+    return cardFlipRequest.post("/autotrade/tuning/apply", payload);
+  },
+  rollbackAutotradeTuning(eventId, payload) {
+    return cardFlipRequest.post(`/autotrade/tuning-history/${eventId}/rollback`, payload);
   },
 };
 

@@ -1,7 +1,7 @@
 [
   {
     "name": "CardFlip Backend Health",
-    "url": "http://host.docker.internal:8000/health",
+    "url": "http://host.docker.internal:8000/health/ready",
     "method": "GET",
     "type": "http"
   },

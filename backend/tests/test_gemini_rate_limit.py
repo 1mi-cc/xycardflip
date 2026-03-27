@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.config import settings
 from app.services.gemini_client import GeminiClient, _RATE_LIMIT_BACKOFF_BASE
 
 
@@ -19,9 +20,11 @@ def _make_client(keys: list[str]) -> GeminiClient:
     client = GeminiClient.__new__(GeminiClient)
     client.api_keys = keys
     client.model = "gemini-1.5-flash"
+    client.key_source_path = ""
     client._key_index = 0
     client._rate_limited_until = {}
     client._rate_limit_strikes = {}
+    client._refresh_keys_from_settings = lambda: None
     return client
 
 
@@ -206,3 +209,79 @@ async def test_no_keys_returns_none() -> None:
     client = _make_client([])
     result = await client.extract_card_features("title", "desc")
     assert result is None
+
+
+def test_refresh_keys_from_gemini_balance_env_file(tmp_path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text('API_KEYS=["key_a","key_b","key_a"]\n', encoding="utf-8")
+    old_local = settings.gemini_api_key
+    old_source = settings.gemini_key_source_path
+    object.__setattr__(settings, "gemini_api_key", "")
+    object.__setattr__(settings, "gemini_key_source_path", str(env_file))
+    try:
+        client = GeminiClient()
+        assert client.api_keys == ["key_a", "key_b"]
+        assert client.enabled is True
+    finally:
+        object.__setattr__(settings, "gemini_api_key", old_local)
+        object.__setattr__(settings, "gemini_key_source_path", old_source)
+
+
+def test_refresh_keys_from_gemini_balance_directory(tmp_path) -> None:
+    balance_dir = tmp_path / "gemini-balance"
+    balance_dir.mkdir()
+    (balance_dir / ".env").write_text(
+        'API_KEYS=["pool_key_1","pool_key_2"]\n',
+        encoding="utf-8",
+    )
+    old_local = settings.gemini_api_key
+    old_source = settings.gemini_key_source_path
+    object.__setattr__(settings, "gemini_api_key", "")
+    object.__setattr__(settings, "gemini_key_source_path", str(balance_dir))
+    try:
+        client = GeminiClient()
+        assert client.api_keys == ["pool_key_1", "pool_key_2"]
+    finally:
+        object.__setattr__(settings, "gemini_api_key", old_local)
+        object.__setattr__(settings, "gemini_key_source_path", old_source)
+
+
+def test_runtime_status_reports_mixed_sources(tmp_path) -> None:
+    balance_dir = tmp_path / "gemini-balance"
+    balance_dir.mkdir()
+    env_file = balance_dir / ".env"
+    env_file.write_text('API_KEYS=["pool_key_1","pool_key_2"]\n', encoding="utf-8")
+    old_local = settings.gemini_api_key
+    old_source = settings.gemini_key_source_path
+    object.__setattr__(settings, "gemini_api_key", "local_key_1")
+    object.__setattr__(settings, "gemini_key_source_path", str(balance_dir))
+    try:
+        client = GeminiClient()
+        status = client.get_runtime_status()
+        assert status["enabled"] is True
+        assert status["source_type"] == "mixed"
+        assert status["external_key_count"] == 2
+        assert status["local_key_count"] == 1
+        assert status["resolved_key_source_path"] == str(env_file)
+    finally:
+        object.__setattr__(settings, "gemini_api_key", old_local)
+        object.__setattr__(settings, "gemini_key_source_path", old_source)
+
+
+def test_runtime_status_marks_missing_directory_source_as_unresolved(tmp_path) -> None:
+    balance_dir = tmp_path / "gemini-balance"
+    balance_dir.mkdir()
+    old_local = settings.gemini_api_key
+    old_source = settings.gemini_key_source_path
+    object.__setattr__(settings, "gemini_api_key", "")
+    object.__setattr__(settings, "gemini_key_source_path", str(balance_dir))
+    try:
+        client = GeminiClient()
+        status = client.get_runtime_status()
+        assert status["enabled"] is False
+        assert status["external_source_configured"] is True
+        assert status["external_source_found"] is False
+        assert status["resolved_key_source_path"] == ""
+    finally:
+        object.__setattr__(settings, "gemini_api_key", old_local)
+        object.__setattr__(settings, "gemini_key_source_path", old_source)

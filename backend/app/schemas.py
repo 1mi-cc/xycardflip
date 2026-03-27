@@ -74,3 +74,10 @@ class MarkSoldIn(BaseModel):
     sold_price: float = Field(gt=0)
     note: str = ""
 
+
+class ForwardValidationBatchCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    target_sample_size: int = Field(ge=1, le=500)
+    note: str = ""
+    auto_enroll: bool = True
+

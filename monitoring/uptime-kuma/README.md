@@ -22,10 +22,16 @@ Open: http://127.0.0.1:3001
 
 Use `targets.example.json` as your monitor checklist:
 
-- Backend health: `http://host.docker.internal:8000/health`
+- Backend readiness: `http://host.docker.internal:8000/health/ready`
 - Frontend admin: `http://host.docker.internal:3000/admin/card-flip-ops`
 - Proxy pool: `http://host.docker.internal:8899/`
 - RAGFlow: `http://host.docker.internal:9380/`
+
+Recommended alerting behavior:
+
+- Alert on backend readiness when status is not `200`.
+- Use `GET /health` for operator diagnostics, but keep uptime probes pointed at `/health/ready`.
+- Treat `database.degraded_reasons` and `database.vacuum_recommended` in `/health` as operator signals, not end-user uptime checks.
 
 `host.docker.internal` is used so the container can reach host services on Windows/macOS.
 

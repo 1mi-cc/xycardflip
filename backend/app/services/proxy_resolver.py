@@ -189,16 +189,23 @@ def proxy_url_from_mapping(proxies: dict[str, str] | None) -> str | None:
     return value or None
 
 
-def network_policy_status() -> dict[str, Any]:
-    return {
+def network_policy_status(
+    *,
+    include_runtime: bool = True,
+    include_proxy_pool_api: bool = True,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "ignore_env_proxy": settings.network_ignore_env_proxy,
         "force_proxy_only": settings.network_force_proxy_only,
         "forced_proxy_configured": bool(str(settings.network_force_proxy_url or "").strip()),
         "proxy_pool_enabled": settings.monitor_use_proxy_pool,
-        "proxy_pool_api": settings.proxy_pool_api,
         "local_proxy_configured": bool(str(settings.local_proxy_url or "").strip()),
-        "runtime": _PROXY_STATE.status(),
     }
+    if include_proxy_pool_api:
+        payload["proxy_pool_api"] = settings.proxy_pool_api
+    if include_runtime:
+        payload["runtime"] = _PROXY_STATE.status()
+    return payload
 
 
 def _request(method: str, url: str, **kwargs: Any) -> requests.Response:

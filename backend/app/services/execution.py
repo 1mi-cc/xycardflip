@@ -110,6 +110,41 @@ class ExecutionService:
             "retry_failed_busy": self._retry_lock.locked(),
             "retry_failed_last_busy_at": self._retry_last_busy_at,
             "retry_failed_last_busy_reason": self._retry_last_busy_reason,
+            "webhook_readiness": self.webhook_readiness(),
+        }
+
+    def webhook_readiness(self) -> dict[str, Any]:
+        runtime = self._runtime_snapshot()
+        provider = str(runtime["provider"])
+        missing: list[str] = []
+        buy_configured = bool(settings.execution_webhook_buy_url.strip())
+        list_configured = bool(settings.execution_webhook_list_url.strip())
+        sell_configured = bool(settings.execution_webhook_sell_url.strip())
+
+        if not buy_configured:
+            missing.append("EXECUTION_WEBHOOK_BUY_URL")
+        if not list_configured:
+            missing.append("EXECUTION_WEBHOOK_LIST_URL")
+        if not sell_configured:
+            missing.append("EXECUTION_WEBHOOK_SELL_URL")
+        if not bool(runtime.get("live_enabled")):
+            missing.append("EXECUTION_LIVE_ENABLED")
+        if bool(runtime.get("live_confirm_required")) and not str(
+            runtime.get("live_confirm_token") or ""
+        ).strip():
+            missing.append("EXECUTION_LIVE_CONFIRM_TOKEN")
+
+        webhook_provider = provider == "webhook"
+        live_ready = webhook_provider and not missing
+        return {
+            "provider": provider,
+            "webhook_provider": webhook_provider,
+            "live_enabled": bool(runtime.get("live_enabled")),
+            "buy_webhook_configured": buy_configured,
+            "list_webhook_configured": list_configured,
+            "sell_webhook_configured": sell_configured,
+            "live_ready": live_ready,
+            "missing": missing,
         }
 
     def retry_guard_status(self) -> dict[str, Any]:

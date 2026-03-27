@@ -55,6 +55,7 @@ def role_permission_map() -> dict[str, list[str]]:
         "admin": normalize_strings(
             [
                 *settings.ui_role_permissions_admin,
+                "system:settings",
                 "support:ticket:view",
                 "support:ticket:create",
                 "support:ticket:manage",

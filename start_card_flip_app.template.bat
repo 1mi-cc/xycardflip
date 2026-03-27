@@ -35,7 +35,7 @@ set "PROXY_STARTER=%ROOT_DIR%start_proxy_pool.bat"
 if not exist "%APP_ENV_FILE%" (
   if exist "%APP_ENV_TEMPLATE%" (
     copy /Y "%APP_ENV_TEMPLATE%" "%APP_DIR%\.env" >nul
-    echo [INFO] Created package .env from .env.example. Please review admin credentials before first use.
+    echo [INFO] Created package .env from .env.example. Review bootstrap login instructions in README_FIRST_START.txt before first use.
   ) else (
     echo [WARN] Missing package .env and .env.example in "%APP_DIR%"
   )

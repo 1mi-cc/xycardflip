@@ -311,7 +311,7 @@ const operatingRecommendationText = computed(() => {
     `retry ${factorText(recommendation.execution_retry_limit_factor)}`,
     `审批=${recommendation.allow_autotrade ? "允许" : "暂停"}`,
     `重试=${recommendation.allow_execution_retry ? "允许" : "暂停"}`,
-  ].join(" / ");
+  ].join(" / ") + sourceBudgetText;
 });
 
 const lastRunSummary = computed(() => {
@@ -330,13 +330,19 @@ const lastRunSummary = computed(() => {
 
 const lastAppliedLimitsText = computed(() => {
   const applied = lastRunResult.value?.applied_limits;
+  const sourceBudget = Array.isArray(lastRunResult.value?.scan?.source_budget)
+    ? lastRunResult.value.scan.source_budget.slice(0, 3)
+    : [];
+  const sourceBudgetText = sourceBudget.length
+    ? ` / sources ${sourceBudget.map((item) => `${item.source}:${item.quota}/${item.available}`).join(" | ")}`
+    : "";
   if (!applied)
     return "尚未记录最近一次的动态限流结果";
   return [
     `scan ${applied.scan?.requested ?? "-"}→${applied.scan?.effective ?? "-"}`,
     `autotrade ${applied.autotrade?.requested ?? "-"}→${applied.autotrade?.effective ?? "-"}`,
     `retry ${applied.execution_retry?.requested ?? "-"}→${applied.execution_retry?.effective ?? "-"}`,
-  ].join(" / ");
+  ].join(" / ") + sourceBudgetText;
 });
 
 const operatingStateHint = computed(() => {

@@ -52,7 +52,7 @@ copy /Y "%ENV_SOURCE%" "%APP_DIR%\.env.example" >nul
 copy /Y "%ENV_SOURCE%" "%APP_DIR%\.env" >nul
 powershell -NoProfile -Command ^
   "$targets=@('%APP_DIR%\.env.example','%APP_DIR%\.env');" ^
-  "$fixed=@{API_HOST='127.0.0.1';SQLITE_PATH='./data/trading.db';UI_AUTH_USERNAME='admin';UI_AUTH_PASSWORD='ChangeMe123';UI_AUTH_NICKNAME='Local Admin';UI_AUTH_DEFAULT_ROLE='admin';UI_AUTH_SESSION_HOURS='72';UI_AUTH_ALLOW_REGISTRATION='true';GEMINI_API_KEY='';RAGFLOW_API_KEY='';RAGFLOW_CHAT_ID='';SUPABASE_SERVICE_ROLE_KEY='';EXECUTION_AUTH_TOKEN='';SMTP_PASSWORD='';XIAN_YU_COOKIE=''};" ^
+  "$fixed=@{API_HOST='127.0.0.1';SQLITE_PATH='./data/trading.db';UI_AUTH_USERNAME='admin';UI_AUTH_PASSWORD='';UI_AUTH_NICKNAME='Local Admin';UI_AUTH_DEFAULT_ROLE='admin';UI_AUTH_SESSION_HOURS='72';UI_AUTH_ALLOW_REGISTRATION='true';GEMINI_API_KEY='';RAGFLOW_API_KEY='';RAGFLOW_CHAT_ID='';SUPABASE_SERVICE_ROLE_KEY='';EXECUTION_AUTH_TOKEN='';SMTP_PASSWORD='';XIAN_YU_COOKIE=''};" ^
   "foreach($path in $targets){ $lines=Get-Content -LiteralPath $path -Encoding UTF8; $lines=$lines | Where-Object { $_ -notmatch '^(API_HOST|SQLITE_PATH|UI_AUTH_USERNAME|UI_AUTH_PASSWORD|UI_AUTH_NICKNAME|UI_AUTH_DEFAULT_ROLE|UI_AUTH_SESSION_HOURS|UI_AUTH_ALLOW_REGISTRATION|GEMINI_API_KEY|RAGFLOW_API_KEY|RAGFLOW_CHAT_ID|SUPABASE_SERVICE_ROLE_KEY|EXECUTION_AUTH_TOKEN|SMTP_PASSWORD|XIAN_YU_COOKIE)=' }; foreach($k in $fixed.Keys){ $lines += ($k + '=' + $fixed[$k]) }; Set-Content -LiteralPath $path -Value $lines -Encoding UTF8 }"
 
 if exist "%APP_DIR%\data" (

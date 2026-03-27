@@ -101,3 +101,7 @@ third_party/IPProxyPool/db/*.db
 # Local and release sqlite data
 data/*.db
 release/**/data/*.db
+
+# Local packaged release artifacts
+release/CardFlipAssistant_20*/
+release/CardFlipAssistant_Windows_20*.zip

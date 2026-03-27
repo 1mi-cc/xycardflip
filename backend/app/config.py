@@ -170,6 +170,7 @@ DEFAULT_UI_MENU_PERMISSIONS: tuple[str, ...] = (
     "message:test",
     "token:view",
     "profile:view",
+    "system:settings",
 )
 
 DEFAULT_UI_ROLE_PERMISSIONS_ADMIN: tuple[str, ...] = DEFAULT_UI_MENU_PERMISSIONS
@@ -287,7 +288,7 @@ def get_strategy_thresholds(profile: str | None = None) -> StrategyThresholds:
 class Settings:
     app_env: str = os.getenv("APP_ENV", "dev")
     app_name: str = os.getenv("APP_NAME", "Card Flip Assistant API")
-    api_host: str = os.getenv("API_HOST", "0.0.0.0")
+    api_host: str = os.getenv("API_HOST", "127.0.0.1")
     api_port: int = _get_int("API_PORT", 8000)
     uptime_kuma_enabled: bool = _get_bool("UPTIME_KUMA_ENABLED", False)
     uptime_kuma_url: str = os.getenv("UPTIME_KUMA_URL", "http://127.0.0.1:3001")
@@ -301,7 +302,7 @@ class Settings:
     supabase_sync_batch_size: int = _get_int("SUPABASE_SYNC_BATCH_SIZE", 200)
     auto_start_supabase_sync: bool = _get_bool("AUTO_START_SUPABASE_SYNC", False)
     ui_auth_username: str = os.getenv("UI_AUTH_USERNAME", "operator")
-    ui_auth_password: str = os.getenv("UI_AUTH_PASSWORD", "admin123456")
+    ui_auth_password: str = os.getenv("UI_AUTH_PASSWORD", "")
     ui_auth_nickname: str = os.getenv("UI_AUTH_NICKNAME", "本地操作员")
     ui_auth_default_role: str = os.getenv("UI_AUTH_DEFAULT_ROLE", "admin").strip().lower() or "admin"
     ui_auth_session_hours: int = _get_int("UI_AUTH_SESSION_HOURS", 72)
@@ -328,8 +329,13 @@ class Settings:
         fallback=DEFAULT_UI_ROLE_PERMISSIONS_VIEWER,
     )
     sqlite_path: str = os.getenv("SQLITE_PATH", DEFAULT_SQLITE_PATH)
+    sqlite_journal_mode: str = os.getenv("SQLITE_JOURNAL_MODE", "WAL").strip().upper() or "WAL"
+    sqlite_synchronous: str = os.getenv("SQLITE_SYNCHRONOUS", "NORMAL").strip().upper() or "NORMAL"
+    sqlite_busy_timeout_ms: int = _get_int("SQLITE_BUSY_TIMEOUT_MS", 5000)
+    db_write_batch_size: int = _get_int("DB_WRITE_BATCH_SIZE", 50)
 
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_key_source_path: str = os.getenv("GEMINI_KEY_SOURCE_PATH", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
     ragflow_enabled: bool = _get_bool("RAGFLOW_ENABLED", False)
@@ -613,6 +619,38 @@ class Settings:
         "AUTO_EXECUTE_LIST_ON_BUY_SUCCESS", False
     )
     auto_execute_list_dry_run: bool = _get_bool("AUTO_EXECUTE_LIST_DRY_RUN", True)
+    auto_approve_max_consecutive_losses: int = _get_int("AUTO_APPROVE_MAX_CONSECUTIVE_LOSSES", 3)
+    auto_approve_daily_loss_limit: float = _get_float("AUTO_APPROVE_DAILY_LOSS_LIMIT", 100.0)
+    auto_approve_loss_recovery_enabled: bool = _get_bool("AUTO_APPROVE_LOSS_RECOVERY_ENABLED", True)
+    auto_approve_loss_recovery_cooldown_hours: int = _get_int(
+        "AUTO_APPROVE_LOSS_RECOVERY_COOLDOWN_HOURS",
+        12,
+    )
+    auto_approve_seller_freeze_enabled: bool = _get_bool("AUTO_APPROVE_SELLER_FREEZE_ENABLED", True)
+    auto_approve_seller_freeze_hours: int = _get_int("AUTO_APPROVE_SELLER_FREEZE_HOURS", 48)
+    auto_approve_seller_freeze_min_sold_count: int = _get_int(
+        "AUTO_APPROVE_SELLER_FREEZE_MIN_SOLD_COUNT",
+        2,
+    )
+    auto_approve_seller_observe_enabled: bool = _get_bool("AUTO_APPROVE_SELLER_OBSERVE_ENABLED", True)
+    auto_approve_seller_observe_hours: int = _get_int("AUTO_APPROVE_SELLER_OBSERVE_HOURS", 72)
+    auto_approve_seller_observe_base_multiplier: float = _get_float(
+        "AUTO_APPROVE_SELLER_OBSERVE_BASE_MULTIPLIER",
+        0.6,
+    )
+    auto_approve_seller_observe_release_streak: int = _get_int(
+        "AUTO_APPROVE_SELLER_OBSERVE_RELEASE_STREAK",
+        3,
+    )
+    auto_approve_seller_reputation_decay_days: float = _get_float(
+        "AUTO_APPROVE_SELLER_REPUTATION_DECAY_DAYS",
+        14.0,
+    )
+    auto_tune_auto_apply_enabled: bool = _get_bool("AUTO_TUNE_AUTO_APPLY_ENABLED", False)
+    auto_tune_cooldown_hours: int = _get_int("AUTO_TUNE_COOLDOWN_HOURS", 24)
+    auto_tune_min_closed_batches: int = _get_int("AUTO_TUNE_MIN_CLOSED_BATCHES", 2)
+    auto_tune_latest_min_sold_count: int = _get_int("AUTO_TUNE_LATEST_MIN_SOLD_COUNT", 5)
+    auto_tune_previous_min_sold_count: int = _get_int("AUTO_TUNE_PREVIOUS_MIN_SOLD_COUNT", 3)
     auto_start_autotrade: bool = _get_bool("AUTO_START_AUTOTRADE", False)
     auto_start_execution_retry: bool = _get_bool("AUTO_START_EXECUTION_RETRY", False)
 
@@ -630,4 +668,10 @@ class Settings:
 
 
 settings = Settings()
+
+
+def resolved_dotenv_path() -> Path:
+    if _dotenv_path is not None:
+        return _dotenv_path
+    return BASE_DIR / ".env"
 

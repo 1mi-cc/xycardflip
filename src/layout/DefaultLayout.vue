@@ -308,6 +308,7 @@ const rawNavGroups = [
     children: [
       { label: "Token管理", path: "/tokens", icon: PersonCircle, permission: "token:view" },
       { label: "个人设置", path: "/admin/profile", icon: Settings, permission: "profile:view" },
+      { label: "系统设置", path: "/admin/system-settings", icon: Settings, permission: "system:settings" },
     ],
   },
 ];
@@ -936,7 +937,7 @@ const handleUserAction = (key) => {
       router.push("/admin/profile");
       break;
     case "settings":
-      router.push("/admin/support-tickets");
+      router.push("/admin/system-settings");
       break;
     case "logout":
       authStore.logout();

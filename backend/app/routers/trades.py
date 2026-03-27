@@ -8,7 +8,9 @@ from fastapi.params import Query
 
 from .. import repositories as repo
 from ..config import settings
-from ..schemas import ApproveTradeIn, MarkListedIn, MarkSoldIn
+from ..schemas import ApproveTradeIn, ForwardValidationBatchCreateIn, MarkListedIn, MarkSoldIn
+from ..services.autotrade import auto_trade_service
+from ..services.execution import execution_service
 from ..services.market_sentiment import market_sentiment_service
 from ..services.pricing_strategy import build_pricing_plan
 
@@ -132,12 +134,48 @@ def _build_trade_pricing_payload(
 
 @router.get("/metrics-summary")
 def metrics_summary() -> dict:
-    return repo.get_dashboard_metrics()
+    payload = repo.get_dashboard_metrics()
+    payload["execution_readiness"] = execution_service.webhook_readiness()
+    return payload
 
 
 @router.get("/metrics")
 def metrics_alias() -> dict:
-    return repo.get_dashboard_metrics()
+    payload = repo.get_dashboard_metrics()
+    payload["execution_readiness"] = execution_service.webhook_readiness()
+    return payload
+
+
+@router.post("/forward-validation/batches")
+def create_forward_validation_batch(payload: ForwardValidationBatchCreateIn) -> dict:
+    try:
+        return repo.create_forward_validation_batch(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/forward-validation/batches")
+def list_forward_validation_batches(
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    items = repo.list_forward_validation_batches(limit=limit)
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/forward-validation/batches/{batch_id}/close")
+def close_forward_validation_batch(batch_id: int) -> dict:
+    try:
+        batch = repo.close_forward_validation_batch(batch_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    auto_tune = auto_trade_service.maybe_auto_apply_tuning(
+        trigger_source=f"forward_validation_close:{batch_id}",
+        applied_by="autotune_bot",
+    )
+    return {
+        **batch,
+        "auto_tune": auto_tune,
+    }
 
 
 @router.get("/{trade_id}/pricing-plan")

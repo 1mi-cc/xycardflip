@@ -30,6 +30,11 @@ def status() -> dict:
     return execution_service.status()
 
 
+@router.get("/readiness")
+def readiness() -> dict:
+    return execution_service.webhook_readiness()
+
+
 @router.post("/config")
 def update_config(payload: ExecutionConfigPayload) -> dict:
     try:

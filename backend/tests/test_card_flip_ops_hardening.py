@@ -9,11 +9,14 @@ from fastapi.testclient import TestClient
 
 from app import repositories as repo
 from app.config import settings
+from app.database import collect_database_diagnostics
 from app.database import get_conn
+from app.database import get_database_health_snapshot
 from app.database import get_data_integrity_status
 from app.database import init_db
 from app.errors import BusyStateError
 from app.main import create_app
+from app.schemas import FeatureData
 from app.schemas import ListingIn, ValuationOut
 from app.services.automation import automation_service
 from app.services.autotrade import auto_trade_service
@@ -21,7 +24,9 @@ from app.services.execution import execution_service
 from app.services.execution_retry import execution_retry_service
 from app.services.market_monitor import monitor_service
 from app.services.operating_state import operating_state_service
+from app.services.startup_diagnostics import startup_configuration_checks
 import app.services.automation as automation_module
+import app.routers.health as health_router_module
 
 
 @pytest.fixture
@@ -360,13 +365,233 @@ def test_init_db_reports_duplicate_trades_when_unique_index_skipped(isolated_sql
     assert status["duplicate_trade_opportunity_count"] >= 1
 
 
+def test_persist_scan_batch_writes_consistent_records(isolated_sqlite: Path) -> None:
+    listed_at = datetime(2026, 3, 7, tzinfo=timezone.utc)
+    listing = ListingIn(
+        source="pytest",
+        listing_id="batch-listing-1",
+        seller_id="batch-seller-1",
+        title="batch card",
+        description="batch seed",
+        list_price=110,
+        listed_at=listed_at,
+        status="open",
+        raw={"batch": True},
+    )
+    listing_row_id, _ = repo.upsert_listing(listing)
+    assert listing_row_id is not None
+
+    feature = FeatureData(
+        card_name="batch card",
+        rarity="rare",
+        edition="1st",
+        card_condition="nm",
+        confidence=0.88,
+    )
+    valuation = ValuationOut(
+        listing_row_id=listing_row_id,
+        expected_sale_price=176,
+        buy_limit=132,
+        suggested_list_price=182,
+        ci_low=168,
+        ci_high=188,
+        model_confidence=0.9,
+        comparables_count=12,
+        reasoning="batch persist test",
+    )
+
+    result = repo.persist_scan_batch(
+        [
+            {
+                "listing_row_id": listing_row_id,
+                "feature": feature,
+                "extracted_by": "pytest_batch",
+                "valuation": valuation,
+                "expected_profit": 42.0,
+                "roi": 0.31,
+                "score": 86.0,
+                "status": "pending_review",
+                "note": "batch_test",
+            }
+        ]
+    )
+
+    assert result["written"] == 1
+    assert repo.get_features("listing", listing_row_id) is not None
+    assert repo.get_latest_valuation_for_listing(listing_row_id) is not None
+    opportunity = repo.get_opportunity_by_listing_row_id(listing_row_id)
+    assert opportunity is not None
+    assert str(opportunity["status"]) == "pending_review"
+
+    diagnostics = collect_database_diagnostics(include_query_plans=False)
+    batch_writes = diagnostics["batch_writes"]
+    assert batch_writes["last_batch_size"] == 1
+    assert batch_writes["last_batch_error"] == ""
+
+
+def test_database_diagnostics_expose_runtime_and_target_indexes(isolated_sqlite: Path) -> None:
+    opportunity_id = _seed_pending_opportunity(index=4)
+    trade = repo.approve_opportunity_idempotent(
+        opportunity_id=opportunity_id,
+        approved_buy_price=104.0,
+        approved_by="pytest",
+        note="diag seed",
+    )
+    repo.create_execution_log(
+        trade_id=int(trade["trade_id"]),
+        action="buy",
+        provider="pytest",
+        dry_run=True,
+        request_payload={"trade_id": trade["trade_id"]},
+        response_payload={"ok": True},
+        success=True,
+    )
+
+    diagnostics = collect_database_diagnostics()
+    assert diagnostics["runtime"]["journal_mode"] == "WAL"
+    assert diagnostics["runtime"]["synchronous"] == "NORMAL"
+    assert diagnostics["runtime"]["busy_timeout_ms"] == settings.sqlite_busy_timeout_ms
+    assert diagnostics["runtime"]["foreign_keys"] is True
+
+    listings_indexes = {item["name"] for item in diagnostics["tables"]["listings_raw"]["indexes"]}
+    opportunities_indexes = {item["name"] for item in diagnostics["tables"]["opportunities"]["indexes"]}
+    trades_indexes = {item["name"] for item in diagnostics["tables"]["trades"]["indexes"]}
+    valuation_indexes = {item["name"] for item in diagnostics["tables"]["valuation_records"]["indexes"]}
+    execution_indexes = {item["name"] for item in diagnostics["tables"]["execution_logs"]["indexes"]}
+
+    assert "idx_listings_status_listed_at" in listings_indexes
+    assert "idx_listings_source_seller_status_price" in listings_indexes
+    assert "idx_opportunities_status_score" in opportunities_indexes
+    assert "idx_trades_status_updated" in trades_indexes
+    assert "idx_valuation_records_listing_row_id_id" in valuation_indexes
+    assert "idx_execution_logs_trade_action_id" in execution_indexes
+
+
+def test_database_diagnostics_query_plans_use_targeted_indexes(isolated_sqlite: Path) -> None:
+    opportunity_id = _seed_pending_opportunity(index=5)
+    trade = repo.approve_opportunity_idempotent(
+        opportunity_id=opportunity_id,
+        approved_buy_price=105.0,
+        approved_by="pytest",
+        note="diag plan seed",
+    )
+    repo.create_execution_log(
+        trade_id=int(trade["trade_id"]),
+        action="buy",
+        provider="pytest",
+        dry_run=True,
+        request_payload={"trade_id": trade["trade_id"]},
+        response_payload={"ok": True},
+        success=True,
+    )
+
+    diagnostics = collect_database_diagnostics()
+    query_plans = diagnostics["query_plans"]
+
+    def _plan_text(name: str) -> str:
+        return " | ".join(str(row[-1]) for row in query_plans[name])
+
+    open_plan = _plan_text("get_open_listings")
+    assert "idx_listings_status_listed_at" in open_plan
+    assert "USE TEMP B-TREE" not in open_plan
+
+    opportunity_plan = _plan_text("list_opportunities")
+    assert "idx_opportunities_status_score" in opportunity_plan
+    assert "USE TEMP B-TREE" not in opportunity_plan
+
+    trade_plan = _plan_text("list_trades")
+    assert "idx_trades_status_updated" in trade_plan
+    assert "USE TEMP B-TREE" not in trade_plan
+
+    valuation_plan = _plan_text("latest_valuation")
+    assert "idx_valuation_records_listing_row_id_id" in valuation_plan
+    assert "SCAN valuation_records" not in valuation_plan
+
+    execution_plan = _plan_text("latest_execution_log")
+    assert "idx_execution_logs_trade_action_id" in execution_plan
+
+
 def test_health_route_exposes_integrity_and_guard_status(isolated_sqlite: Path) -> None:
     with TestClient(create_app()) as client:
         response = client.get("/health")
     assert response.status_code == 200
     payload = response.json()
+    assert "database" in payload
+    assert "gemini_runtime" in payload
     assert "data_integrity" in payload
     assert "operating_state" in payload
     assert "automation_guards" in payload
+    assert "startup_checks" in payload
     assert "automation" in payload["automation_guards"]
     assert "execution_retry_replay" in payload["automation_guards"]
+    assert "batch_writes" in payload["database"]
+    assert "startup_services" not in payload
+    assert "event_handlers" not in payload
+    assert "runtime" not in payload["network_policy"]
+    assert "proxy_pool_api" not in payload["network_policy"]
+    assert "uptime_kuma_url" not in payload["monitoring"]
+
+
+def test_startup_checks_warn_when_gemini_pool_path_missing(
+    isolated_sqlite: Path,
+) -> None:
+    old_source = settings.gemini_key_source_path
+    old_local = settings.gemini_api_key
+    object.__setattr__(settings, "gemini_key_source_path", str(isolated_sqlite.parent / "missing-pool"))
+    object.__setattr__(settings, "gemini_api_key", "")
+    try:
+        checks = startup_configuration_checks()
+    finally:
+        object.__setattr__(settings, "gemini_key_source_path", old_source)
+        object.__setattr__(settings, "gemini_api_key", old_local)
+
+    codes = {item["code"] for item in checks["items"]}
+    assert "gemini_external_source_missing" in codes
+
+
+def test_database_health_snapshot_handles_unopenable_path(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    object.__setattr__(settings, "sqlite_path", str(tmp_path))
+    try:
+        snapshot = get_database_health_snapshot()
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+
+    assert snapshot["available"] is False
+    assert "database_open_failed" in snapshot["degraded_reasons"]
+    assert snapshot["batch_writes"]["last_batch_size"] >= 0
+
+
+def test_health_ready_route_reports_ready_and_degraded(
+    isolated_sqlite: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with TestClient(create_app()) as client:
+        response = client.get("/health/ready")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ready"] is True
+    assert payload["reasons"] == []
+
+    monkeypatch.setattr(
+        health_router_module,
+        "get_database_health_snapshot",
+        lambda: {"journal_mode": "DELETE", "degraded_reasons": ["journal_mode:delete"]},
+    )
+    monkeypatch.setattr(
+        health_router_module,
+        "get_data_integrity_status",
+        lambda: {"ok": True, "message": "ok"},
+    )
+    monkeypatch.setattr(
+        health_router_module.operating_state_service,
+        "status",
+        lambda: {"state": "recovery", "reasons": ["manual"]},
+    )
+
+    with TestClient(create_app()) as client:
+        degraded = client.get("/health/ready")
+    assert degraded.status_code == 503
+    degraded_payload = degraded.json()
+    assert degraded_payload["ready"] is False
+    assert "database:journal_mode:delete" in degraded_payload["reasons"]
+    assert "operating_state:recovery" in degraded_payload["reasons"]

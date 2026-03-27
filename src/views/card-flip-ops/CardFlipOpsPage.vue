@@ -8,19 +8,40 @@
       :can-operate="canOperate"
       :cookie-refresh-loading="cookieRefreshLoading"
       :data-integrity-alert="dataIntegrityAlert"
+      :gemini-alert="geminiAlert"
+      :gemini-alert-type="geminiAlertType"
+      :gemini-status-text="geminiStatusText"
+      :gemini-status-variant="geminiStatusVariant"
       :guard-alert="guardAlert"
       :is-viewer="isViewer"
       :loading="loading"
       :metrics="metrics"
+      :on-apply-batch-reprice="applyBatchReprice"
+      :on-apply-strategy-profile="applyStrategyProfile"
+      :on-preview-batch-reprice="previewBatchReprice"
+      :on-refresh="loadData"
+      :on-refresh-cookie="refreshCookie"
+      :on-run-scan="runScan"
+      :on-run-simulation-training="runSimulationTraining"
       :pricing-mode="pricingMode"
       :pricing-mode-options="pricingModeOptions"
+      :profit-protection-alert="profitProtectionAlert"
+      :profit-protection-alert-type="profitProtectionAlertType"
+      :profit-protection-status-text="profitProtectionStatusText"
       :role-tag-text="roleTagText"
       :role-tag-type="roleTagType"
       :scan-limit="scanLimit"
       :scan-loading="scanLoading"
       :simulation-training-loading="simulationTrainingLoading"
+      :startup-check-alert="startupCheckAlert"
+      :startup-check-alert-type="startupCheckAlertType"
+      :strategy-profile="strategyProfile"
+      :strategy-profile-loading="strategyProfileLoading"
+      :strategy-profile-options="strategyProfileOptions"
+      :strategy-thresholds="strategyThresholds"
       :to-money="toMoney"
       @apply-batch-reprice="applyBatchReprice"
+      @apply-strategy-profile="applyStrategyProfile"
       @preview-batch-reprice="previewBatchReprice"
       @refresh="loadData"
       @refresh-cookie="refreshCookie"
@@ -28,7 +49,58 @@
       @run-simulation-training="runSimulationTraining"
       @update:pricing-mode="pricingMode = $event"
       @update:scan-limit="scanLimit = $event"
+      @update:strategy-profile="strategyProfile = $event"
     ></OpsOverviewHeader>
+
+    <section v-if="sellerPresetRecommendationVisible && sellerPresetRecommendation" class="health-strip">
+      <n-alert
+        show-icon
+        type="success"
+        :bordered="false"
+      >
+        <template #header>
+          Recommended Seller Preset
+        </template>
+        <div>{{ sellerPresetRecommendation.summary }}</div>
+        <div class="summary-meta" style="margin-top: 6px">
+          {{ sellerPresetRecommendation.reason_text }}
+        </div>
+        <n-space style="margin-top: 10px">
+          <n-button
+            size="small"
+            type="primary"
+            :disabled="!canOperate"
+            :loading="sellerPresetRecommendationLoading"
+            @click="applyRecommendedSellerPreset"
+          >
+            Apply {{ sellerPresetRecommendation.name }}
+          </n-button>
+          <n-button
+            secondary
+            size="small"
+            @click="dismissSellerPresetRecommendation"
+          >
+            Dismiss
+          </n-button>
+        </n-space>
+      </n-alert>
+    </section>
+
+    <section v-if="tuningBroadcast" class="health-strip">
+      <n-alert
+        show-icon
+        :bordered="false"
+        :type="tuningBroadcast.type"
+      >
+        <template #header>
+          {{ tuningBroadcast.title }}
+        </template>
+        <div>{{ tuningBroadcast.content }}</div>
+        <div class="summary-meta" style="margin-top: 6px">
+          {{ tuningBroadcast.timestamp || "-" }}
+        </div>
+      </n-alert>
+    </section>
 
     <AutomationControlPanel
       :automation-action-loading="automationActionLoading"
@@ -74,13 +146,30 @@
       :execution-config-loading="executionConfigLoading"
       :execution-live-confirm-token="executionLiveConfirmToken"
       :execution-status="executionStatus"
+      :metrics="metrics"
+      :seller-control-action-loading="sellerControlActionLoading"
+      :seller-control-batch-action-loading="sellerControlBatchActionLoading"
+      :seller-control-preset-action-loading="sellerControlPresetActionLoading"
+      :seller-control-preset-history="sellerControlPresetHistory"
+      :seller-control-preset-history-loading="sellerControlPresetHistoryLoading"
+      :seller-preset-recommendation="sellerPresetRecommendation"
+      :seller-preset-recommendation-dismissed="sellerPresetRecommendationDismissed"
+      :seller-preset-recommendation-dismissed-text="sellerPresetRecommendationDismissedText"
+      :seller-preset-recommendation-visible="sellerPresetRecommendationVisible"
       :to-money="toMoney"
       :to-percent="toPercent"
       @adjust-autotrade-number="adjustAutotradeNumber"
       @adjust-autotrade-roi="adjustAutotradeRoi"
       @adjust-execution-number="adjustExecutionNumber"
+      @apply-seller-control-action="applySellerControlAction"
+      @apply-seller-control-batch-action="applySellerControlBatchAction"
+      @apply-seller-control-preset="applySellerControlPreset"
+      @delete-seller-control-preset="deleteSellerControlPreset"
       @load-autotrade-status="loadAutotradeStatus"
+      @load-seller-control-preset-history="loadSellerControlPresetHistory"
+      @restore-seller-preset-recommendation="restoreSellerPresetRecommendation"
       @run-autotrade-once="runAutotradeOnce"
+      @save-seller-control-preset="saveSellerControlPreset"
       @set-execution-provider="setExecutionProvider"
       @start-autotrade="startAutotrade"
       @stop-autotrade="stopAutotrade"
@@ -181,6 +270,34 @@
       @update:execution-retry-force="executionRetryForce = $event"
       @update:execution-retry-limit="executionRetryLimit = $event"
     ></TradeDataTabs>
+
+    <ValidationInsightsPanel
+      :autotrade-config-loading="autotradeConfigLoading"
+      :autotrade-status="autotradeStatus"
+      :autotrade-tuning-activity="autotradeTuningActivity"
+      :autotrade-tuning-daily-report="autotradeTuningDailyReport"
+      :autotrade-tuning-history="autotradeTuningHistory"
+      :can-operate="canOperate"
+      :forward-validation="metrics.forward_validation"
+      :forward-validation-action-loading="forwardValidationActionLoading"
+      :strategy-profile="strategyProfile"
+      :strategy-profile-loading="strategyProfileLoading"
+      :to-money="toMoney"
+      :to-percent="toPercent"
+      :tuning-activity-loading="tuningActivityLoading"
+      :tuning-daily-report-loading="tuningDailyReportLoading"
+      :tuning-history-action-loading="tuningHistoryActionLoading"
+      :tuning-history-loading="tuningHistoryLoading"
+      :validation-auto-tune-guard="validationAutoTuneGuard"
+      :validation-auto-tune-proposal="validationAutoTuneProposal"
+      @adjust-auto-tune-cooldown="adjustAutoTuneCooldown"
+      @apply-recommended-strategy-profile="applyStrategyProfile"
+      @apply-validation-auto-tune="applyValidationAutoTune"
+      @close-forward-validation-batch="closeForwardValidationBatch"
+      @open-forward-validation-batch-modal="openForwardValidationBatchModal"
+      @rollback-autotrade-tune="rollbackAutotradeTune"
+      @toggle-auto-tune-auto-apply="toggleAutoTuneAutoApply"
+    ></ValidationInsightsPanel>
 
     <n-modal
       negative-text="取消"
@@ -379,6 +496,36 @@
     </n-modal>
 
     <n-modal
+      negative-text="Cancel"
+      positive-text="Create"
+      preset="dialog"
+      title="Create Validation Batch"
+      v-model:show="forwardValidationModalVisible"
+      :positive-button-props="{ loading: forwardValidationActionLoading === 'create' }"
+      @positive-click="submitForwardValidationBatch"
+    >
+      <n-form label-placement="left" :label-width="120">
+        <n-form-item label="Batch Name">
+          <n-input v-model:value="forwardValidationForm.name"></n-input>
+        </n-form-item>
+        <n-form-item label="Target Size">
+          <n-input-number
+            style="width: 100%"
+            v-model:value="forwardValidationForm.target_sample_size"
+            :max="500"
+            :min="1"
+          ></n-input-number>
+        </n-form-item>
+        <n-form-item label="Auto Enroll">
+          <n-switch v-model:value="forwardValidationForm.auto_enroll"></n-switch>
+        </n-form-item>
+        <n-form-item label="Note">
+          <n-input type="textarea" v-model:value="forwardValidationForm.note"></n-input>
+        </n-form-item>
+      </n-form>
+    </n-modal>
+
+    <n-modal
       preset="card"
       style="width: 90%; max-width: 760px"
       title="商品信息"
@@ -445,6 +592,7 @@ import ExecutionRetryPanel from "@/views/card-flip-ops/ExecutionRetryPanel.vue";
 import OpsOverviewHeader from "@/views/card-flip-ops/OpsOverviewHeader.vue";
 import TradeDataTabs from "@/views/card-flip-ops/TradeDataTabs.vue";
 import useCardFlipOpsPage from "@/views/card-flip-ops/useCardFlipOpsPage";
+import ValidationInsightsPanel from "@/views/card-flip-ops/ValidationInsightsPanel.vue";
 
 export default defineComponent({
   name: "CardFlipOpsPage",
@@ -454,6 +602,7 @@ export default defineComponent({
     ExecutionRetryPanel,
     OpsOverviewHeader,
     TradeDataTabs,
+    ValidationInsightsPanel,
   },
   setup() {
     return useCardFlipOpsPage();

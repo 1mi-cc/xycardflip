@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+import json
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from datetime import timezone
-from typing import Iterator
+from pathlib import Path
+from typing import Any, Iterator
 
 from .auth_utils import hash_password
 from .auth_utils import utcnow
 from .config import settings
 
+
+_ALLOWED_JOURNAL_MODES = {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}
+_ALLOWED_SYNCHRONOUS = {"OFF", "NORMAL", "FULL", "EXTRA"}
+_VACUUM_MIN_PAGE_COUNT = 200
+_VACUUM_MIN_FREE_RATIO = 0.20
+_SEED_ADMIN_BOOTSTRAP_FILENAME = "bootstrap_admin_credentials.json"
 
 _data_integrity_status: dict[str, object] = {
     "checked_at": "",
@@ -20,13 +29,106 @@ _data_integrity_status: dict[str, object] = {
     "duplicate_trade_opportunity_ids": [],
 }
 
+_batch_write_status: dict[str, object] = {
+    "last_batch_at": "",
+    "last_batch_size": 0,
+    "last_batch_duration_ms": 0,
+    "last_batch_error": "",
+}
 
-def _connect() -> sqlite3.Connection:
-    settings.ensure_paths()
-    conn = sqlite3.connect(settings.sqlite_path, check_same_thread=False)
+_DIAGNOSTIC_QUERY_PLANS: dict[str, str] = {
+    "get_open_listings": (
+        "EXPLAIN QUERY PLAN "
+        "SELECT * FROM listings_raw WHERE status = 'open' ORDER BY listed_at DESC LIMIT 50"
+    ),
+    "list_opportunities": (
+        "EXPLAIN QUERY PLAN "
+        "SELECT o.*, l.title, l.list_price, v.expected_sale_price, v.suggested_list_price "
+        "FROM opportunities o "
+        "JOIN listings_raw l ON l.id = o.listing_row_id "
+        "JOIN valuation_records v ON v.id = o.valuation_id "
+        "WHERE o.status = 'pending_review' "
+        "ORDER BY o.score DESC LIMIT 100"
+    ),
+    "list_trades": (
+        "EXPLAIN QUERY PLAN "
+        "SELECT t.*, o.listing_row_id, l.title, l.list_price "
+        "FROM trades t "
+        "JOIN opportunities o ON o.id = t.opportunity_id "
+        "JOIN listings_raw l ON l.id = o.listing_row_id "
+        "WHERE t.status = 'approved_for_buy' "
+        "ORDER BY t.updated_at DESC LIMIT 100"
+    ),
+    "latest_valuation": (
+        "EXPLAIN QUERY PLAN "
+        "SELECT * FROM valuation_records WHERE listing_row_id = 1 ORDER BY id DESC LIMIT 1"
+    ),
+    "latest_execution_log": (
+        "EXPLAIN QUERY PLAN "
+        "SELECT * FROM execution_logs WHERE trade_id = 1 AND action = 'buy' ORDER BY id DESC LIMIT 1"
+    ),
+}
+
+
+def _desired_journal_mode() -> str:
+    value = str(settings.sqlite_journal_mode or "WAL").strip().upper()
+    return value if value in _ALLOWED_JOURNAL_MODES else "WAL"
+
+
+def _desired_synchronous() -> str:
+    value = str(settings.sqlite_synchronous or "NORMAL").strip().upper()
+    return value if value in _ALLOWED_SYNCHRONOUS else "NORMAL"
+
+
+def _normalize_synchronous_value(raw: Any) -> str:
+    mapping = {0: "OFF", 1: "NORMAL", 2: "FULL", 3: "EXTRA"}
+    try:
+        key = int(raw)
+    except (TypeError, ValueError):
+        text = str(raw or "").strip().upper()
+        return text or "UNKNOWN"
+    return mapping.get(key, str(key))
+
+
+def _sqlite_uri(path: Path, *, readonly: bool) -> str:
+    suffix = "?mode=ro" if readonly else ""
+    return f"file:{path.as_posix()}{suffix}"
+
+
+def _apply_connection_pragmas(conn: sqlite3.Connection, *, readonly: bool) -> None:
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {max(0, int(settings.sqlite_busy_timeout_ms))}")
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA synchronous = {_desired_synchronous()}")
+    if readonly:
+        return
+    conn.execute(f"PRAGMA journal_mode = {_desired_journal_mode()}").fetchone()
+
+
+def _connect(*, readonly: bool = False) -> sqlite3.Connection:
+    settings.ensure_paths()
+    db_path = Path(settings.sqlite_path).expanduser()
+    if readonly:
+        conn = sqlite3.connect(_sqlite_uri(db_path, readonly=True), uri=True, check_same_thread=False)
+    else:
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    _apply_connection_pragmas(conn, readonly=readonly)
     return conn
+
+
+def _ensure_table_columns(
+    conn: sqlite3.Connection,
+    table: str,
+    columns: dict[str, str],
+) -> None:
+    existing = {
+        str(row["name"] or "")
+        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    for column_name, ddl in columns.items():
+        if column_name in existing:
+            continue
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
 
 @contextmanager
@@ -35,6 +137,18 @@ def get_conn() -> Iterator[sqlite3.Connection]:
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@contextmanager
+def get_readonly_conn() -> Iterator[sqlite3.Connection]:
+    conn = _connect(readonly=True)
+    try:
+        yield conn
     finally:
         conn.close()
 
@@ -83,11 +197,254 @@ def get_data_integrity_status() -> dict[str, object]:
     return {**_data_integrity_status}
 
 
+def record_batch_write_status(*, batch_size: int, duration_ms: int, error: str = "") -> None:
+    global _batch_write_status
+    _batch_write_status = {
+        "last_batch_at": utcnow().astimezone(timezone.utc).isoformat(),
+        "last_batch_size": max(0, int(batch_size)),
+        "last_batch_duration_ms": max(0, int(duration_ms)),
+        "last_batch_error": str(error or ""),
+    }
+
+
+def get_batch_write_status() -> dict[str, object]:
+    return {**_batch_write_status}
+
+
+def _file_size_or_zero(path: Path) -> int:
+    try:
+        return int(path.stat().st_size)
+    except FileNotFoundError:
+        return 0
+
+
+def get_seed_admin_bootstrap_path() -> Path:
+    db_path = Path(settings.sqlite_path).expanduser()
+    return db_path.parent / _SEED_ADMIN_BOOTSTRAP_FILENAME
+
+
+def _write_seed_admin_bootstrap(username: str, password: str) -> Path:
+    bootstrap_path = get_seed_admin_bootstrap_path()
+    bootstrap_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "username": username,
+        "password": password,
+        "created_at": utcnow().astimezone(timezone.utc).isoformat(),
+    }
+    bootstrap_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return bootstrap_path
+
+
+def _resolve_seed_admin_password(username: str) -> str:
+    configured = str(settings.ui_auth_password or "").strip()
+    if configured:
+        return configured
+
+    bootstrap_path = get_seed_admin_bootstrap_path()
+    try:
+        payload = json.loads(bootstrap_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        payload = {}
+    if isinstance(payload, dict):
+        existing_username = str(payload.get("username") or "").strip()
+        existing_password = str(payload.get("password") or "").strip()
+        if existing_username == username and existing_password:
+            return existing_password
+
+    generated = secrets.token_urlsafe(18)
+    _write_seed_admin_bootstrap(username, generated)
+    return generated
+
+
+def _database_unavailable_payload(
+    db_path: Path,
+    *,
+    reason: str,
+    error: str = "",
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "sqlite_path": str(db_path),
+        "available": False,
+        "degraded_reasons": [reason],
+        "batch_writes": get_batch_write_status(),
+    }
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def _collect_table_diagnostics(conn: sqlite3.Connection) -> dict[str, dict[str, object]]:
+    tables: dict[str, dict[str, object]] = {}
+    table_rows = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+        """
+    ).fetchall()
+    for table_row in table_rows:
+        name = str(table_row["name"])
+        count = int(conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0])
+        index_rows = conn.execute(f"PRAGMA index_list('{name}')").fetchall()
+        indexes: list[dict[str, object]] = []
+        for index_row in index_rows:
+            index_name = str(index_row["name"])
+            definition_row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+                (index_name,),
+            ).fetchone()
+            columns = [
+                str(info_row["name"])
+                for info_row in conn.execute(f"PRAGMA index_info('{index_name}')").fetchall()
+            ]
+            indexes.append(
+                {
+                    "name": index_name,
+                    "unique": bool(index_row["unique"]),
+                    "origin": str(index_row["origin"]),
+                    "partial": bool(index_row["partial"]),
+                    "columns": columns,
+                    "definition": str(definition_row["sql"] or ""),
+                }
+            )
+        tables[name] = {"rows": count, "indexes": indexes}
+    return tables
+
+
+def _collect_query_plans(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
+    return {
+        name: [tuple(row) for row in conn.execute(query).fetchall()]
+        for name, query in _DIAGNOSTIC_QUERY_PLANS.items()
+    }
+
+
+def _collect_runtime_snapshot(conn: sqlite3.Connection, db_path: Path) -> dict[str, object]:
+    journal_mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0]).upper()
+    synchronous = _normalize_synchronous_value(conn.execute("PRAGMA synchronous").fetchone()[0])
+    busy_timeout_ms = int(conn.execute("PRAGMA busy_timeout").fetchone()[0])
+    foreign_keys = bool(conn.execute("PRAGMA foreign_keys").fetchone()[0])
+    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    freelist_count = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+    sqlite_version = str(conn.execute("SELECT sqlite_version()").fetchone()[0])
+    free_ratio = (freelist_count / float(page_count)) if page_count else 0.0
+    vacuum_recommended = (
+        page_count >= _VACUUM_MIN_PAGE_COUNT and free_ratio >= _VACUUM_MIN_FREE_RATIO
+    )
+    degraded_reasons: list[str] = []
+    if journal_mode != _desired_journal_mode():
+        degraded_reasons.append(f"journal_mode:{journal_mode.lower()}")
+    if synchronous != _desired_synchronous():
+        degraded_reasons.append(f"synchronous:{synchronous.lower()}")
+    if not foreign_keys:
+        degraded_reasons.append("foreign_keys_disabled")
+
+    return {
+        "sqlite_version": sqlite_version,
+        "runtime": {
+            "journal_mode": journal_mode,
+            "synchronous": synchronous,
+            "busy_timeout_ms": busy_timeout_ms,
+            "foreign_keys": foreign_keys,
+        },
+        "files": {
+            "db_bytes": _file_size_or_zero(db_path),
+            "wal_bytes": _file_size_or_zero(Path(f"{db_path}-wal")),
+            "shm_bytes": _file_size_or_zero(Path(f"{db_path}-shm")),
+        },
+        "pages": {
+            "page_count": page_count,
+            "page_size": page_size,
+            "freelist_count": freelist_count,
+            "freelist_ratio": round(free_ratio, 4),
+        },
+        "vacuum_recommended": vacuum_recommended,
+        "degraded_reasons": degraded_reasons,
+    }
+
+
+def collect_database_diagnostics(*, include_query_plans: bool = True) -> dict[str, object]:
+    db_path = Path(settings.sqlite_path).expanduser()
+    if not db_path.exists():
+        return _database_unavailable_payload(
+            db_path,
+            reason="database_missing",
+            error="database file does not exist",
+        )
+
+    try:
+        with get_readonly_conn() as conn:
+            runtime_snapshot = _collect_runtime_snapshot(conn, db_path)
+            payload: dict[str, object] = {
+                "sqlite_path": str(db_path),
+                "available": True,
+                **runtime_snapshot,
+                "batch_writes": get_batch_write_status(),
+                "duplicate_trade_opportunity_rows": _snapshot_data_integrity(conn)[
+                    "duplicate_trade_opportunity_ids"
+                ],
+                "tables": _collect_table_diagnostics(conn),
+            }
+            if include_query_plans:
+                payload["query_plans"] = _collect_query_plans(conn)
+            return payload
+    except sqlite3.Error as exc:
+        return _database_unavailable_payload(
+            db_path,
+            reason="database_open_failed",
+            error=str(exc),
+        )
+
+
+def get_database_health_snapshot() -> dict[str, object]:
+    db_path = Path(settings.sqlite_path).expanduser()
+    if not db_path.exists():
+        return _database_unavailable_payload(
+            db_path,
+            reason="database_missing",
+            error="database file does not exist",
+        )
+
+    try:
+        with get_readonly_conn() as conn:
+            runtime_snapshot = _collect_runtime_snapshot(conn, db_path)
+    except sqlite3.Error as exc:
+        return _database_unavailable_payload(
+            db_path,
+            reason="database_open_failed",
+            error=str(exc),
+        )
+
+    runtime = dict(runtime_snapshot.get("runtime") or {})
+    files = dict(runtime_snapshot.get("files") or {})
+    pages = dict(runtime_snapshot.get("pages") or {})
+    return {
+        "sqlite_path": str(db_path),
+        "available": True,
+        "journal_mode": runtime.get("journal_mode", ""),
+        "synchronous": runtime.get("synchronous", ""),
+        "busy_timeout_ms": runtime.get("busy_timeout_ms", 0),
+        "foreign_keys": runtime.get("foreign_keys", False),
+        "db_bytes": files.get("db_bytes", 0),
+        "wal_bytes": files.get("wal_bytes", 0),
+        "page_count": pages.get("page_count", 0),
+        "freelist_count": pages.get("freelist_count", 0),
+        "freelist_ratio": pages.get("freelist_ratio", 0.0),
+        "vacuum_recommended": runtime_snapshot.get("vacuum_recommended", False),
+        "degraded_reasons": runtime_snapshot.get("degraded_reasons", []),
+        "batch_writes": get_batch_write_status(),
+    }
+
+
 def _ensure_trade_uniqueness(conn: sqlite3.Connection) -> dict[str, object]:
     snapshot = _snapshot_data_integrity(conn)
     if snapshot["has_duplicate_trade_opportunities"]:
         snapshot["ok"] = False
-        snapshot["message"] = "发现重复 trade，已跳过唯一索引创建"
+        snapshot["message"] = "duplicate trades detected; skipped unique index creation"
         _set_data_integrity_status(snapshot)
         return snapshot
 
@@ -102,9 +459,9 @@ def _ensure_trade_uniqueness(conn: sqlite3.Connection) -> dict[str, object]:
 
     snapshot["ok"] = bool(snapshot["trade_opportunity_unique_index"])
     snapshot["message"] = (
-        "trade opportunity 唯一索引已就绪"
+        "trade opportunity unique index is ready"
         if snapshot["ok"]
-        else "trade opportunity 唯一索引创建失败"
+        else "trade opportunity unique index creation failed"
     )
     _set_data_integrity_status(snapshot)
     return snapshot
@@ -112,10 +469,6 @@ def _ensure_trade_uniqueness(conn: sqlite3.Connection) -> dict[str, object]:
 
 def _ensure_seed_admin(conn: sqlite3.Connection) -> None:
     username = settings.ui_auth_username.strip() or "operator"
-    nickname = settings.ui_auth_nickname.strip() or username
-    password_hash = hash_password(settings.ui_auth_password)
-    now = utcnow().isoformat()
-
     existing = conn.execute(
         """
         SELECT id
@@ -127,21 +480,11 @@ def _ensure_seed_admin(conn: sqlite3.Connection) -> None:
     ).fetchone()
 
     if existing:
-        conn.execute(
-            """
-            UPDATE users
-            SET nickname = ?,
-                password_hash = ?,
-                role = 'admin',
-                is_active = 1,
-                is_seeded_admin = 1,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (nickname, password_hash, now, int(existing["id"])),
-        )
         return
 
+    nickname = settings.ui_auth_nickname.strip() or username
+    password_hash = hash_password(_resolve_seed_admin_password(username))
+    now = utcnow().isoformat()
     conn.execute(
         """
         INSERT INTO users (
@@ -249,6 +592,27 @@ def init_db() -> None:
         FOREIGN KEY(opportunity_id) REFERENCES opportunities(id)
     );
 
+    CREATE TABLE IF NOT EXISTS forward_validation_batches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        target_sample_size INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        auto_enroll INTEGER NOT NULL DEFAULT 1,
+        note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        closed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS forward_validation_trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id INTEGER NOT NULL,
+        trade_id INTEGER NOT NULL UNIQUE,
+        enrolled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        enrollment_note TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY(batch_id) REFERENCES forward_validation_batches(id) ON DELETE CASCADE,
+        FOREIGN KEY(trade_id) REFERENCES trades(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS execution_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         trade_id INTEGER NOT NULL,
@@ -263,6 +627,40 @@ def init_db() -> None:
         FOREIGN KEY(trade_id) REFERENCES trades(id)
     );
 
+    CREATE TABLE IF NOT EXISTS autotrade_tuning_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL DEFAULT '',
+        applied_by TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        previous_config_json TEXT NOT NULL DEFAULT '{}',
+        next_config_json TEXT NOT NULL DEFAULT '{}',
+        rollback_of_event_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(rollback_of_event_id) REFERENCES autotrade_tuning_events(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS autotrade_tuning_activity (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        decision_type TEXT NOT NULL DEFAULT '',
+        trigger_source TEXT NOT NULL DEFAULT '',
+        actor TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL DEFAULT '',
+        details_json TEXT NOT NULL DEFAULT '{}',
+        related_event_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(related_event_id) REFERENCES autotrade_tuning_events(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS system_setting_audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL DEFAULT '',
+        changed_keys_json TEXT NOT NULL DEFAULT '[]',
+        details_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS opportunity_reject_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         opportunity_id INTEGER NOT NULL,
@@ -273,6 +671,63 @@ def init_db() -> None:
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(opportunity_id) REFERENCES opportunities(id),
         FOREIGN KEY(listing_row_id) REFERENCES listings_raw(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS seller_control_states (
+        source TEXT NOT NULL,
+        seller_id TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'normal',
+        reason TEXT NOT NULL DEFAULT '',
+        frozen_until TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(source, seller_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS seller_control_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        seller_id TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        next_state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS seller_control_presets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        base_preset TEXT NOT NULL DEFAULT 'all',
+        source_filter TEXT NOT NULL DEFAULT '',
+        action TEXT NOT NULL DEFAULT 'observe',
+        reason TEXT NOT NULL DEFAULT '',
+        duration_hours INTEGER,
+        last_applied_at TEXT,
+        last_applied_action TEXT NOT NULL DEFAULT '',
+        last_applied_by TEXT NOT NULL DEFAULT '',
+        last_matched_count INTEGER NOT NULL DEFAULT 0,
+        last_processed_count INTEGER NOT NULL DEFAULT 0,
+        last_matched_items_json TEXT NOT NULL DEFAULT '[]',
+        created_by TEXT NOT NULL DEFAULT '',
+        updated_by TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS seller_control_preset_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        preset_id INTEGER NOT NULL,
+        action TEXT NOT NULL DEFAULT '',
+        actor TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        duration_hours INTEGER,
+        matched_count INTEGER NOT NULL DEFAULT 0,
+        processed_count INTEGER NOT NULL DEFAULT 0,
+        matched_items_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(preset_id) REFERENCES seller_control_presets(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -328,12 +783,46 @@ def init_db() -> None:
     );
 
     CREATE INDEX IF NOT EXISTS idx_sales_title ON sales_raw(title);
-    CREATE INDEX IF NOT EXISTS idx_listings_status ON listings_raw(status);
-    CREATE INDEX IF NOT EXISTS idx_opp_status ON opportunities(status);
-    CREATE INDEX IF NOT EXISTS idx_execution_logs_trade_id ON execution_logs(trade_id);
-    CREATE INDEX IF NOT EXISTS idx_execution_logs_action_created ON execution_logs(action, created_at DESC);
+    DROP INDEX IF EXISTS idx_listings_status;
+    CREATE INDEX IF NOT EXISTS idx_listings_status_listed_at
+        ON listings_raw(status, listed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_listings_source_seller_status_price
+        ON listings_raw(source, COALESCE(seller_id, ''), status, ROUND(list_price, 2));
+    DROP INDEX IF EXISTS idx_opp_status;
+    CREATE INDEX IF NOT EXISTS idx_opportunities_status_score
+        ON opportunities(status, score DESC);
+    CREATE INDEX IF NOT EXISTS idx_trades_status_updated
+        ON trades(status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_forward_validation_batches_status_created
+        ON forward_validation_batches(status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_forward_validation_trades_batch_trade
+        ON forward_validation_trades(batch_id, trade_id);
+    CREATE INDEX IF NOT EXISTS idx_valuation_records_listing_row_id_id
+        ON valuation_records(listing_row_id, id DESC);
+    DROP INDEX IF EXISTS idx_execution_logs_trade_id;
+    DROP INDEX IF EXISTS idx_execution_logs_action_created;
+    CREATE INDEX IF NOT EXISTS idx_execution_logs_trade_action_id
+        ON execution_logs(trade_id, action, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_autotrade_tuning_events_created
+        ON autotrade_tuning_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_autotrade_tuning_events_rollback
+        ON autotrade_tuning_events(rollback_of_event_id);
+    CREATE INDEX IF NOT EXISTS idx_autotrade_tuning_activity_created
+        ON autotrade_tuning_activity(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_autotrade_tuning_activity_related_event
+        ON autotrade_tuning_activity(related_event_id);
+    CREATE INDEX IF NOT EXISTS idx_system_setting_audit_logs_created
+        ON system_setting_audit_logs(id DESC);
     CREATE INDEX IF NOT EXISTS idx_opp_reject_logs_opp_id ON opportunity_reject_logs(opportunity_id);
     CREATE INDEX IF NOT EXISTS idx_opp_reject_logs_created ON opportunity_reject_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_seller_control_states_state
+        ON seller_control_states(state, frozen_until);
+    CREATE INDEX IF NOT EXISTS idx_seller_control_events_created
+        ON seller_control_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_seller_control_presets_updated
+        ON seller_control_presets(updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_seller_control_preset_runs_preset_created
+        ON seller_control_preset_runs(preset_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
@@ -342,5 +831,13 @@ def init_db() -> None:
     """
     with get_conn() as conn:
         conn.executescript(ddl)
+        _ensure_table_columns(conn, "seller_control_presets", {
+            "last_applied_at": "last_applied_at TEXT",
+            "last_applied_action": "last_applied_action TEXT NOT NULL DEFAULT ''",
+            "last_applied_by": "last_applied_by TEXT NOT NULL DEFAULT ''",
+            "last_matched_count": "last_matched_count INTEGER NOT NULL DEFAULT 0",
+            "last_processed_count": "last_processed_count INTEGER NOT NULL DEFAULT 0",
+            "last_matched_items_json": "last_matched_items_json TEXT NOT NULL DEFAULT '[]'",
+        })
         _ensure_seed_admin(conn)
         _ensure_trade_uniqueness(conn)
