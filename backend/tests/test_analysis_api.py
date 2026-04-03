@@ -143,6 +143,13 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
             snapshot = client.get("/analysis/data/market-snapshot")
             assert snapshot.status_code == 200
             assert "open_listing_count" in snapshot.json()
+            assert "normalized_market_preview" in snapshot.json()
+
+            normalized_market = client.get("/analysis/data/normalized-market", params={"limit": 10})
+            assert normalized_market.status_code == 200
+            normalized_payload = normalized_market.json()
+            assert "items" in normalized_payload
+            assert "count" in normalized_payload
 
             calc = client.get("/analysis/calculation/overview")
             assert calc.status_code == 200
@@ -166,6 +173,26 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
             assert "pricing_suggestions" in decision_payload
             assert "risk_alerts" in decision_payload
             assert len(decision_payload["risk_alerts"]) >= 1
+
+            market_docs = client.get(
+                "/analysis/decision/market-docs",
+                params={"limit": 5, "listing_hours": 24 * 30, "sales_days": 30},
+            )
+            assert market_docs.status_code == 200
+            market_docs_payload = market_docs.json()
+            assert market_docs_payload["count"] >= 1
+            assert "filename" in market_docs_payload["items"][0]
+            assert "content" in market_docs_payload["items"][0]
+
+            strategy = client.get(
+                "/analysis/decision/strategy-proposal",
+                params={"limit": 5, "listing_hours": 24 * 30, "sales_days": 30},
+            )
+            assert strategy.status_code == 200
+            strategy_payload = strategy.json()
+            assert "available" in strategy_payload
+            assert "snapshots" in strategy_payload
+            assert "prompt" in strategy_payload
 
             auto_reco = client.get("/analysis/automation/recommendation")
             assert auto_reco.status_code == 200

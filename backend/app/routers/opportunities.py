@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -27,7 +28,7 @@ def _parse_risk_score(note: str) -> float | None:
 
 
 @router.post("/scan")
-async def scan_opportunities(limit: int = Query(default=50, ge=1, le=500)) -> dict[str, int]:
+async def scan_opportunities(limit: int = Query(default=50, ge=1, le=500)) -> dict[str, Any]:
     return await scan_open_listings(limit=limit)
 
 

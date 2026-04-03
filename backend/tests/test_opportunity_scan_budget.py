@@ -72,7 +72,7 @@ async def test_scan_open_listings_skips_frozen_sellers(
     monkeypatch.setattr(
         opportunity_scan_module.repo,
         "get_open_listings",
-        lambda limit=0: [
+        lambda limit=0, include_noise_filtered=False: [
             {
                 "id": 1,
                 "source": "alpha",
@@ -81,6 +81,10 @@ async def test_scan_open_listings_skips_frozen_sellers(
                 "description": "",
                 "list_price": 100.0,
                 "listed_at": "2026-03-22T10:00:00+00:00",
+                "normalized_title": "Frozen card",
+                "normalized_key": "manual_card:Frozen card",
+                "normalization_blocked": 0,
+                "normalization_version": "listing_normalizer_v1",
             },
             {
                 "id": 2,
@@ -90,6 +94,10 @@ async def test_scan_open_listings_skips_frozen_sellers(
                 "description": "",
                 "list_price": 100.0,
                 "listed_at": "2026-03-22T09:00:00+00:00",
+                "normalized_title": "Open card",
+                "normalized_key": "manual_card:Open card",
+                "normalization_blocked": 0,
+                "normalization_version": "listing_normalizer_v1",
             },
         ],
     )
@@ -145,3 +153,92 @@ async def test_scan_open_listings_skips_frozen_sellers(
 
     assert result["processed"] == 2
     assert result["seller_frozen"] == 1
+    assert result["noise_filtered"] == 0
+
+
+@pytest.mark.asyncio
+async def test_scan_open_listings_counts_noise_filtered_rows(
+    isolated_scan_budget_sqlite: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        opportunity_scan_module.repo,
+        "get_open_listings",
+        lambda limit=0, include_noise_filtered=False: [
+            {
+                "id": 10,
+                "source": "alpha",
+                "seller_id": "seller-noise",
+                "title": "Account service",
+                "description": "",
+                "list_price": 10.0,
+                "listed_at": "2026-03-22T10:00:00+00:00",
+                "normalized_title": "Account service",
+                "normalized_key": "account_service:Account service",
+                "normalization_blocked": 1,
+                "normalization_version": "listing_normalizer_v1",
+            },
+            {
+                "id": 11,
+                "source": "alpha",
+                "seller_id": "seller-open",
+                "title": "Open card",
+                "description": "",
+                "list_price": 100.0,
+                "listed_at": "2026-03-22T09:00:00+00:00",
+                "normalized_title": "Open card",
+                "normalized_key": "manual_card:Open card",
+                "normalization_blocked": 0,
+                "normalization_version": "listing_normalizer_v1",
+            },
+        ],
+    )
+    monkeypatch.setattr(opportunity_scan_module.repo, "get_dashboard_metrics", lambda: {})
+    monkeypatch.setattr(opportunity_scan_module.seller_controls_service, "sync_from_metrics", lambda **kwargs: {"status": {}})
+    monkeypatch.setattr(opportunity_scan_module.seller_controls_service, "is_seller_frozen", lambda **kwargs: False)
+    monkeypatch.setattr(opportunity_scan_module.repo, "get_opportunity_status_map_by_listing_rows", lambda listing_ids: {})
+    monkeypatch.setattr(opportunity_scan_module.repo, "has_reject_history_for_listing_signature", lambda **kwargs: False)
+    monkeypatch.setattr(opportunity_scan_module.repo, "has_frozen_opportunity_for_listing_fingerprint", lambda **kwargs: False)
+    monkeypatch.setattr(opportunity_scan_module.repo, "get_features", lambda *args, **kwargs: None)
+
+    async def _fake_extract(title, description):
+        class _Feature:
+            card_name = title
+            rarity = "R"
+            edition = "std"
+            card_condition = "nm"
+            confidence = 0.9
+            extras = {}
+
+        return _Feature(), "pytest"
+
+    monkeypatch.setattr(opportunity_scan_module._extractor, "extract", _fake_extract)
+    monkeypatch.setattr(opportunity_scan_module.repo, "get_recent_sales", lambda *args, **kwargs: [])
+
+    class _Valuation:
+        expected_sale_price = 160.0
+        buy_limit = 120.0
+        suggested_list_price = 170.0
+        ci_low = 140.0
+        ci_high = 180.0
+        model_confidence = 0.9
+        comparables_count = 10
+        reasoning = "ok"
+
+    monkeypatch.setattr(opportunity_scan_module, "estimate_valuation", lambda **kwargs: _Valuation())
+    monkeypatch.setattr(opportunity_scan_module.repo, "get_seller_open_listing_count", lambda **kwargs: 0)
+    monkeypatch.setattr(
+        opportunity_scan_module,
+        "assess_opportunity_risk",
+        lambda **kwargs: type("Risk", (), {"score": 10.0, "reasons": (), "level": "low", "hard_block": False})(),
+    )
+    monkeypatch.setattr(opportunity_scan_module, "score_opportunity", lambda **kwargs: (30.0, 0.3, 88.0, "pending_review"))
+    monkeypatch.setattr(opportunity_scan_module, "apply_risk_gate", lambda status, risk: status)
+    monkeypatch.setattr(opportunity_scan_module, "format_risk_note", lambda risk: "risk_score=10")
+    monkeypatch.setattr(opportunity_scan_module.repo, "persist_scan_batch", lambda items: None)
+
+    result = await opportunity_scan_module.scan_open_listings(limit=2)
+
+    assert result["candidate_pool_size"] == 2
+    assert result["processed"] == 1
+    assert result["noise_filtered"] == 1

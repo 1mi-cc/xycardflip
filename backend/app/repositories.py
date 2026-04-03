@@ -11,6 +11,8 @@ from .config import settings
 from .database import get_conn
 from .database import record_batch_write_status
 from .schemas import FeatureData, ListingIn, SaleIn, ValuationOut
+from .services.listing_normalizer import ListingNormalization
+from .services.listing_normalizer import normalize_listing
 
 
 def _normalize_optional_id(raw: str | None) -> str | None:
@@ -56,17 +58,27 @@ def _normalize_price_key(raw: float | int | str | None) -> float:
         return 0.0
 
 
+def _normalize_listing_record(
+    *,
+    title: str,
+    description: str,
+) -> ListingNormalization:
+    return normalize_listing(title=title, description=description)
+
+
 def _listing_fingerprint(
     *,
     source: str,
     seller_id: str | None,
     title: str | None,
     list_price: float | int | str | None,
+    normalized_key: str | None = None,
 ) -> tuple[str, str, str, float]:
+    normalized_text = str(normalized_key or "").strip()
     return (
         str(source or "").strip(),
         _normalize_optional_id(seller_id) or "",
-        _normalize_text_key(title),
+        normalized_text or _normalize_text_key(title),
         _normalize_price_key(list_price),
     )
 
@@ -82,7 +94,7 @@ def _load_existing_listing_fingerprints(
     cutoff = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     rows = conn.execute(
         """
-        SELECT source, seller_id, title, list_price
+        SELECT source, seller_id, title, list_price, normalized_key
         FROM listings_raw
         WHERE status = 'open' AND listed_at >= ?
         ORDER BY id DESC
@@ -97,16 +109,139 @@ def _load_existing_listing_fingerprints(
             seller_id=row["seller_id"],
             title=row["title"],
             list_price=row["list_price"],
+            normalized_key=row["normalized_key"],
         )
         if fp in fingerprints:
             existing.add(fp)
     return existing
 
 
+def _listing_normalization_payload(
+    *,
+    title: str,
+    description: str,
+) -> dict[str, Any]:
+    normalized = _normalize_listing_record(title=title, description=description)
+    return {
+        "normalized_title": normalized.normalized_title,
+        "normalized_key": normalized.normalized_key,
+        "item_type": normalized.item_type,
+        "noise_flags_json": json.dumps(normalized.noise_flags, ensure_ascii=True),
+        "normalization_confidence": normalized.normalization_confidence,
+        "normalization_blocked": 1 if normalized.normalization_blocked else 0,
+        "normalization_reason": normalized.normalization_reason,
+        "normalization_version": normalized.normalization_version,
+    }
+
+
+def _normalize_listing_row_if_needed(conn: sqlite3.Connection, row_id: int) -> None:
+    row = conn.execute(
+        """
+        SELECT id, title, description, normalization_version
+        FROM listings_raw
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (row_id,),
+    ).fetchone()
+    if not row or str(row["normalization_version"] or "").strip():
+        return
+
+    normalization = _listing_normalization_payload(
+        title=str(row["title"] or ""),
+        description=str(row["description"] or ""),
+    )
+    conn.execute(
+        """
+        UPDATE listings_raw
+        SET normalized_title = ?,
+            normalized_key = ?,
+            item_type = ?,
+            noise_flags_json = ?,
+            normalization_confidence = ?,
+            normalization_blocked = ?,
+            normalization_reason = ?,
+            normalization_version = ?
+        WHERE id = ?
+        """,
+        (
+            normalization["normalized_title"],
+            normalization["normalized_key"],
+            normalization["item_type"],
+            normalization["noise_flags_json"],
+            normalization["normalization_confidence"],
+            normalization["normalization_blocked"],
+            normalization["normalization_reason"],
+            normalization["normalization_version"],
+            row_id,
+        ),
+    )
+
+
+def _ensure_listing_normalization_for_rows(rows: list[sqlite3.Row]) -> None:
+    stale_ids = [
+        int(row["id"])
+        for row in rows
+        if not str(row["normalization_version"] or "").strip()
+    ]
+    if not stale_ids:
+        return
+    with get_conn() as conn:
+        for row_id in stale_ids:
+            _normalize_listing_row_if_needed(conn, row_id)
+
+
+def _backfill_sale_normalization(row_ids: list[int]) -> None:
+    normalized_ids = sorted({int(row_id) for row_id in row_ids if int(row_id) > 0})
+    if not normalized_ids:
+        return
+    placeholders = ",".join("?" for _ in normalized_ids)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT id, title, description FROM sales_raw WHERE id IN ({placeholders})",
+            tuple(normalized_ids),
+        ).fetchall()
+        for row in rows:
+            normalization = _listing_normalization_payload(
+                title=str(row["title"] or ""),
+                description=str(row["description"] or ""),
+            )
+            conn.execute(
+                """
+                UPDATE sales_raw
+                SET normalized_title = ?,
+                    normalized_key = ?,
+                    item_type = ?,
+                    noise_flags_json = ?,
+                    normalization_confidence = ?,
+                    normalization_blocked = ?,
+                    normalization_reason = ?,
+                    normalization_version = ?
+                WHERE id = ?
+                """,
+                (
+                    normalization["normalized_title"],
+                    normalization["normalized_key"],
+                    normalization["item_type"],
+                    normalization["noise_flags_json"],
+                    normalization["normalization_confidence"],
+                    normalization["normalization_blocked"],
+                    normalization["normalization_reason"],
+                    normalization["normalization_version"],
+                    int(row["id"]),
+                ),
+            )
+
+
 def insert_sales(rows: list[SaleIn]) -> int:
     sql = """
-    INSERT INTO sales_raw(source, item_id, title, description, sold_price, sold_at, raw_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO sales_raw(
+        source, item_id, title, description, sold_price, sold_at,
+        normalized_title, normalized_key, item_type, noise_flags_json,
+        normalization_confidence, normalization_blocked, normalization_reason, normalization_version,
+        raw_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     row_item_pairs = {
         (row.source, item_id)
@@ -121,6 +256,10 @@ def insert_sales(rows: list[SaleIn]) -> int:
         existing_pairs = _load_existing_pairs(conn, "sales_raw", "item_id", row_item_pairs)
         for row in rows:
             item_id = _normalize_optional_id(row.item_id)
+            normalization = _listing_normalization_payload(
+                title=row.title,
+                description=row.description,
+            )
             if item_id:
                 key = (row.source, item_id)
                 if key in existing_pairs or key in seen_in_batch:
@@ -135,6 +274,14 @@ def insert_sales(rows: list[SaleIn]) -> int:
                     row.description,
                     row.sold_price,
                     row.sold_at.isoformat(),
+                    normalization["normalized_title"],
+                    normalization["normalized_key"],
+                    normalization["item_type"],
+                    normalization["noise_flags_json"],
+                    normalization["normalization_confidence"],
+                    normalization["normalization_blocked"],
+                    normalization["normalization_reason"],
+                    normalization["normalization_version"],
                     json.dumps(row.raw, ensure_ascii=True),
                 )
             )
@@ -147,8 +294,12 @@ def insert_sales(rows: list[SaleIn]) -> int:
 
 def insert_listings(rows: list[ListingIn]) -> int:
     sql = """
-    INSERT INTO listings_raw(source, listing_id, seller_id, title, description, list_price, listed_at, status, raw_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO listings_raw(
+        source, listing_id, seller_id, title, description, list_price, listed_at, status,
+        normalized_title, normalized_key, item_type, noise_flags_json, normalization_confidence,
+        normalization_blocked, normalization_reason, normalization_version, raw_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     row_listing_pairs = {
         (row.source, listing_id)
@@ -162,6 +313,10 @@ def insert_listings(rows: list[ListingIn]) -> int:
             seller_id=_normalize_optional_id(row.seller_id),
             title=row.title,
             list_price=row.list_price,
+            normalized_key=_listing_normalization_payload(
+                title=row.title,
+                description=row.description,
+            )["normalized_key"],
         )
         for row in rows
         if not _normalize_optional_id(row.listing_id)
@@ -181,6 +336,10 @@ def insert_listings(rows: list[ListingIn]) -> int:
         for row in rows:
             listing_id = _normalize_optional_id(row.listing_id)
             seller_id = _normalize_optional_id(row.seller_id)
+            normalization = _listing_normalization_payload(
+                title=row.title,
+                description=row.description,
+            )
             if listing_id:
                 key = (row.source, listing_id)
                 if key in existing_pairs or key in seen_in_batch:
@@ -192,6 +351,7 @@ def insert_listings(rows: list[ListingIn]) -> int:
                     seller_id=seller_id,
                     title=row.title,
                     list_price=row.list_price,
+                    normalized_key=normalization["normalized_key"],
                 )
                 if fp in existing_fingerprints or fp in seen_fingerprints_in_batch:
                     continue
@@ -207,6 +367,14 @@ def insert_listings(rows: list[ListingIn]) -> int:
                     row.list_price,
                     row.listed_at.isoformat(),
                     row.status,
+                    normalization["normalized_title"],
+                    normalization["normalized_key"],
+                    normalization["item_type"],
+                    normalization["noise_flags_json"],
+                    normalization["normalization_confidence"],
+                    normalization["normalization_blocked"],
+                    normalization["normalization_reason"],
+                    normalization["normalization_version"],
                     json.dumps(row.raw, ensure_ascii=True),
                 )
             )
@@ -238,6 +406,10 @@ def get_listing_by_source_listing_id(source: str, listing_id: str) -> sqlite3.Ro
 def upsert_listing(row: ListingIn) -> tuple[int | None, bool]:
     listing_id = _normalize_optional_id(row.listing_id)
     seller_id = _normalize_optional_id(row.seller_id)
+    normalization = _listing_normalization_payload(
+        title=row.title,
+        description=row.description,
+    )
     if listing_id:
         existing = get_listing_by_source_listing_id(row.source, listing_id)
         if existing:
@@ -248,13 +420,14 @@ def upsert_listing(row: ListingIn) -> tuple[int | None, bool]:
             seller_id=seller_id,
             title=row.title,
             list_price=row.list_price,
+            normalized_key=normalization["normalized_key"],
         )
         with get_conn() as conn:
             existing = _load_existing_listing_fingerprints(conn, {fp})
             if fp in existing:
                 candidates = conn.execute(
                     """
-                    SELECT id, title
+                    SELECT id, title, normalized_key
                     FROM listings_raw
                     WHERE source = ? AND COALESCE(seller_id, '') = ? AND ROUND(list_price, 2) = ?
                       AND status = 'open'
@@ -264,12 +437,17 @@ def upsert_listing(row: ListingIn) -> tuple[int | None, bool]:
                     (fp[0], fp[1], fp[3]),
                 ).fetchall()
                 for item in candidates:
-                    if _normalize_text_key(item["title"]) == fp[2]:
+                    existing_key = str(item["normalized_key"] or "").strip() or _normalize_text_key(item["title"])
+                    if existing_key == fp[2]:
                         return int(item["id"]), False
 
     sql = """
-    INSERT INTO listings_raw(source, listing_id, seller_id, title, description, list_price, listed_at, status, raw_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO listings_raw(
+        source, listing_id, seller_id, title, description, list_price, listed_at, status,
+        normalized_title, normalized_key, item_type, noise_flags_json, normalization_confidence,
+        normalization_blocked, normalization_reason, normalization_version, raw_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     with get_conn() as conn:
         cur = conn.execute(
@@ -283,6 +461,14 @@ def upsert_listing(row: ListingIn) -> tuple[int | None, bool]:
                 row.list_price,
                 row.listed_at.isoformat(),
                 row.status,
+                normalization["normalized_title"],
+                normalization["normalized_key"],
+                normalization["item_type"],
+                normalization["noise_flags_json"],
+                normalization["normalization_confidence"],
+                normalization["normalization_blocked"],
+                normalization["normalization_reason"],
+                normalization["normalization_version"],
                 json.dumps(row.raw, ensure_ascii=True),
             ),
         )
@@ -291,17 +477,78 @@ def upsert_listing(row: ListingIn) -> tuple[int | None, bool]:
 
 def get_listing(row_id: int) -> sqlite3.Row | None:
     with get_conn() as conn:
+        _normalize_listing_row_if_needed(conn, row_id)
         cur = conn.execute("SELECT * FROM listings_raw WHERE id = ?", (row_id,))
         return cur.fetchone()
 
 
-def get_open_listings(limit: int = 50) -> list[sqlite3.Row]:
+def _backfill_listing_normalization(row_ids: list[int]) -> None:
+    normalized_ids = sorted({int(row_id) for row_id in row_ids if int(row_id) > 0})
+    if not normalized_ids:
+        return
+    placeholders = ",".join("?" for _ in normalized_ids)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT id, title, description FROM listings_raw WHERE id IN ({placeholders})",
+            tuple(normalized_ids),
+        ).fetchall()
+        for row in rows:
+            normalization = _listing_normalization_payload(
+                title=str(row["title"] or ""),
+                description=str(row["description"] or ""),
+            )
+            conn.execute(
+                """
+                UPDATE listings_raw
+                SET normalized_title = ?,
+                    normalized_key = ?,
+                    item_type = ?,
+                    noise_flags_json = ?,
+                    normalization_confidence = ?,
+                    normalization_blocked = ?,
+                    normalization_reason = ?,
+                    normalization_version = ?
+                WHERE id = ?
+                """,
+                (
+                    normalization["normalized_title"],
+                    normalization["normalized_key"],
+                    normalization["item_type"],
+                    normalization["noise_flags_json"],
+                    normalization["normalization_confidence"],
+                    normalization["normalization_blocked"],
+                    normalization["normalization_reason"],
+                    normalization["normalization_version"],
+                    int(row["id"]),
+                ),
+            )
+
+
+def get_open_listings(limit: int = 50, *, include_noise_filtered: bool = False) -> list[sqlite3.Row]:
     with get_conn() as conn:
         cur = conn.execute(
             "SELECT * FROM listings_raw WHERE status = 'open' ORDER BY listed_at DESC LIMIT ?",
             (limit,),
         )
-        return cur.fetchall()
+        rows = cur.fetchall()
+    stale_ids = [
+        int(row["id"])
+        for row in rows
+        if not str(row["normalization_version"] or "").strip()
+    ]
+    if stale_ids:
+        _backfill_listing_normalization(stale_ids)
+        with get_conn() as conn:
+            placeholders = ",".join("?" for _ in stale_ids)
+            refreshed = conn.execute(
+                f"SELECT * FROM listings_raw WHERE id IN ({placeholders})",
+                tuple(stale_ids),
+            ).fetchall()
+        refreshed_map = {int(row["id"]): row for row in refreshed}
+        rows = [refreshed_map.get(int(row["id"]), row) for row in rows]
+    if include_noise_filtered:
+        return rows
+    return [row for row in rows if not bool(row["normalization_blocked"])]
 
 
 def get_opportunity_status_map_by_listing_rows(
@@ -496,11 +743,11 @@ def get_features(ref_type: str, ref_id: int) -> sqlite3.Row | None:
 
 def get_recent_sales(features: FeatureData, limit: int = 80) -> list[sqlite3.Row]:
     sql = """
-    SELECT s.sold_price, s.sold_at
+    SELECT s.id, s.sold_price, s.sold_at, s.normalized_title, s.normalization_version
     FROM sales_raw s
     LEFT JOIN item_features f ON f.ref_type = 'sale' AND f.ref_id = s.id
     WHERE
-        (f.card_name = ? OR s.title LIKE ?)
+        (f.card_name = ? OR s.normalized_title = ? OR s.title LIKE ?)
         AND (? = 'unknown' OR f.rarity = ? OR f.rarity IS NULL)
         AND (? = 'unknown' OR f.edition = ? OR f.edition IS NULL)
     ORDER BY s.sold_at DESC
@@ -511,6 +758,7 @@ def get_recent_sales(features: FeatureData, limit: int = 80) -> list[sqlite3.Row
             sql,
             (
                 features.card_name,
+                features.card_name,
                 f"%{features.card_name}%",
                 features.rarity,
                 features.rarity,
@@ -519,7 +767,27 @@ def get_recent_sales(features: FeatureData, limit: int = 80) -> list[sqlite3.Row
                 limit,
             ),
         )
-        return cur.fetchall()
+        rows = cur.fetchall()
+    stale_ids = [
+        int(row["id"])
+        for row in rows
+        if not str(row["normalization_version"] or "").strip()
+    ]
+    if stale_ids:
+        _backfill_sale_normalization(stale_ids)
+        with get_conn() as conn:
+            placeholders = ",".join("?" for _ in stale_ids)
+            refreshed = conn.execute(
+                f"""
+                SELECT s.id, s.sold_price, s.sold_at, s.normalized_title, s.normalization_version
+                FROM sales_raw s
+                WHERE s.id IN ({placeholders})
+                """,
+                tuple(stale_ids),
+            ).fetchall()
+        refreshed_map = {int(row["id"]): row for row in refreshed}
+        rows = [refreshed_map.get(int(row["id"]), row) for row in rows]
+    return rows
 
 
 def _save_valuation_with_conn(conn: sqlite3.Connection, result: ValuationOut) -> int:
@@ -1216,25 +1484,31 @@ def create_autotrade_tuning_event(
 
 def list_autotrade_tuning_events(limit: int = 30) -> list[dict[str, Any]]:
     capped_limit = max(1, min(200, int(limit)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM autotrade_tuning_events
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (capped_limit,),
-        ).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM autotrade_tuning_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [_serialize_autotrade_tuning_event_row(row) for row in rows]
 
 
 def get_autotrade_tuning_event(event_id: int) -> dict[str, Any] | None:
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM autotrade_tuning_events WHERE id = ? LIMIT 1",
-            (event_id,),
-        ).fetchone()
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM autotrade_tuning_events WHERE id = ? LIMIT 1",
+                (event_id,),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
     if not row:
         return None
     return _serialize_autotrade_tuning_event_row(row)
@@ -1297,31 +1571,37 @@ def create_autotrade_tuning_activity(
 
 def list_autotrade_tuning_activity(limit: int = 50) -> list[dict[str, Any]]:
     capped_limit = max(1, min(500, int(limit)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM autotrade_tuning_activity
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (capped_limit,),
-        ).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM autotrade_tuning_activity
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [_serialize_autotrade_tuning_activity_row(row) for row in rows]
 
 
 def get_autotrade_tuning_daily_report(hours: int = 24) -> dict[str, Any]:
     window_hours = max(1, min(24 * 30, int(hours)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM autotrade_tuning_activity
-            WHERE created_at >= datetime('now', ?)
-            ORDER BY id DESC
-            """,
-            (f"-{window_hours} hours",),
-        ).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM autotrade_tuning_activity
+                WHERE created_at >= datetime('now', ?)
+                ORDER BY id DESC
+                """,
+                (f"-{window_hours} hours",),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
 
     items = [_serialize_autotrade_tuning_activity_row(row) for row in rows]
     counts_by_type: dict[str, int] = {}
@@ -1367,16 +1647,19 @@ def _serialize_seller_control_state_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def get_seller_control_state(source: str, seller_id: str) -> dict[str, Any] | None:
-    with get_conn() as conn:
-        row = conn.execute(
-            """
-            SELECT *
-            FROM seller_control_states
-            WHERE source = ? AND seller_id = ?
-            LIMIT 1
-            """,
-            (str(source or "").strip(), str(seller_id or "").strip()),
-        ).fetchone()
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM seller_control_states
+                WHERE source = ? AND seller_id = ?
+                LIMIT 1
+                """,
+                (str(source or "").strip(), str(seller_id or "").strip()),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
     if not row:
         return None
     return _serialize_seller_control_state_row(row)
@@ -1395,8 +1678,11 @@ def list_seller_control_states(
         params.append(str(state or "").strip())
     sql += " ORDER BY updated_at DESC LIMIT ?"
     params.append(capped_limit)
-    with get_conn() as conn:
-        rows = conn.execute(sql, tuple(params)).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [_serialize_seller_control_state_row(row) for row in rows]
 
 
@@ -1508,16 +1794,19 @@ def _serialize_seller_control_event_row(row: sqlite3.Row) -> dict[str, Any]:
 
 def list_seller_control_events(limit: int = 50) -> list[dict[str, Any]]:
     capped_limit = max(1, min(500, int(limit)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM seller_control_events
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (capped_limit,),
-        ).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM seller_control_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [_serialize_seller_control_event_row(row) for row in rows]
 
 
@@ -1528,32 +1817,38 @@ def list_seller_control_events_for_seller(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     capped_limit = max(1, min(100, int(limit)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM seller_control_events
-            WHERE source = ? AND seller_id = ?
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (str(source or "").strip(), str(seller_id or "").strip(), capped_limit),
-        ).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM seller_control_events
+                WHERE source = ? AND seller_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (str(source or "").strip(), str(seller_id or "").strip(), capped_limit),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [_serialize_seller_control_event_row(row) for row in rows]
 
 
 def get_seller_control_daily_report(hours: int = 24) -> dict[str, Any]:
     window_hours = max(1, min(24 * 30, int(hours)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM seller_control_events
-            WHERE created_at >= datetime('now', ?)
-            ORDER BY id DESC
-            """,
-            (f"-{window_hours} hours",),
-        ).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM seller_control_events
+                WHERE created_at >= datetime('now', ?)
+                ORDER BY id DESC
+                """,
+                (f"-{window_hours} hours",),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
 
     items = [_serialize_seller_control_event_row(row) for row in rows]
     counts_by_type: dict[str, int] = {}
@@ -1621,31 +1916,37 @@ def _serialize_seller_control_preset_run_row(row: sqlite3.Row) -> dict[str, Any]
 
 def list_seller_control_preset_runs(*, preset_id: int, limit: int = 10) -> list[dict[str, Any]]:
     capped_limit = max(1, min(50, int(limit)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM seller_control_preset_runs
-            WHERE preset_id = ?
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (int(preset_id), capped_limit),
-        ).fetchall()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM seller_control_preset_runs
+                WHERE preset_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (int(preset_id), capped_limit),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [_serialize_seller_control_preset_run_row(row) for row in rows]
 
 
 def get_seller_control_preset(preset_id: int) -> dict[str, Any] | None:
-    with get_conn() as conn:
-        row = conn.execute(
-            """
-            SELECT *
-            FROM seller_control_presets
-            WHERE id = ?
-            LIMIT 1
-            """,
-            (int(preset_id),),
-        ).fetchone()
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM seller_control_presets
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (int(preset_id),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
     if not row:
         return None
     return _serialize_seller_control_preset_row(row)
@@ -1679,27 +1980,30 @@ def _seller_control_preset_effectiveness_score(stats: dict[str, Any] | None) -> 
 
 def list_seller_control_presets(limit: int = 50) -> list[dict[str, Any]]:
     capped_limit = max(1, min(200, int(limit)))
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM seller_control_presets
-            ORDER BY updated_at DESC, id DESC
-            LIMIT ?
-            """,
-            (capped_limit,),
-        ).fetchall()
-        presets = [_serialize_seller_control_preset_row(row) for row in rows]
-        preset_ids = [preset["id"] for preset in presets]
-        run_rows = conn.execute(
-            f"""
-            SELECT *
-            FROM seller_control_preset_runs
-            WHERE preset_id IN ({",".join("?" for _ in preset_ids)}) 
-            ORDER BY id DESC
-            """,
-            tuple(preset_ids),
-        ).fetchall() if preset_ids else []
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM seller_control_presets
+                ORDER BY updated_at DESC, id DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+            presets = [_serialize_seller_control_preset_row(row) for row in rows]
+            preset_ids = [preset["id"] for preset in presets]
+            run_rows = conn.execute(
+                f"""
+                SELECT *
+                FROM seller_control_preset_runs
+                WHERE preset_id IN ({",".join("?" for _ in preset_ids)}) 
+                ORDER BY id DESC
+                """,
+                tuple(preset_ids),
+            ).fetchall() if preset_ids else []
+    except sqlite3.OperationalError:
+        return []
     grouped_runs: dict[int, list[dict[str, Any]]] = {}
     for row in run_rows:
         item = _serialize_seller_control_preset_run_row(row)
@@ -2226,6 +2530,225 @@ def _median(values: list[float]) -> float:
     if len(ordered) % 2 == 1:
         return float(ordered[mid])
     return float((ordered[mid - 1] + ordered[mid]) / 2.0)
+
+
+def _percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return float(ordered[0])
+    pos = max(0.0, min(1.0, q)) * (len(ordered) - 1)
+    lo = int(math.floor(pos))
+    hi = min(len(ordered) - 1, int(math.ceil(pos)))
+    if lo == hi:
+        return float(ordered[lo])
+    weight = pos - lo
+    return float((ordered[lo] * (1 - weight)) + (ordered[hi] * weight))
+
+
+def _normalized_market_regime_tag(
+    *,
+    open_listing_count: int,
+    recent_sales_count: int,
+    noise_listing_count: int,
+    spread_ratio: float,
+    price_gap_vs_sales: float,
+) -> str:
+    if recent_sales_count < 2:
+        return "thin"
+    if noise_listing_count >= open_listing_count and open_listing_count > 0:
+        return "noisy"
+    if spread_ratio >= 0.35:
+        return "wide"
+    if price_gap_vs_sales >= 0.15:
+        return "overpriced"
+    if open_listing_count >= 2 and recent_sales_count >= 2:
+        return "tradable"
+    return "mixed"
+
+
+def get_normalized_market_snapshots(
+    *,
+    limit: int = 20,
+    listing_hours: int = 24,
+    sales_days: int = 7,
+) -> list[dict[str, Any]]:
+    listing_window_hours = max(1, min(24 * 30, int(listing_hours)))
+    sales_window_days = max(1, min(90, int(sales_days)))
+    listing_cutoff = (datetime.now(timezone.utc) - timedelta(hours=listing_window_hours)).isoformat()
+    sales_cutoff = (datetime.now(timezone.utc) - timedelta(days=sales_window_days)).isoformat()
+
+    with get_conn() as conn:
+        stale_listing_rows = conn.execute(
+            """
+            SELECT id
+            FROM listings_raw
+            WHERE status = 'open' AND (normalization_version = '' OR normalization_version IS NULL)
+            ORDER BY id DESC
+            LIMIT 500
+            """
+        ).fetchall()
+        stale_sale_rows = conn.execute(
+            """
+            SELECT id
+            FROM sales_raw
+            WHERE normalization_version = '' OR normalization_version IS NULL
+            ORDER BY id DESC
+            LIMIT 500
+            """
+        ).fetchall()
+
+    if stale_listing_rows:
+        _backfill_listing_normalization([int(row["id"]) for row in stale_listing_rows])
+    if stale_sale_rows:
+        _backfill_sale_normalization([int(row["id"]) for row in stale_sale_rows])
+
+    with get_conn() as conn:
+        listing_rows = conn.execute(
+            """
+            SELECT normalized_key, normalized_title, item_type, list_price, listed_at, normalization_blocked, normalization_confidence, seller_id
+            FROM listings_raw
+            WHERE status = 'open' AND listed_at >= ?
+            ORDER BY listed_at DESC
+            """,
+            (listing_cutoff,),
+        ).fetchall()
+        sale_rows = conn.execute(
+            """
+            SELECT normalized_key, normalized_title, item_type, sold_price, sold_at, normalization_confidence
+            FROM sales_raw
+            WHERE sold_at >= ?
+            ORDER BY sold_at DESC
+            """,
+            (sales_cutoff,),
+        ).fetchall()
+
+    grouped: dict[str, dict[str, Any]] = {}
+
+    for row in listing_rows:
+        normalized_key = str(row["normalized_key"] or "").strip()
+        if not normalized_key:
+            continue
+        bucket = grouped.setdefault(
+            normalized_key,
+            {
+                "normalized_key": normalized_key,
+                "normalized_title": str(row["normalized_title"] or ""),
+                "item_type": str(row["item_type"] or "unknown"),
+                "listing_prices": [],
+                "listing_seller_ids": set(),
+                "noise_listing_count": 0,
+                "open_listing_count": 0,
+                "latest_list_price": 0.0,
+                "sample_confidence_sum": 0.0,
+                "sample_confidence_count": 0,
+            },
+        )
+        bucket["open_listing_count"] += 1
+        bucket["listing_prices"].append(float(row["list_price"] or 0.0))
+        seller_id = str(row["seller_id"] or "").strip()
+        if seller_id:
+            bucket["listing_seller_ids"].add(seller_id)
+        if bool(row["normalization_blocked"]):
+            bucket["noise_listing_count"] += 1
+        if bucket["latest_list_price"] == 0.0:
+            bucket["latest_list_price"] = float(row["list_price"] or 0.0)
+        bucket["sample_confidence_sum"] += float(row["normalization_confidence"] or 0.0)
+        bucket["sample_confidence_count"] += 1
+
+    for row in sale_rows:
+        normalized_key = str(row["normalized_key"] or "").strip()
+        if not normalized_key:
+            continue
+        bucket = grouped.setdefault(
+            normalized_key,
+            {
+                "normalized_key": normalized_key,
+                "normalized_title": str(row["normalized_title"] or ""),
+                "item_type": str(row["item_type"] or "unknown"),
+                "listing_prices": [],
+                "listing_seller_ids": set(),
+                "noise_listing_count": 0,
+                "open_listing_count": 0,
+                "latest_list_price": 0.0,
+                "sample_confidence_sum": 0.0,
+                "sample_confidence_count": 0,
+            },
+        )
+        bucket.setdefault("sold_prices", []).append(float(row["sold_price"] or 0.0))
+        bucket["sample_confidence_sum"] += float(row["normalization_confidence"] or 0.0)
+        bucket["sample_confidence_count"] += 1
+
+    snapshots: list[dict[str, Any]] = []
+    for bucket in grouped.values():
+        listing_prices = [price for price in bucket.get("listing_prices", []) if price > 0]
+        sold_prices = [price for price in bucket.get("sold_prices", []) if price > 0]
+        if not listing_prices and not sold_prices:
+            continue
+        median_list_price = _median(listing_prices)
+        median_sold_price = _median(sold_prices)
+        latest_list_price = float(bucket.get("latest_list_price") or 0.0)
+        spread_ratio = (
+            (max(listing_prices) - min(listing_prices)) / max(median_list_price, 0.01)
+            if len(listing_prices) >= 2 else 0.0
+        )
+        price_gap_vs_sales = (
+            (median_list_price - median_sold_price) / max(median_sold_price, 0.01)
+            if median_sold_price > 0 else 0.0
+        )
+        sample_confidence = (
+            float(bucket["sample_confidence_sum"]) / float(bucket["sample_confidence_count"])
+            if bucket["sample_confidence_count"] else 0.0
+        )
+        regime_tag = _normalized_market_regime_tag(
+            open_listing_count=int(bucket["open_listing_count"]),
+            recent_sales_count=len(sold_prices),
+            noise_listing_count=int(bucket["noise_listing_count"]),
+            spread_ratio=float(spread_ratio),
+            price_gap_vs_sales=float(price_gap_vs_sales),
+        )
+        summary = (
+            f"{bucket['normalized_title'] or bucket['normalized_key']} | "
+            f"open {int(bucket['open_listing_count'])} | "
+            f"sales7d {len(sold_prices)} | "
+            f"list median {median_list_price:.2f} | "
+            f"sold median {median_sold_price:.2f} | "
+            f"regime {regime_tag}"
+        )
+        snapshots.append(
+            {
+                "normalized_key": bucket["normalized_key"],
+                "normalized_title": bucket["normalized_title"],
+                "item_type": bucket["item_type"],
+                "open_listing_count": int(bucket["open_listing_count"]),
+                "recent_listing_count_24h": int(bucket["open_listing_count"]),
+                "recent_sales_count_7d": len(sold_prices),
+                "min_list_price": round(min(listing_prices), 2) if listing_prices else 0.0,
+                "p25_list_price": round(_percentile(listing_prices, 0.25), 2) if listing_prices else 0.0,
+                "median_list_price": round(median_list_price, 2),
+                "max_list_price": round(max(listing_prices), 2) if listing_prices else 0.0,
+                "latest_list_price": round(latest_list_price, 2),
+                "median_sold_price_7d": round(median_sold_price, 2),
+                "price_gap_vs_sales": round(price_gap_vs_sales, 4),
+                "spread_ratio": round(spread_ratio, 4),
+                "seller_count": len(bucket["listing_seller_ids"]),
+                "noise_listing_count": int(bucket["noise_listing_count"]),
+                "sample_confidence": round(sample_confidence, 4),
+                "regime_tag": regime_tag,
+                "summary_text": summary,
+            }
+        )
+
+    snapshots.sort(
+        key=lambda item: (
+            int(item["open_listing_count"]) + int(item["recent_sales_count_7d"]),
+            float(item["sample_confidence"]),
+            str(item["normalized_key"]),
+        ),
+        reverse=True,
+    )
+    return snapshots[: max(1, min(200, int(limit)))]
 
 
 def _build_trade_performance_summary(

@@ -112,14 +112,16 @@ def _allocate_source_scan_budget(
 async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
     requested_limit = max(1, min(500, int(limit)))
     candidate_limit = min(500, max(requested_limit, requested_limit * 3))
-    raw_open_listings = repo.get_open_listings(limit=candidate_limit)
+    raw_open_listings = repo.get_open_listings(limit=candidate_limit, include_noise_filtered=True)
     try:
         dashboard_metrics = repo.get_dashboard_metrics()
     except Exception:
         dashboard_metrics = {}
     seller_control_sync = seller_controls_service.sync_from_metrics(metrics=dashboard_metrics)
+    noise_filtered = sum(1 for row in raw_open_listings if bool(row["normalization_blocked"]))
+    candidate_listings = [row for row in raw_open_listings if not bool(row["normalization_blocked"])]
     open_listings, source_budget = _allocate_source_scan_budget(
-        raw_open_listings,
+        candidate_listings,
         limit=requested_limit,
         metrics=dashboard_metrics,
     )
@@ -194,7 +196,8 @@ async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
                         confidence=feature_row["confidence"],
                     )
                 else:
-                    feature, extracted_by = await _extractor.extract(listing["title"], listing["description"])
+                    extract_title = str(listing["normalized_title"] or "").strip() or str(listing["title"] or "")
+                    feature, extracted_by = await _extractor.extract(extract_title, listing["description"])
                     extracted_feature = feature
 
                 sales = repo.get_recent_sales(feature, limit=80)
@@ -265,6 +268,7 @@ async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
         "requested_limit": requested_limit,
         "candidate_pool_size": len(raw_open_listings),
         "processed": len(open_listings),
+        "noise_filtered": noise_filtered,
         "pending_review": created,
         "blocked_risk": blocked,
         "ignored": ignored,

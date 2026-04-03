@@ -105,3 +105,5 @@ release/**/data/*.db
 # Local packaged release artifacts
 release/CardFlipAssistant_20*/
 release/CardFlipAssistant_Windows_20*.zip
+backend/cookie.txt
+dist-assets.zip

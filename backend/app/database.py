@@ -39,7 +39,9 @@ _batch_write_status: dict[str, object] = {
 _DIAGNOSTIC_QUERY_PLANS: dict[str, str] = {
     "get_open_listings": (
         "EXPLAIN QUERY PLAN "
-        "SELECT * FROM listings_raw WHERE status = 'open' ORDER BY listed_at DESC LIMIT 50"
+        "SELECT * FROM listings_raw "
+        "WHERE status = 'open' AND normalization_blocked = 0 "
+        "ORDER BY listed_at DESC LIMIT 50"
     ),
     "list_opportunities": (
         "EXPLAIN QUERY PLAN "
@@ -514,6 +516,14 @@ def init_db() -> None:
         description TEXT DEFAULT '',
         sold_price REAL NOT NULL,
         sold_at TEXT NOT NULL,
+        normalized_title TEXT NOT NULL DEFAULT '',
+        normalized_key TEXT NOT NULL DEFAULT '',
+        item_type TEXT NOT NULL DEFAULT 'unknown',
+        noise_flags_json TEXT NOT NULL DEFAULT '[]',
+        normalization_confidence REAL NOT NULL DEFAULT 0.0,
+        normalization_blocked INTEGER NOT NULL DEFAULT 0,
+        normalization_reason TEXT NOT NULL DEFAULT '',
+        normalization_version TEXT NOT NULL DEFAULT '',
         raw_json TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -528,6 +538,14 @@ def init_db() -> None:
         list_price REAL NOT NULL,
         listed_at TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'open',
+        normalized_title TEXT NOT NULL DEFAULT '',
+        normalized_key TEXT NOT NULL DEFAULT '',
+        item_type TEXT NOT NULL DEFAULT 'unknown',
+        noise_flags_json TEXT NOT NULL DEFAULT '[]',
+        normalization_confidence REAL NOT NULL DEFAULT 0.0,
+        normalization_blocked INTEGER NOT NULL DEFAULT 0,
+        normalization_reason TEXT NOT NULL DEFAULT '',
+        normalization_version TEXT NOT NULL DEFAULT '',
         raw_json TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -831,6 +849,32 @@ def init_db() -> None:
     """
     with get_conn() as conn:
         conn.executescript(ddl)
+        _ensure_table_columns(conn, "sales_raw", {
+            "normalized_title": "normalized_title TEXT NOT NULL DEFAULT ''",
+            "normalized_key": "normalized_key TEXT NOT NULL DEFAULT ''",
+            "item_type": "item_type TEXT NOT NULL DEFAULT 'unknown'",
+            "noise_flags_json": "noise_flags_json TEXT NOT NULL DEFAULT '[]'",
+            "normalization_confidence": "normalization_confidence REAL NOT NULL DEFAULT 0.0",
+            "normalization_blocked": "normalization_blocked INTEGER NOT NULL DEFAULT 0",
+            "normalization_reason": "normalization_reason TEXT NOT NULL DEFAULT ''",
+            "normalization_version": "normalization_version TEXT NOT NULL DEFAULT ''",
+        })
+        _ensure_table_columns(conn, "listings_raw", {
+            "normalized_title": "normalized_title TEXT NOT NULL DEFAULT ''",
+            "normalized_key": "normalized_key TEXT NOT NULL DEFAULT ''",
+            "item_type": "item_type TEXT NOT NULL DEFAULT 'unknown'",
+            "noise_flags_json": "noise_flags_json TEXT NOT NULL DEFAULT '[]'",
+            "normalization_confidence": "normalization_confidence REAL NOT NULL DEFAULT 0.0",
+            "normalization_blocked": "normalization_blocked INTEGER NOT NULL DEFAULT 0",
+            "normalization_reason": "normalization_reason TEXT NOT NULL DEFAULT ''",
+            "normalization_version": "normalization_version TEXT NOT NULL DEFAULT ''",
+        })
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_listings_normalized_key_status
+            ON listings_raw(normalized_key, status, listed_at DESC)
+            """
+        )
         _ensure_table_columns(conn, "seller_control_presets", {
             "last_applied_at": "last_applied_at TEXT",
             "last_applied_action": "last_applied_action TEXT NOT NULL DEFAULT ''",

@@ -492,7 +492,10 @@ def test_database_diagnostics_query_plans_use_targeted_indexes(isolated_sqlite: 
         return " | ".join(str(row[-1]) for row in query_plans[name])
 
     open_plan = _plan_text("get_open_listings")
-    assert "idx_listings_status_listed_at" in open_plan
+    assert (
+        "idx_listings_status_listed_at" in open_plan
+        or "idx_listings_normalized_key_status" in open_plan
+    )
     assert "USE TEMP B-TREE" not in open_plan
 
     opportunity_plan = _plan_text("list_opportunities")

@@ -12,6 +12,9 @@ from .. import repositories as repo
 from ..database import get_conn
 from ..services.automation import automation_service
 from ..services.autotrade import auto_trade_service
+from ..services.strategy_advisor import get_strategy_proposal
+from ..services.strategy_advisor import build_market_snapshot_documents
+from ..services.strategy_advisor import get_strategy_proposal
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -106,6 +109,7 @@ def _market_snapshot() -> dict[str, Any]:
         "open_listing_avg_price": round(float(open_listing_row["avg_price"]), 2) if open_listing_row else 0.0,
         "last_sale_price": float(last_sale_row["sold_price"]) if last_sale_row else None,
         "last_sale_at": str(last_sale_row["sold_at"]) if last_sale_row else "",
+        "normalized_market_preview": repo.get_normalized_market_snapshots(limit=5),
     }
 
 
@@ -299,6 +303,25 @@ def get_market_snapshot() -> dict[str, Any]:
     return _market_snapshot()
 
 
+@router.get("/data/normalized-market")
+def get_normalized_market(
+    limit: int = Query(default=20, ge=1, le=200),
+    listing_hours: int = Query(default=24, ge=1, le=24 * 30),
+    sales_days: int = Query(default=7, ge=1, le=90),
+) -> dict[str, Any]:
+    items = repo.get_normalized_market_snapshots(
+        limit=limit,
+        listing_hours=listing_hours,
+        sales_days=sales_days,
+    )
+    return {
+        "items": items,
+        "count": len(items),
+        "listing_hours": listing_hours,
+        "sales_days": sales_days,
+    }
+
+
 @router.get("/calculation/overview")
 def get_calculation_overview(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     return _calculation_overview(limit=limit)
@@ -314,11 +337,58 @@ def get_decision_overview(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_
     return _decision_overview(limit=limit)
 
 
+@router.get("/decision/market-docs")
+def get_market_docs(
+    limit: int = Query(default=20, ge=1, le=200),
+    listing_hours: int = Query(default=24, ge=1, le=24 * 30),
+    sales_days: int = Query(default=7, ge=1, le=90),
+) -> dict[str, Any]:
+    items = build_market_snapshot_documents(
+        limit=limit,
+        listing_hours=listing_hours,
+        sales_days=sales_days,
+    )
+    return {
+        "items": items,
+        "count": len(items),
+    }
+
+
+@router.get("/decision/strategy-proposal")
+def get_market_strategy_proposal(
+    limit: int = Query(default=12, ge=1, le=50),
+    listing_hours: int = Query(default=24, ge=1, le=24 * 30),
+    sales_days: int = Query(default=7, ge=1, le=90),
+    include_reference: bool = True,
+) -> dict[str, Any]:
+    return get_strategy_proposal(
+        limit=limit,
+        listing_hours=listing_hours,
+        sales_days=sales_days,
+        include_reference=include_reference,
+    )
+
+
 @router.get("/automation/recommendation")
 def get_automation_recommendation(
     limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)
 ) -> dict[str, Any]:
     return _automation_recommendation(limit=limit)
+
+
+@router.get("/strategy/proposal")
+def get_strategy_proposal_view(
+    limit: int = Query(default=12, ge=1, le=100),
+    listing_hours: int = Query(default=24, ge=1, le=24 * 30),
+    sales_days: int = Query(default=7, ge=1, le=90),
+    include_reference: bool = True,
+) -> dict[str, Any]:
+    return get_strategy_proposal(
+        limit=limit,
+        listing_hours=listing_hours,
+        sales_days=sales_days,
+        include_reference=include_reference,
+    )
 
 
 @router.post("/automation/run-once")
@@ -355,6 +425,7 @@ def generate_report(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)
         "price_history": _price_history(limit=limit),
         "trade_records": _trade_records(limit=limit),
         "market_snapshot": _market_snapshot(),
+        "normalized_market": repo.get_normalized_market_snapshots(limit=min(20, limit)),
     }
     calculation_layer = _calculation_overview(limit=limit)
     advanced_calculation = _advanced_metrics(limit=limit)

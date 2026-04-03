@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from ..services.market_sentiment import market_sentiment_service
 from ..services.ragflow_client import ragflow_client
+from ..services.strategy_advisor import write_market_snapshot_docs
 
 router = APIRouter(prefix="/ragflow", tags=["ragflow"])
 
@@ -38,6 +39,16 @@ class RagflowMarketSentimentIn(BaseModel):
     expected_sale_price: float = Field(gt=0)
     suggested_list_price: float = Field(gt=0)
     similar_sold_prices: list[float] = Field(default_factory=list)
+
+
+class RagflowMarketSnapshotUploadIn(BaseModel):
+    dataset_id: str | None = None
+    dataset_name: str = Field(default="cardflip_market_knowledge", min_length=1, max_length=128)
+    chunk_method: str = Field(default="naive", min_length=1, max_length=32)
+    limit: int = Field(default=20, ge=1, le=200)
+    listing_hours: int = Field(default=24, ge=1, le=24 * 30)
+    sales_days: int = Field(default=7, ge=1, le=90)
+    auto_parse: bool = True
 
 
 @router.get("/status")
@@ -140,6 +151,52 @@ def ragflow_upload_documents(payload: RagflowUploadDocumentsIn) -> dict[str, Any
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"RAGFlow request failed: {exc}") from exc
+
+
+@router.post("/datasets/upload-market-snapshots")
+def ragflow_upload_market_snapshots(payload: RagflowMarketSnapshotUploadIn) -> dict[str, Any]:
+    temp_dir = None
+    try:
+        dataset_id = (payload.dataset_id or "").strip()
+        if not dataset_id:
+            ensured = ragflow_client.ensure_market_dataset(
+                dataset_name=payload.dataset_name,
+                chunk_method=payload.chunk_method,
+            )
+            dataset_id = str(ensured.get("id") or "").strip()
+            if not dataset_id:
+                raise RuntimeError("failed to resolve dataset_id")
+
+        temp_dir, file_paths, docs = write_market_snapshot_docs(
+            limit=payload.limit,
+            listing_hours=payload.listing_hours,
+            sales_days=payload.sales_days,
+        )
+        uploaded = ragflow_client.upload_documents(
+            dataset_id=dataset_id,
+            file_paths=file_paths,
+        )
+        doc_ids = [
+            str(row.get("id") or row.get("document_id") or "").strip()
+            for row in uploaded
+            if str(row.get("id") or row.get("document_id") or "").strip()
+        ]
+        if payload.auto_parse and doc_ids:
+            ragflow_client.parse_documents(dataset_id=dataset_id, document_ids=doc_ids)
+        return {
+            "dataset_id": dataset_id,
+            "generated": len(docs),
+            "uploaded": len(uploaded),
+            "parsed": len(doc_ids) if payload.auto_parse else 0,
+            "items": docs,
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"RAGFlow request failed: {exc}") from exc
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
 
 
 @router.post("/chat")
