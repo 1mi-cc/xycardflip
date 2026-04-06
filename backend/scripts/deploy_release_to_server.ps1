@@ -57,9 +57,13 @@ try {
         Assert-LastExitCode "Frontend build"
     }
 
-    $branch = (git rev-parse --abbrev-ref HEAD).Trim()
-    $commit = (git rev-parse HEAD).Trim()
-    $dirty = if ((git status --short).Trim()) { "true" } else { "false" }
+    $branch = ((git rev-parse --abbrev-ref HEAD) | Out-String).Trim()
+    Assert-LastExitCode "Resolve git branch"
+    $commit = ((git rev-parse HEAD) | Out-String).Trim()
+    Assert-LastExitCode "Resolve git commit"
+    $statusOutput = ((git status --short) | Out-String).Trim()
+    Assert-LastExitCode "Resolve git status"
+    $dirty = if ($statusOutput) { "true" } else { "false" }
     if ($dirty -eq "true" -and -not $AllowDirty) {
         throw "Working tree is dirty. Commit/stash changes or rerun with -AllowDirty."
     }
