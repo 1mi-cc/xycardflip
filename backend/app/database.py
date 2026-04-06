@@ -10,6 +10,7 @@ from typing import Any, Iterator
 
 from .auth_utils import hash_password
 from .auth_utils import utcnow
+from .auth_utils import verify_password
 from .config import settings
 
 
@@ -473,7 +474,7 @@ def _ensure_seed_admin(conn: sqlite3.Connection) -> None:
     username = settings.ui_auth_username.strip() or "operator"
     existing = conn.execute(
         """
-        SELECT id
+        SELECT id, password_hash, nickname, role, is_active, is_seeded_admin
         FROM users
         WHERE lower(username) = lower(?)
         LIMIT 1
@@ -482,6 +483,40 @@ def _ensure_seed_admin(conn: sqlite3.Connection) -> None:
     ).fetchone()
 
     if existing:
+        configured_password = str(settings.ui_auth_password or "").strip()
+        updates: list[str] = []
+        params: list[object] = []
+
+        if configured_password and not verify_password(configured_password, existing["password_hash"]):
+            updates.append("password_hash = ?")
+            params.append(hash_password(configured_password))
+
+        nickname = settings.ui_auth_nickname.strip() or username
+        if str(existing["nickname"] or "") != nickname:
+            updates.append("nickname = ?")
+            params.append(nickname)
+
+        if str(existing["role"] or "").strip().lower() != "admin":
+            updates.append("role = 'admin'")
+
+        if int(existing["is_active"] or 0) != 1:
+            updates.append("is_active = 1")
+
+        if int(existing["is_seeded_admin"] or 0) != 1:
+            updates.append("is_seeded_admin = 1")
+
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(utcnow().isoformat())
+            params.append(int(existing["id"]))
+            conn.execute(
+                f"""
+                UPDATE users
+                SET {", ".join(updates)}
+                WHERE id = ?
+                """,
+                tuple(params),
+            )
         return
 
     nickname = settings.ui_auth_nickname.strip() or username

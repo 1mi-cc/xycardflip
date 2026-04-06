@@ -72,17 +72,17 @@ def test_seed_admin_password_is_not_reset_on_reinit(isolated_auth_sqlite: Path) 
     init_db()
 
     with TestClient(create_app()) as client:
-        preserved = client.post(
-            "/auth/login",
-            json={"username": "admin", "password": "changed-pass-123"},
-        )
         rotated = client.post(
             "/auth/login",
             json={"username": "admin", "password": "rotated-by-config"},
         )
+        preserved = client.post(
+            "/auth/login",
+            json={"username": "admin", "password": "changed-pass-123"},
+        )
 
-    assert preserved.status_code == 200
-    assert rotated.status_code == 401
+    assert rotated.status_code == 200
+    assert preserved.status_code == 401
 
 
 def test_seed_admin_without_configured_password_uses_bootstrap_secret(tmp_path: Path) -> None:

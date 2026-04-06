@@ -52,7 +52,8 @@
             ></n-input>
           </n-form-item>
           <div class="auth-actions">
-            <n-button secondary @click="router.push('/register')">注册普通用户</n-button>
+            <n-button v-if="allowRegistration" secondary @click="router.push('/register')">注册普通用户</n-button>
+            <span v-else class="auth-footnote">当前服务端未开放自助注册</span>
             <n-button type="primary" :loading="authStore.isLoading" @click="handleLogin">登录</n-button>
           </div>
           <div v-if="setupStatus?.bootstrap_password_mode" class="setup-actions">
@@ -61,7 +62,7 @@
             </n-button>
           </div>
           <p class="credentials-hint">
-            默认管理员账号：<code>operator</code>，密码：<code>admin123456</code>
+            当前管理员账号：<code>{{ adminUsernameHint }}</code>。密码以服务器配置为准，不再显示默认值。
           </p>
         </n-form>
       </section>
@@ -202,6 +203,11 @@ const startupChecks = computed(() =>
     : [],
 );
 
+const allowRegistration = computed(() => Boolean(setupStatus.value?.values?.ui_auth_allow_registration));
+const adminUsernameHint = computed(() =>
+  String(setupStatus.value?.values?.ui_auth_username || "operator").trim() || "operator",
+);
+
 const syncSetupForm = (status) => {
   const values = status?.values || {};
   setupForm.ui_auth_password = "";
@@ -213,6 +219,7 @@ const syncSetupForm = (status) => {
   setupForm.auto_tune_min_closed_batches = Number(values.auto_tune_min_closed_batches || 2);
   setupForm.auto_tune_latest_min_sold_count = Number(values.auto_tune_latest_min_sold_count || 5);
   setupForm.auto_tune_previous_min_sold_count = Number(values.auto_tune_previous_min_sold_count || 3);
+  loginForm.username = String(values.ui_auth_username || "operator").trim() || "operator";
 };
 
 const loadSetupStatus = async () => {
@@ -301,9 +308,10 @@ onMounted(async () => {
 .auth-card {
   border-radius: 28px;
   padding: 36px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.12);
 }
 
 .eyebrow {
@@ -361,11 +369,12 @@ onMounted(async () => {
   h2 {
     margin: 0;
     font-size: 28px;
+    color: #0f172a;
   }
 
   p {
     margin: 4px 0 0;
-    color: #64748b;
+    color: #475569;
   }
 }
 
@@ -376,19 +385,48 @@ onMounted(async () => {
 }
 
 .credentials-hint {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: #94a3b8;
-  text-align: center;
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: #475569;
+  text-align: left;
+  line-height: 1.6;
 
   code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background: #f1f5f9;
-    padding: 1px 5px;
-    border-radius: 4px;
-    color: #475569;
-    font-size: 11px;
+    background: #e2e8f0;
+    padding: 2px 6px;
+    border-radius: 6px;
+    color: #0f172a;
+    font-size: 12px;
   }
+}
+
+.auth-footnote {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+:deep(.n-form-item-label__text) {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+:deep(.n-input),
+:deep(.n-input-wrapper) {
+  background: #fff !important;
+}
+
+:deep(.n-input__input-el),
+:deep(.n-input__textarea-el) {
+  color: #0f172a !important;
+  caret-color: #0f172a !important;
+}
+
+:deep(.n-input__placeholder) {
+  color: #94a3b8 !important;
 }
 
 .setup-alert {
