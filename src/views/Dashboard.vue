@@ -2,38 +2,37 @@
   <div class="dashboard-page">
     <section class="hero card">
       <div>
-        <div class="kicker">Admin Transparency</div>
-        <h1>{{ isAdmin ? "Profit and runtime at first glance" : "Workspace landing page" }}</h1>
+        <div class="kicker">管理总览</div>
+        <h1>{{ isAdmin ? "先看结果，再看风险和服务状态" : "工作台首页" }}</h1>
         <p>
           {{
             isAdmin
-              ? "Open the software and immediately see P&L, service health, alert pressure, and whether the server-side automation stack is still running."
-              : "Your role keeps the operational entry points, but admin-only profitability and server transparency panels remain hidden."
+              ? "打开软件后直接看到收益、风险、服务状态和观测基线，不再在首页暴露操作参数。"
+              : "你当前看到的是精简后的工作台入口，管理员专属的收益和服务器透明度面板会被隐藏。"
           }}
         </p>
         <div class="hero-tags">
-          <n-tag size="small" type="info">Role: {{ currentRoleLabel }}</n-tag>
+          <n-tag size="small" type="info">角色：{{ currentRoleLabel }}</n-tag>
           <n-tag size="small" :type="isAdmin ? 'success' : 'warning'">
-            {{ isAdmin ? "Admin-only visibility enabled" : "Admin-only visibility hidden" }}
+            {{ isAdmin ? "已启用管理视图" : "已隐藏管理视图" }}
           </n-tag>
           <n-tag size="small" :type="tokenStore.hasTokens ? 'success' : 'default'">
-            Tokens: {{ tokenStore.gameTokens.length }}
+            账号：{{ tokenStore.gameTokens.length }}
           </n-tag>
           <n-tag v-if="isAdmin" size="small" :type="runtime.serverReady ? 'success' : 'error'">
-            Server: {{ runtime.serverReady ? "ready" : "attention" }}
+            服务器：{{ runtime.serverReady ? "就绪" : "关注" }}
           </n-tag>
           <n-tag v-if="isAdmin" size="small" :type="operatingModeTagType">
-            Mode: {{ operatingModeLabel }}
+            模式：{{ operatingModeLabel }}
           </n-tag>
           <n-tag v-if="isAdmin" size="small" :type="streamTagType">
-            Stream: {{ streamStatusLabel }}
+            数据流：{{ streamStatusLabel }}
           </n-tag>
         </div>
       </div>
       <div class="hero-actions">
-        <n-button type="primary" @click="router.push('/admin/card-flip-ops')">Open Ops Console</n-button>
-        <n-button @click="router.push('/tokens')">Manage Tokens</n-button>
-        <n-button v-if="isAdmin" :loading="loading" @click="loadOverview()">Refresh</n-button>
+        <n-button type="primary" @click="router.push('/admin/card-flip-ops')">打开数据总览</n-button>
+        <n-button v-if="isAdmin" :loading="loading" @click="loadOverview()">刷新数据</n-button>
       </div>
     </section>
 
@@ -52,8 +51,8 @@
         <article class="card">
           <div class="panel-head">
             <div>
-              <div class="kicker">Profitability</div>
-              <h2>Live P&L Snapshot</h2>
+              <div class="kicker">收益</div>
+              <h2>收益快照</h2>
             </div>
             <span class="muted">{{ generatedAtLabel }}</span>
           </div>
@@ -65,24 +64,24 @@
           </div>
           <div class="subpanel-grid">
             <div class="subpanel">
-              <div class="subpanel-title">Top Sources (7d)</div>
+              <div class="subpanel-title">近 7 天来源贡献</div>
               <div v-if="sourceLeaders.length" class="mini-list">
                 <div v-for="item in sourceLeaders" :key="item.name" class="metric-row">
                   <span>{{ item.name }}</span>
                   <strong>{{ item.value }}</strong>
                 </div>
               </div>
-              <n-empty v-else size="small" description="No source leaderboard yet"></n-empty>
+              <n-empty v-else size="small" description="暂无来源贡献数据"></n-empty>
             </div>
             <div class="subpanel">
-              <div class="subpanel-title">Top Sellers (7d)</div>
+              <div class="subpanel-title">近 7 天卖家贡献</div>
               <div v-if="sellerLeaders.length" class="mini-list">
                 <div v-for="item in sellerLeaders" :key="item.name" class="metric-row">
                   <span>{{ item.name }}</span>
                   <strong>{{ item.value }}</strong>
                 </div>
               </div>
-              <n-empty v-else size="small" description="No seller leaderboard yet"></n-empty>
+              <n-empty v-else size="small" description="暂无卖家贡献数据"></n-empty>
             </div>
           </div>
         </article>
@@ -90,8 +89,8 @@
         <article class="card">
           <div class="panel-head">
             <div>
-              <div class="kicker">Runtime</div>
-              <h2>Server Transparency</h2>
+              <div class="kicker">服务</div>
+              <h2>服务器透明度</h2>
             </div>
             <span class="muted">{{ runtime.healthStatus }}</span>
           </div>
@@ -117,10 +116,10 @@
         <article class="card">
           <div class="panel-head">
             <div>
-              <div class="kicker">Alerts</div>
-              <h2>Active Incident Watch</h2>
+              <div class="kicker">风险</div>
+              <h2>活动告警</h2>
             </div>
-            <span class="muted">{{ alerts.summary.count || 0 }} active</span>
+            <span class="muted">{{ alerts.summary.count || 0 }} 条</span>
           </div>
           <div v-if="alerts.items.length" class="alert-list">
             <div v-for="item in alerts.items" :key="item.alert_key" class="alert-row">
@@ -132,21 +131,21 @@
               </div>
               <div class="muted">{{ item.message }}</div>
               <div class="alert-meta">
-                <span>lane: {{ item.delivery_lane || "-" }}</span>
-                <span>priority: {{ item.incident_priority || "-" }}</span>
-                <span>owner: {{ item.incident_owner || "-" }}</span>
-                <span>SLA: {{ item.sla_breached ? "breached" : `${item.sla_remaining_minutes || 0}m left` }}</span>
+                <span>通道：{{ item.delivery_lane || "-" }}</span>
+                <span>优先级：{{ item.incident_priority || "-" }}</span>
+                <span>责任人：{{ item.incident_owner || "-" }}</span>
+                <span>SLA：{{ item.sla_breached ? "已超时" : `${item.sla_remaining_minutes || 0} 分钟` }}</span>
               </div>
             </div>
           </div>
-          <n-empty v-else description="No active alerts"></n-empty>
+          <n-empty v-else description="当前没有活动告警"></n-empty>
         </article>
 
         <article class="card">
           <div class="panel-head">
             <div>
-              <div class="kicker">Deployment Readiness</div>
-              <h2>Go-Live Checks</h2>
+              <div class="kicker">部署</div>
+              <h2>上线检查</h2>
             </div>
             <span class="muted">{{ lastRefreshedLabel }}</span>
           </div>
@@ -187,8 +186,8 @@
         <article class="card">
           <div class="panel-head">
             <div>
-              <div class="kicker">Quick Access</div>
-              <h2>Workspace Entry Points</h2>
+              <div class="kicker">入口</div>
+              <h2>工作台入口</h2>
             </div>
           </div>
           <div class="quick-grid">
@@ -227,14 +226,21 @@ let overviewStreamReconnectTimer = 0;
 const isAdmin = computed(() => Boolean(authStore.userInfo?.isAdmin));
 const currentRoleLabel = computed(() => {
   const roleKeys = Array.isArray(authStore.userInfo?.roleKeys) ? authStore.userInfo.roleKeys : [];
-  return String(roleKeys[0] || "viewer").toUpperCase();
+  const role = String(roleKeys[0] || "viewer").toLowerCase();
+  if (role === "admin")
+    return "管理员";
+  if (role === "ops")
+    return "运营";
+  if (role === "viewer")
+    return "只读";
+  return role;
 });
 
 const quickActions = [
-  { id: "ops", title: "Ops Console", description: "Inspect automation and incident watch.", action: "/admin/card-flip-ops" },
-  { id: "sim", title: "Simulation Board", description: "Review dry-run execution trends.", action: "/admin/card-flip/sim" },
-  { id: "docs", title: "Runbook", description: "Open the operating guide.", action: "/admin/card-flip/docs" },
-  { id: "tokens", title: "Token Workspace", description: "Manage imported accounts.", action: "/tokens" },
+  { id: "ops", title: "数据总览", description: "查看收益、风险和服务状态。", action: "/admin/card-flip-ops" },
+  { id: "sim", title: "模拟盘", description: "查看模拟执行和验证走势。", action: "/admin/card-flip/sim" },
+  { id: "docs", title: "使用说明", description: "打开系统说明与运行文档。", action: "/admin/card-flip/docs" },
+  { id: "tokens", title: "账号管理", description: "查看已导入的账号与令牌。", action: "/tokens" },
 ];
 
 const profit = computed(() => overview.value?.profitability || {});
@@ -257,20 +263,20 @@ const validationBaseline = computed(() => deploymentReadiness.value.validation_b
 const today = computed(() => cockpit.value.today || {});
 const last7d = computed(() => cockpit.value.last_7d || {});
 const inventory = computed(() => cockpit.value.inventory || {});
-const sourceLeaders = computed(() => (Array.isArray(cockpit.value.source_leaderboard_7d) ? cockpit.value.source_leaderboard_7d : []).slice(0, 4).map((item) => ({ name: String(item.source || "Unknown"), value: formatMoney(item.realized_net_profit || 0) })));
-const sellerLeaders = computed(() => (Array.isArray(cockpit.value.seller_leaderboard_7d) ? cockpit.value.seller_leaderboard_7d : []).slice(0, 4).map((item) => ({ name: String(item.seller_id || "Unknown"), value: formatMoney(item.realized_net_profit || 0) })));
+const sourceLeaders = computed(() => (Array.isArray(cockpit.value.source_leaderboard_7d) ? cockpit.value.source_leaderboard_7d : []).slice(0, 4).map((item) => ({ name: String(item.source || "未知来源"), value: formatMoney(item.realized_net_profit || 0) })));
+const sellerLeaders = computed(() => (Array.isArray(cockpit.value.seller_leaderboard_7d) ? cockpit.value.seller_leaderboard_7d : []).slice(0, 4).map((item) => ({ name: String(item.seller_id || "未知卖家"), value: formatMoney(item.realized_net_profit || 0) })));
 const generatedAtLabel = computed(() => formatTimestamp(overview.value?.generated_at));
-const lastRefreshedLabel = computed(() => lastRefreshedAt.value || "Waiting for first refresh");
+const lastRefreshedLabel = computed(() => lastRefreshedAt.value || "等待首次刷新");
 const streamStatusLabel = computed(() => {
   if (streamStatus.value === "live")
-    return "live";
+    return "实时";
   if (streamStatus.value === "connecting")
-    return "connecting";
+    return "连接中";
   if (streamStatus.value === "reconnecting")
-    return "reconnecting";
+    return "重连中";
   if (streamStatus.value === "error")
-    return "degraded";
-  return "idle";
+    return "降级";
+  return "空闲";
 });
 const streamTagType = computed(() => {
   if (streamStatus.value === "live")
@@ -281,7 +287,7 @@ const streamTagType = computed(() => {
     return "error";
   return "default";
 });
-const operatingModeLabel = computed(() => String(operatingProfile.value?.mode_label || "Standard"));
+const operatingModeLabel = computed(() => String(operatingProfile.value?.mode_label || "标准"));
 const operatingModeTagType = computed(() => {
   if (!operatingProfile.value?.enabled)
     return "default";
@@ -292,32 +298,32 @@ const guardrailFailureItems = computed(() =>
 );
 
 const summaryCards = computed(() => [
-  { id: "today", label: "Today Net Profit", value: formatMoney(today.value.realized_net_profit || 0), note: `${today.value.sold_count || 0} sold / hit ${formatPercent(today.value.profit_hit_rate || 0)}`, tone: moneyTone(today.value.realized_net_profit || 0) },
-  { id: "week", label: "Last 7d Net Profit", value: formatMoney(last7d.value.realized_net_profit || 0), note: `ROI ${formatPercent(last7d.value.avg_realized_roi || 0)}`, tone: moneyTone(last7d.value.realized_net_profit || 0) },
-  { id: "capital", label: "Deployed Capital", value: formatMoney(inventory.value.deployed_capital || 0), note: `${inventory.value.active_trade_count || 0} active / ${inventory.value.listed_trade_count || 0} listed`, tone: "neutral" },
-  { id: "review", label: "Pending Review", value: formatInteger(profit.value.pending_review_count || 0), note: `${profit.value.total_trade_count || 0} total trades`, tone: "neutral" },
-  { id: "alerts", label: "Open Alerts", value: formatInteger(alerts.value.summary.count || 0), note: `${alerts.value.summary.counts_by_severity?.error || 0} error / ${alerts.value.summary.counts_by_severity?.warning || 0} warning`, tone: alerts.value.summary.count > 0 ? "warning" : "positive" },
-  { id: "server", label: "Server Readiness", value: runtime.value.serverReady ? "Ready" : "Attention", note: runtime.value.serverReady ? "Background services look healthy" : `${runtime.value.healthReasons.length} issues need review`, tone: runtime.value.serverReady ? "positive" : "warning" },
+  { id: "today", label: "今日净利", value: formatMoney(today.value.realized_net_profit || 0), note: `${today.value.sold_count || 0} 笔卖出 / 命中 ${formatPercent(today.value.profit_hit_rate || 0)}`, tone: moneyTone(today.value.realized_net_profit || 0) },
+  { id: "week", label: "近 7 天净利", value: formatMoney(last7d.value.realized_net_profit || 0), note: `ROI ${formatPercent(last7d.value.avg_realized_roi || 0)}`, tone: moneyTone(last7d.value.realized_net_profit || 0) },
+  { id: "capital", label: "在途资金", value: formatMoney(inventory.value.deployed_capital || 0), note: `${inventory.value.active_trade_count || 0} 笔进行中 / ${inventory.value.listed_trade_count || 0} 笔已挂售`, tone: "neutral" },
+  { id: "review", label: "待审机会", value: formatInteger(profit.value.pending_review_count || 0), note: `${profit.value.total_trade_count || 0} 笔累计交易`, tone: "neutral" },
+  { id: "alerts", label: "活动告警", value: formatInteger(alerts.value.summary.count || 0), note: `${alerts.value.summary.counts_by_severity?.error || 0} 条错误 / ${alerts.value.summary.counts_by_severity?.warning || 0} 条警告`, tone: alerts.value.summary.count > 0 ? "warning" : "positive" },
+  { id: "server", label: "服务器状态", value: runtime.value.serverReady ? "就绪" : "关注", note: runtime.value.serverReady ? "后台服务运行正常" : `${runtime.value.healthReasons.length} 项需要关注`, tone: runtime.value.serverReady ? "positive" : "warning" },
 ]);
 
 const profitabilityRows = computed(() => [
-  { label: "Gross Profit", value: formatMoney(profit.value.gross_profit || 0) },
-  { label: "Average ROI", value: formatPercent(profit.value.avg_realized_roi || 0) },
-  { label: "Profit Hit Rate", value: formatPercent(profit.value.profit_hit_rate || 0) },
-  { label: "Average Holding Days", value: formatNumber(profit.value.avg_holding_days || 0, 1) },
-  { label: "Median Holding Days", value: formatNumber(profit.value.median_holding_days || 0, 1) },
-  { label: "Expected Exit Spread", value: formatMoney(inventory.value.expected_exit_spread || 0) },
+  { label: "累计毛利", value: formatMoney(profit.value.gross_profit || 0) },
+  { label: "平均已实现 ROI", value: formatPercent(profit.value.avg_realized_roi || 0) },
+  { label: "利润命中率", value: formatPercent(profit.value.profit_hit_rate || 0) },
+  { label: "平均持有天数", value: formatNumber(profit.value.avg_holding_days || 0, 1) },
+  { label: "中位持有天数", value: formatNumber(profit.value.median_holding_days || 0, 1) },
+  { label: "预期退出价差", value: formatMoney(inventory.value.expected_exit_spread || 0) },
 ]);
 
 const runtimeRows = computed(() => {
   const services = runtime.value.services || {};
   const automation = runtime.value.automation || {};
   return [
-    { id: "automation", label: "Automation", value: automation.all_running ? "running" : "partial", note: automation.busy ? "busy with a coordinated run" : "background orchestrator", type: automation.all_running ? "success" : "warning", time: formatTimestamp(automation.last_run_at) },
-    { id: "monitor", label: "Market Monitor", value: services.monitor?.is_running ? "running" : "stopped", note: services.monitor?.circuit_open ? "circuit open" : "listing watcher", type: services.monitor?.is_running ? "success" : "default", time: formatTimestamp(services.monitor?.last_run_at) },
-    { id: "autotrade", label: "Autotrade", value: services.autotrade?.running ? "running" : "stopped", note: `approved ${services.autotrade?.total_approved || 0}`, type: services.autotrade?.running ? "success" : "default", time: formatTimestamp(services.autotrade?.last_run_at) },
-    { id: "retry", label: "Execution Retry", value: services.execution_retry?.running ? "running" : "stopped", note: `${services.execution_retry?.total_retried || 0} retried`, type: services.execution_retry?.running ? "success" : "default", time: formatTimestamp(services.execution_retry?.last_run_at) },
-    { id: "supabase", label: "Supabase Sync", value: services.supabase_sync?.is_running ? "running" : "idle", note: services.supabase_sync?.configured ? "replication configured" : "replication disabled", type: services.supabase_sync?.is_running ? "success" : services.supabase_sync?.configured ? "warning" : "default", time: formatUnixTimestamp(services.supabase_sync?.last_run_at_unix) },
+    { id: "automation", label: "自动化总控", value: automation.all_running ? "运行中" : "部分运行", note: automation.busy ? "后台正在执行协调任务" : "后台编排服务", type: automation.all_running ? "success" : "warning", time: formatTimestamp(automation.last_run_at) },
+    { id: "monitor", label: "市场监听", value: services.monitor?.is_running ? "运行中" : "已停止", note: services.monitor?.circuit_open ? "熔断中" : "采集服务", type: services.monitor?.is_running ? "success" : "default", time: formatTimestamp(services.monitor?.last_run_at) },
+    { id: "autotrade", label: "自动交易审批", value: services.autotrade?.running ? "运行中" : "已停止", note: `累计审批 ${services.autotrade?.total_approved || 0} 笔`, type: services.autotrade?.running ? "success" : "default", time: formatTimestamp(services.autotrade?.last_run_at) },
+    { id: "retry", label: "执行重试", value: services.execution_retry?.running ? "运行中" : "已停止", note: `累计重试 ${services.execution_retry?.total_retried || 0} 笔`, type: services.execution_retry?.running ? "success" : "default", time: formatTimestamp(services.execution_retry?.last_run_at) },
+    { id: "supabase", label: "同步服务", value: services.supabase_sync?.is_running ? "运行中" : "空闲", note: services.supabase_sync?.configured ? "复制链路已配置" : "复制链路未启用", type: services.supabase_sync?.is_running ? "success" : services.supabase_sync?.configured ? "warning" : "default", time: formatUnixTimestamp(services.supabase_sync?.last_run_at_unix) },
   ];
 });
 
@@ -343,69 +349,69 @@ const deploymentRows = computed(() => {
   return [
     {
       id: "operating-mode",
-      title: "Operating Mode",
-      value: operatingProfile.value.mode_label || "Standard",
+      title: "运行模式",
+      value: operatingProfile.value.mode_label || "标准",
       type: !operatingProfile.value.enabled ? "default" : operatingProfile.value.aligned ? "success" : "warning",
       message: operatingProfile.value.enabled
         ? (operatingProfile.value.aligned
-            ? `Single-account local guardrails are aligned with the ${operatingProfile.value.strategy_profile || "balanced"} strategy.`
-            : `Guardrail drift: ${(operatingProfile.value.failing_codes || []).join(", ") || "review required"}`)
-        : `Single-account mode is not enabled. Strategy profile: ${operatingProfile.value.strategy_profile || "balanced"}.`,
+            ? `单账号本地护栏已与 ${operatingProfile.value.strategy_profile || "balanced"} 策略对齐。`
+            : `护栏漂移：${(operatingProfile.value.failing_codes || []).join(", ") || "需要复核"}`)
+        : `当前未启用单账号模式。策略档位：${operatingProfile.value.strategy_profile || "balanced"}。`,
       time: generatedAtLabel.value,
     },
     {
       id: "validation-baseline",
-      title: "Observation Baseline",
-      value: validationBaseline.value.ready ? "ready" : validationBaseline.value.status || "observe",
+      title: "观测基线",
+      value: validationBaseline.value.ready ? "就绪" : validationBaseline.value.status || "观察中",
       type: validationBaseline.value.ready ? "success" : validationBaseline.value.status === "blocked" ? "error" : "warning",
       message: latestHourlyBaseline
-        ? `Latest ${latestHourlyBaseline.bucket_type || "hour"} snapshot: ${latestHourlyBaseline.status || "-"} / ${latestHourlyBaseline.direction || "flat"}`
+        ? `最近 ${latestHourlyBaseline.bucket_type || "小时"} 快照：${latestHourlyBaseline.status || "-"} / ${latestHourlyBaseline.direction || "平稳"}`
         : validationBaseline.value.timeline?.summary
         || validationBaseline.value.recommendation
-        || `Baseline drift: ${(validationBaseline.value.blocking_codes || []).join(", ") || "collect more evidence"}`,
+        || `基线阻塞：${(validationBaseline.value.blocking_codes || []).join(", ") || "继续观察"}`,
       time: generatedAtLabel.value,
     },
     {
       id: "startup-checks",
-      title: "Startup Checks",
+      title: "启动检查",
       value: String(startupChecks.value.status || "ok"),
       type: startupChecks.value.status === "critical" ? "error" : startupChecks.value.status === "warning" ? "warning" : "success",
-      message: startupChecks.value.count ? `${startupChecks.value.count} startup findings still need review.` : "No startup blockers are currently detected.",
+      message: startupChecks.value.count ? `${startupChecks.value.count} 项启动检查仍需关注。` : "当前没有启动阻塞项。",
       time: generatedAtLabel.value,
     },
     {
       id: "live-execution",
-      title: "Live Execution",
-      value: executionReady.live_ready ? "ready" : "not ready",
+      title: "实盘执行",
+      value: executionReady.live_ready ? "就绪" : "未就绪",
       type: executionReady.live_ready ? "success" : executionReady.live_enabled ? "warning" : "default",
       message: executionReady.live_enabled
-        ? (executionReady.live_ready ? "Webhook execution is fully configured." : `Missing: ${(executionReady.missing || []).join(", ") || "unknown"}`)
-        : "Live execution is currently disabled.",
+        ? (executionReady.live_ready ? "Webhook 执行链已完整配置。" : `缺失项：${(executionReady.missing || []).join(", ") || "未知"}`)
+        : "当前未启用实盘执行。",
       time: generatedAtLabel.value,
     },
     {
       id: "alert-channels",
-      title: "Alert Channels",
-      value: alertDelivery.email_ready || alertDelivery.slack_ready || alertDelivery.telegram_ready || alertDelivery.webhook_ready ? "available" : "offline",
+      title: "告警通道",
+      value: alertDelivery.email_ready || alertDelivery.slack_ready || alertDelivery.telegram_ready || alertDelivery.webhook_ready ? "可用" : "离线",
       type: alertDelivery.email_ready || alertDelivery.slack_ready || alertDelivery.telegram_ready || alertDelivery.webhook_ready ? "success" : "warning",
-      message: `email ${boolWord(alertDelivery.email_ready)} / slack ${boolWord(alertDelivery.slack_ready)} / telegram ${boolWord(alertDelivery.telegram_ready)} / webhook ${boolWord(alertDelivery.webhook_ready)}`,
+      message: `邮件 ${boolWord(alertDelivery.email_ready)} / Slack ${boolWord(alertDelivery.slack_ready)} / Telegram ${boolWord(alertDelivery.telegram_ready)} / Webhook ${boolWord(alertDelivery.webhook_ready)}`,
       time: generatedAtLabel.value,
     },
     {
       id: "auto-start",
-      title: "Auto Start",
-      value: Object.values(autoStart).some(Boolean) ? "configured" : "manual",
+      title: "自动启动",
+      value: Object.values(autoStart).some(Boolean) ? "已配置" : "手动",
       type: Object.values(autoStart).some(Boolean) ? "success" : "warning",
-      message: `monitor ${boolWord(autoStart.monitor)} / autotrade ${boolWord(autoStart.autotrade)} / retry ${boolWord(autoStart.execution_retry)} / supabase ${boolWord(autoStart.supabase_sync)}`,
+      message: `监听 ${boolWord(autoStart.monitor)} / 自动交易 ${boolWord(autoStart.autotrade)} / 重试 ${boolWord(autoStart.execution_retry)} / 同步 ${boolWord(autoStart.supabase_sync)}`,
       time: generatedAtLabel.value,
     },
   ];
 });
 
 const limitedCards = computed(() => [
-  { id: "tokens", label: "Imported Tokens", value: formatInteger(tokenStore.gameTokens.length), note: tokenStore.hasTokens ? "Token workspace ready" : "No tokens imported yet", tone: tokenStore.hasTokens ? "positive" : "warning" },
-  { id: "selected", label: "Selected Token", value: tokenStore.selectedToken?.name || "None", note: tokenStore.selectedToken?.server || "Choose a token to continue", tone: tokenStore.selectedToken ? "positive" : "warning" },
-  { id: "role", label: "Current Role", value: currentRoleLabel.value, note: "Admin-only runtime visibility is intentionally hidden", tone: "neutral" },
+  { id: "tokens", label: "已导入账号", value: formatInteger(tokenStore.gameTokens.length), note: tokenStore.hasTokens ? "账号工作区已就绪" : "当前还没有导入账号", tone: tokenStore.hasTokens ? "positive" : "warning" },
+  { id: "selected", label: "当前账号", value: tokenStore.selectedToken?.name || "未选择", note: tokenStore.selectedToken?.server || "先选择一个账号再继续", tone: tokenStore.selectedToken ? "positive" : "warning" },
+  { id: "role", label: "当前角色", value: currentRoleLabel.value, note: "管理员专属的服务器透明度面板已隐藏", tone: "neutral" },
 ]);
 
 const loadOverview = async ({ silent = false } = {}) => {
@@ -532,7 +538,7 @@ const formatMoney = (value) => new Intl.NumberFormat("en-US", { style: "currency
 const formatPercent = (value) => `${new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(value || 0))}%`;
 const formatInteger = (value) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value || 0));
 const formatNumber = (value, digits = 2) => new Intl.NumberFormat("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value || 0));
-const boolWord = (value) => (value ? "ready" : "off");
+const boolWord = (value) => (value ? "已就绪" : "关闭");
 const moneyTone = (value) => (Number(value || 0) > 0 ? "positive" : Number(value || 0) < 0 ? "warning" : "neutral");
 const formatTimestamp = (value) => {
   const text = String(value || "").trim();

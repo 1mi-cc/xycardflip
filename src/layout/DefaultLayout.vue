@@ -3,7 +3,7 @@
     <aside class="sidebar">
       <div class="logo-wrap">
         <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
-        <span v-if="!isSidebarCollapsed" class="brand-text">XYZW Admin</span>
+        <span v-if="!isSidebarCollapsed" class="brand-text">XYZW 数据台</span>
       </div>
 
       <n-scrollbar class="menu-scroll">

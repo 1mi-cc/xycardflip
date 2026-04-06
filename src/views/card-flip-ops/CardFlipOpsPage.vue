@@ -1,654 +1,857 @@
 <template>
-  <div class="card-flip-page">
-    <OpsOverviewHeader
-      :batch-pricing-loading="batchPricingLoading"
-      :blocked-count="blockedOpportunities.length"
-      :can-batch-apply-pricing="canBatchApplyPricing"
-      :can-maintain="canMaintain"
-      :can-operate="canOperate"
-      :cookie-refresh-loading="cookieRefreshLoading"
-      :data-integrity-alert="dataIntegrityAlert"
-      :gemini-alert="geminiAlert"
-      :gemini-alert-type="geminiAlertType"
-      :gemini-status-text="geminiStatusText"
-      :gemini-status-variant="geminiStatusVariant"
-      :guard-alert="guardAlert"
-      :is-viewer="isViewer"
-      :loading="loading"
-      :metrics="metrics"
-      :on-apply-batch-reprice="applyBatchReprice"
-      :on-apply-strategy-profile="applyStrategyProfile"
-      :on-preview-batch-reprice="previewBatchReprice"
-      :on-refresh="loadData"
-      :on-refresh-cookie="refreshCookie"
-      :on-run-scan="runScan"
-      :on-run-simulation-training="runSimulationTraining"
-      :pricing-mode="pricingMode"
-      :pricing-mode-options="pricingModeOptions"
-      :profit-protection-alert="profitProtectionAlert"
-      :profit-protection-alert-type="profitProtectionAlertType"
-      :profit-protection-status-text="profitProtectionStatusText"
-      :role-tag-text="roleTagText"
-      :role-tag-type="roleTagType"
-      :scan-limit="scanLimit"
-      :scan-loading="scanLoading"
-      :simulation-training-loading="simulationTrainingLoading"
-      :startup-check-alert="startupCheckAlert"
-      :startup-check-alert-type="startupCheckAlertType"
-      :strategy-profile="strategyProfile"
-      :strategy-profile-loading="strategyProfileLoading"
-      :strategy-profile-options="strategyProfileOptions"
-      :strategy-thresholds="strategyThresholds"
-      :to-money="toMoney"
-      @apply-batch-reprice="applyBatchReprice"
-      @apply-strategy-profile="applyStrategyProfile"
-      @preview-batch-reprice="previewBatchReprice"
-      @refresh="loadData"
-      @refresh-cookie="refreshCookie"
-      @run-scan="runScan"
-      @run-simulation-training="runSimulationTraining"
-      @update:pricing-mode="pricingMode = $event"
-      @update:scan-limit="scanLimit = $event"
-      @update:strategy-profile="strategyProfile = $event"
-    ></OpsOverviewHeader>
-
-    <section v-if="sellerPresetRecommendationVisible && sellerPresetRecommendation" class="health-strip">
-      <n-alert
-        show-icon
-        type="success"
-        :bordered="false"
-      >
-        <template #header>
-          Recommended Seller Preset
-        </template>
-        <div>{{ sellerPresetRecommendation.summary }}</div>
-        <div class="summary-meta" style="margin-top: 6px">
-          {{ sellerPresetRecommendation.reason_text }}
-        </div>
-        <n-space style="margin-top: 10px">
-          <n-button
-            size="small"
-            type="primary"
-            :disabled="!canOperate"
-            :loading="sellerPresetRecommendationLoading"
-            @click="applyRecommendedSellerPreset"
-          >
-            Apply {{ sellerPresetRecommendation.name }}
-          </n-button>
-          <n-button
-            secondary
-            size="small"
-            @click="dismissSellerPresetRecommendation"
-          >
-            Dismiss
-          </n-button>
-        </n-space>
-      </n-alert>
-    </section>
-
-    <section v-if="tuningBroadcast" class="health-strip">
-      <n-alert
-        show-icon
-        :bordered="false"
-        :type="tuningBroadcast.type"
-      >
-        <template #header>
-          {{ tuningBroadcast.title }}
-        </template>
-        <div>{{ tuningBroadcast.content }}</div>
-        <div class="summary-meta" style="margin-top: 6px">
-          {{ tuningBroadcast.timestamp || "-" }}
-        </div>
-      </n-alert>
-    </section>
-
-    <AutomationControlPanel
-      :automation-action-loading="automationActionLoading"
-      :automation-autotrade-limit="automationAutotradeLimit"
-      :automation-execution-retry-limit="automationExecutionRetryLimit"
-      :automation-force="automationForce"
-      :automation-include-autotrade="automationIncludeAutotrade"
-      :automation-include-execution-retry="automationIncludeExecutionRetry"
-      :automation-include-monitor="automationIncludeMonitor"
-      :automation-include-scan="automationIncludeScan"
-      :automation-scan-limit="automationScanLimit"
-      :automation-status="automationStatus"
-      :automation-status-loading="automationStatusLoading"
-      :can-maintain="canMaintain"
-      :can-operate="canOperate"
-      :monitor-action-loading="monitorActionLoading"
-      :monitor-cookie-status-hint="monitorCookieStatusHint"
-      :monitor-stop-reason="monitorStopReason"
-      @load-automation-status="loadAutomationStatus"
-      @reset-monitor-circuit="resetMonitorCircuit"
-      @restart-monitor="restartMonitorFromAutomation"
-      @run-automation-once="runAutomationOnce"
-      @start-automation="startAutomation"
-      @stop-automation="stopAutomation"
-      @update:automation-autotrade-limit="automationAutotradeLimit = $event"
-      @update:automation-execution-retry-limit="automationExecutionRetryLimit = $event"
-      @update:automation-force="automationForce = $event"
-      @update:automation-include-autotrade="automationIncludeAutotrade = $event"
-      @update:automation-include-execution-retry="automationIncludeExecutionRetry = $event"
-      @update:automation-include-monitor="automationIncludeMonitor = $event"
-      @update:automation-include-scan="automationIncludeScan = $event"
-      @update:automation-scan-limit="automationScanLimit = $event"
-    ></AutomationControlPanel>
-
-    <AutotradePanel
-      :autotrade-action-loading="autotradeActionLoading"
-      :autotrade-config-loading="autotradeConfigLoading"
-      :autotrade-run-force="autotradeRunForce"
-      :autotrade-run-limit="autotradeRunLimit"
-      :autotrade-status="autotradeStatus"
-      :autotrade-status-loading="autotradeStatusLoading"
-      :can-operate="canOperate"
-      :execution-config-loading="executionConfigLoading"
-      :execution-live-confirm-token="executionLiveConfirmToken"
-      :execution-status="executionStatus"
-      :metrics="metrics"
-      :seller-control-action-loading="sellerControlActionLoading"
-      :seller-control-batch-action-loading="sellerControlBatchActionLoading"
-      :seller-control-preset-action-loading="sellerControlPresetActionLoading"
-      :seller-control-preset-history="sellerControlPresetHistory"
-      :seller-control-preset-history-loading="sellerControlPresetHistoryLoading"
-      :seller-preset-recommendation="sellerPresetRecommendation"
-      :seller-preset-recommendation-dismissed="sellerPresetRecommendationDismissed"
-      :seller-preset-recommendation-dismissed-text="sellerPresetRecommendationDismissedText"
-      :seller-preset-recommendation-visible="sellerPresetRecommendationVisible"
-      :to-money="toMoney"
-      :to-percent="toPercent"
-      @adjust-autotrade-number="adjustAutotradeNumber"
-      @adjust-autotrade-roi="adjustAutotradeRoi"
-      @adjust-execution-number="adjustExecutionNumber"
-      @apply-seller-control-action="applySellerControlAction"
-      @apply-seller-control-batch-action="applySellerControlBatchAction"
-      @apply-seller-control-preset="applySellerControlPreset"
-      @delete-seller-control-preset="deleteSellerControlPreset"
-      @load-autotrade-status="loadAutotradeStatus"
-      @load-seller-control-preset-history="loadSellerControlPresetHistory"
-      @restore-seller-preset-recommendation="restoreSellerPresetRecommendation"
-      @run-autotrade-once="runAutotradeOnce"
-      @save-seller-control-preset="saveSellerControlPreset"
-      @set-execution-provider="setExecutionProvider"
-      @start-autotrade="startAutotrade"
-      @stop-autotrade="stopAutotrade"
-      @toggle-autotrade-flag="toggleAutotradeFlag"
-      @toggle-execution-flag="toggleExecutionFlag"
-      @update:autotrade-run-force="autotradeRunForce = $event"
-      @update:autotrade-run-limit="autotradeRunLimit = $event"
-      @update:execution-live-confirm-token="executionLiveConfirmToken = $event"
-    ></AutotradePanel>
-
-    <AutotradeOpsConsole
-      :audit-feed="autotradeAuditFeed"
-      :audit-loading="autotradeAuditFeedLoading"
-      :alert-dispatch-loading="autotradeAlertDispatchLoading"
-      :alert-control-loading="autotradeAlertControlLoading"
-      :slack-dispatch-loading="autotradeSlackDispatchLoading"
-      :telegram-dispatch-loading="autotradeTelegramDispatchLoading"
-      :alert-timeline="autotradeAlertTimeline"
-      :alert-timeline-loading="autotradeAlertTimelineLoading"
-      :autotrade-config-loading="autotradeConfigLoading"
-      :autotrade-status="autotradeStatus"
-      :webhook-dispatch-loading="autotradeWebhookDispatchLoading"
-      :can-operate="canOperate"
-      :cockpit="autotradeCockpit"
-      :cockpit-loading="autotradeCockpitLoading"
-      :override-action-loading="autotradeOverrideActionLoading"
-      :to-money="toMoney"
-      @apply-cluster-control-action="applyClusterControlAction"
-      @apply-source-control-action="applySourceControlAction"
-      @acknowledge-alert="acknowledgeAutotradeAlert"
-      @assign-alert-incident="assignAutotradeAlertIncident"
-      @adjust-alert-policy-number="adjustAutotradeAlertPolicyNumber"
-      @dispatch-alert-email="dispatchAutotradeAlertEmail"
-      @dispatch-alert-slack="dispatchAutotradeAlertSlack"
-      @dispatch-alert-telegram="dispatchAutotradeAlertTelegram"
-      @dispatch-alert-webhook="dispatchAutotradeAlertWebhook"
-      @handoff-alert-incident="handoffAutotradeAlertIncident"
-      @load-alert-timeline="loadAutotradeAlertTimeline"
-      @load-autotrade-cockpit="refreshAutotradeOperatorConsole"
-      @note-alert-incident="noteAutotradeAlertIncident"
-      @prioritize-alert-incident="prioritizeAutotradeAlertIncident"
-      @resume-alert="resumeAutotradeAlert"
-      @resolve-alert-incident="resolveAutotradeAlertIncident"
-      @set-alert-policy-severity="setAutotradeAlertPolicySeverity"
-      @snooze-alert="snoozeAutotradeAlert"
-      @toggle-alert-auto-email="toggleAutotradeAlertAutoEmail"
-      @toggle-alert-auto-slack="toggleAutotradeAlertAutoSlack"
-      @toggle-alert-auto-telegram="toggleAutotradeAlertAutoTelegram"
-      @toggle-alert-auto-webhook="toggleAutotradeAlertAutoWebhook"
-    ></AutotradeOpsConsole>
-
-    <ExecutionRetryPanel
-      :can-operate="canOperate"
-      :execution-retry-action-options="executionRetryActionOptions"
-      :execution-retry-config-loading="executionRetryConfigLoading"
-      :execution-retry-service-action="executionRetryServiceAction"
-      :execution-retry-service-action-loading="executionRetryServiceActionLoading"
-      :execution-retry-service-dry-run="executionRetryServiceDryRun"
-      :execution-retry-service-execution-force="executionRetryServiceExecutionForce"
-      :execution-retry-service-run-force="executionRetryServiceRunForce"
-      :execution-retry-service-run-limit="executionRetryServiceRunLimit"
-      :execution-retry-service-status="executionRetryServiceStatus"
-      :execution-retry-service-status-loading="executionRetryServiceStatusLoading"
-      @adjust-execution-retry-number="adjustExecutionRetryNumber"
-      @load-execution-retry-service-status="loadExecutionRetryServiceStatus"
-      @run-execution-retry-service-once="runExecutionRetryServiceOnce"
-      @set-execution-retry-default-action="setExecutionRetryDefaultAction"
-      @start-execution-retry-service="startExecutionRetryService"
-      @stop-execution-retry-service="stopExecutionRetryService"
-      @toggle-execution-retry-flag="toggleExecutionRetryFlag"
-      @update:execution-retry-service-action="executionRetryServiceAction = $event"
-      @update:execution-retry-service-dry-run="executionRetryServiceDryRun = $event"
-      @update:execution-retry-service-execution-force="executionRetryServiceExecutionForce = $event"
-      @update:execution-retry-service-run-force="executionRetryServiceRunForce = $event"
-      @update:execution-retry-service-run-limit="executionRetryServiceRunLimit = $event"
-    ></ExecutionRetryPanel>
-
-    <TradeDataTabs
-      :active-tab="activeTab"
-      :active-trades="activeTrades"
-      :blocked-batch-loading="blockedBatchLoading"
-      :blocked-opportunities="blockedOpportunities"
-      :blocked-reject-batch-loading="blockedRejectBatchLoading"
-      :blocked-risk-threshold="blockedRiskThreshold"
-      :compact-json="compactJson"
-      :execution-action="executionAction"
-      :execution-action-options="executionActionOptions"
-      :execution-loading-trade-id="executionLoadingTradeId"
-      :execution-log-filters="executionLogFilters"
-      :execution-logs="executionLogs"
-      :execution-logs-loading="executionLogsLoading"
-      :execution-mode-options="executionModeOptions"
-      :execution-provider-options="executionProviderOptions"
-      :execution-result-options="executionResultOptions"
-      :execution-retry-action="executionRetryAction"
-      :execution-retry-action-options="executionRetryActionOptions"
-      :execution-retry-dry-run="executionRetryDryRun"
-      :execution-retry-force="executionRetryForce"
-      :execution-retry-limit="executionRetryLimit"
-      :execution-retry-loading="executionRetryLoading"
-      :get-action-text="getActionText"
-      :get-action-type="getActionType"
-      :get-pricing-preview="getPricingPreview"
-      :get-risk-level-text="getRiskLevelText"
-      :get-risk-level-type="getRiskLevelType"
-      :get-risk-reason-text="getRiskReasonText"
-      :get-urgency-text="getUrgencyText"
-      :get-urgency-type="getUrgencyType"
-      :lists-loading="listsLoading"
-      :loading="loading"
-      :opportunities="opportunities"
-      :pricing-action="pricingAction"
-      :pricing-loading-trade-id="pricingLoadingTradeId"
-      :short-text="shortText"
-      :sold-trades="soldTrades"
-      :to-money="toMoney"
-      :to-percent="toPercent"
-      @apply-trade-pricing="applyTradePricing"
-      @execute-trade-buy="executeTradeBuy"
-      @execute-trade-list="executeTradeList"
-      @execute-trade-sell="executeTradeSell"
-      @load-execution-logs="loadExecutionLogs"
-      @open-approve="openApprove"
-      @open-listing="openListing"
-      @open-mark-listed="openMarkListed"
-      @open-mark-sold="openMarkSold"
-      @preview-trade-pricing="previewTradePricing"
-      @reject="reject"
-      @reject-blocked-batch="rejectBlockedBatch"
-      @reset-execution-log-filters="resetExecutionLogFilters"
-      @retry-failed-executions="retryFailedExecutions"
-      @send-blocked-batch-to-review="sendBlockedBatchToReview"
-      @send-to-review="sendToReview"
-      @update:active-tab="activeTab = $event"
-      @update:blocked-risk-threshold="blockedRiskThreshold = $event"
-      @update:execution-log-filters="executionLogFilters = $event"
-      @update:execution-retry-action="executionRetryAction = $event"
-      @update:execution-retry-dry-run="executionRetryDryRun = $event"
-      @update:execution-retry-force="executionRetryForce = $event"
-      @update:execution-retry-limit="executionRetryLimit = $event"
-    ></TradeDataTabs>
-
-    <ValidationInsightsPanel
-      :autotrade-config-loading="autotradeConfigLoading"
-      :autotrade-status="autotradeStatus"
-      :autotrade-tuning-activity="autotradeTuningActivity"
-      :autotrade-tuning-daily-report="autotradeTuningDailyReport"
-      :autotrade-tuning-history="autotradeTuningHistory"
-      :can-operate="canOperate"
-      :forward-validation="metrics.forward_validation"
-      :forward-validation-action-loading="forwardValidationActionLoading"
-      :strategy-profile="strategyProfile"
-      :strategy-profile-loading="strategyProfileLoading"
-      :to-money="toMoney"
-      :to-percent="toPercent"
-      :tuning-activity-loading="tuningActivityLoading"
-      :tuning-daily-report-loading="tuningDailyReportLoading"
-      :tuning-history-action-loading="tuningHistoryActionLoading"
-      :tuning-history-loading="tuningHistoryLoading"
-      :validation-auto-tune-guard="validationAutoTuneGuard"
-      :validation-auto-tune-proposal="validationAutoTuneProposal"
-      @adjust-auto-tune-cooldown="adjustAutoTuneCooldown"
-      @apply-recommended-strategy-profile="applyStrategyProfile"
-      @apply-validation-auto-tune="applyValidationAutoTune"
-      @close-forward-validation-batch="closeForwardValidationBatch"
-      @open-forward-validation-batch-modal="openForwardValidationBatchModal"
-      @rollback-autotrade-tune="rollbackAutotradeTune"
-      @toggle-auto-tune-auto-apply="toggleAutoTuneAutoApply"
-    ></ValidationInsightsPanel>
-
-    <n-modal
-      negative-text="取消"
-      positive-text="确认审批"
-      preset="dialog"
-      title="审批买入"
-      v-model:show="approveModalVisible"
-      :positive-button-props="{ loading: approving }"
-      @positive-click="submitApprove"
-    >
-      <n-form label-placement="left" :label-width="90">
-        <n-form-item label="机会 ID">
-          <n-input disabled :value="String(approveForm.opportunity_id || '')"></n-input>
-        </n-form-item>
-        <n-form-item label="审批买入价">
-          <n-input-number
-            style="width: 100%"
-            v-model:value="approveForm.approved_buy_price"
-            :min="0.01"
-            :precision="2"
-          ></n-input-number>
-        </n-form-item>
-        <n-form-item label="审批人">
-          <n-input v-model:value="approveForm.approved_by"></n-input>
-        </n-form-item>
-        <n-form-item label="备注">
-          <n-input type="textarea" v-model:value="approveForm.note"></n-input>
-        </n-form-item>
-      </n-form>
-    </n-modal>
-
-    <n-modal
-      negative-text="取消"
-      positive-text="确认"
-      preset="dialog"
-      title="标记已上架"
-      v-model:show="markListedModalVisible"
-      :positive-button-props="{ loading: markListedLoading }"
-      @positive-click="submitMarkListed"
-    >
-      <n-form label-placement="left" :label-width="90">
-        <n-form-item label="交易 ID">
-          <n-input disabled :value="String(markListedForm.trade_id || '')"></n-input>
-        </n-form-item>
-        <n-form-item label="上架链接">
-          <n-input
-            placeholder="https://..."
-            v-model:value="markListedForm.listing_url"
-          ></n-input>
-        </n-form-item>
-        <n-form-item label="备注">
-          <n-input type="textarea" v-model:value="markListedForm.note"></n-input>
-        </n-form-item>
-      </n-form>
-    </n-modal>
-
-    <n-modal
-      negative-text="取消"
-      positive-text="确认"
-      preset="dialog"
-      title="标记已卖出"
-      v-model:show="markSoldModalVisible"
-      :positive-button-props="{ loading: markSoldLoading }"
-      @positive-click="submitMarkSold"
-    >
-      <n-form label-placement="left" :label-width="90">
-        <n-form-item label="交易 ID">
-          <n-input disabled :value="String(markSoldForm.trade_id || '')"></n-input>
-        </n-form-item>
-        <n-form-item label="卖出价格">
-          <n-input-number
-            style="width: 100%"
-            v-model:value="markSoldForm.sold_price"
-            :min="0.01"
-            :precision="2"
-          ></n-input-number>
-        </n-form-item>
-        <n-form-item label="备注">
-          <n-input type="textarea" v-model:value="markSoldForm.note"></n-input>
-        </n-form-item>
-      </n-form>
-    </n-modal>
-
-    <n-modal
-      preset="card"
-      style="width: 90%; max-width: 760px"
-      title="智能定价建议"
-      v-model:show="pricingPlanModalVisible"
-    >
-      <div v-if="pricingPlanPayload">
-        <n-descriptions bordered label-placement="left" :column="2">
-          <n-descriptions-item label="交易 ID">
-            {{ pricingPlanPayload.trade_id }}
-          </n-descriptions-item>
-          <n-descriptions-item label="模式">
-            {{ getModeText(pricingPlanPayload.mode) }}
-          </n-descriptions-item>
-          <n-descriptions-item label="当前目标卖价">
-            ¥{{ toMoney(pricingPlanPayload.plan.current_target_price) }}
-          </n-descriptions-item>
-          <n-descriptions-item label="建议卖价">
-            ¥{{ toMoney(pricingPlanPayload.plan.recommended_price) }}
-          </n-descriptions-item>
-          <n-descriptions-item label="建议动作">
-            <n-tag :type="getActionType(pricingPlanPayload.plan.action)">
-              {{ getActionText(pricingPlanPayload.plan.action) }}
-            </n-tag>
-          </n-descriptions-item>
-          <n-descriptions-item label="紧急度">
-            <n-tag :type="getUrgencyType(pricingPlanPayload.plan.urgency)">
-              {{ getUrgencyText(pricingPlanPayload.plan.urgency) }}
-            </n-tag>
-          </n-descriptions-item>
-          <n-descriptions-item label="持有天数">
-            {{ pricingPlanPayload.plan.holding_days }}
-          </n-descriptions-item>
-          <n-descriptions-item label="参考成交数">
-            {{ pricingPlanPayload.plan.similar_sales_count }}
-          </n-descriptions-item>
-          <n-descriptions-item label="价格下限">
-            ¥{{ toMoney(pricingPlanPayload.plan.price_floor) }}
-          </n-descriptions-item>
-          <n-descriptions-item label="价格上限">
-            ¥{{ toMoney(pricingPlanPayload.plan.price_ceiling) }}
-          </n-descriptions-item>
-        </n-descriptions>
-        <div class="pricing-reasons">
-          <div class="pricing-title">策略解释</div>
-          <n-space>
-            <n-tag
-              v-for="reason in pricingPlanPayload.plan.reasons"
-              :key="reason"
-              size="small"
-              type="info"
-            >
-              {{ reason }}
-            </n-tag>
-          </n-space>
+  <div class="executive-page">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="hero-kicker">只读数据视图</div>
+        <h1>卡片倒卖总览</h1>
+        <p>
+          只展示经营结果、风险状态、服务透明度和观测基线。执行参数、调参控件、预设动作和手工处置入口
+          已全部收回后台。
+        </p>
+        <div class="hero-tags">
+          <n-tag size="small" :type="roleTagType">{{ roleLabel }}</n-tag>
+          <n-tag size="small" :type="cockpitReadyTagType">{{ cockpitReadyLabel }}</n-tag>
+          <n-tag size="small" :type="executionLiveTagType">{{ executionLiveLabel }}</n-tag>
+          <n-tag size="small" :type="baselineTagType">{{ baselineLabel }}</n-tag>
         </div>
       </div>
-    </n-modal>
+      <div class="hero-side">
+        <div class="hero-time">最近刷新</div>
+        <div class="hero-stamp">{{ generatedAtLabel }}</div>
+        <n-button type="primary" :loading="loading" @click="loadData">刷新数据</n-button>
+      </div>
+    </section>
 
-    <n-modal
-      preset="card"
-      style="width: 95%; max-width: 960px"
-      title="批量重定价预览"
-      v-model:show="batchPricingModalVisible"
-    >
-      <n-space vertical>
-        <div v-if="batchPricingResult" class="batch-summary">
-          模式: {{ getModeText(batchPricingResult.mode) }}
-          / 已处理: {{ batchPricingResult.processed }}
-          / 已更新: {{ batchPricingResult.updated }}
-          / 当前: {{ batchPricingResult.apply ? "应用结果" : "预览结果" }}
+    <section v-if="headlineAlerts.length" class="headline-list">
+      <n-alert
+        v-for="item in headlineAlerts"
+        :key="item.title"
+        :type="item.type"
+        :bordered="false"
+        show-icon
+      >
+        <template #header>
+          {{ item.title }}
+        </template>
+        {{ item.message }}
+      </n-alert>
+    </section>
+
+    <n-alert v-if="errorText" type="error" :show-icon="false" class="error-banner">
+      {{ errorText }}
+    </n-alert>
+
+    <section class="summary-grid">
+      <article v-for="card in summaryCards" :key="card.id" class="summary-card">
+        <div class="summary-label">{{ card.label }}</div>
+        <div class="summary-value">{{ card.value }}</div>
+        <div class="summary-note" :class="card.tone">{{ card.note }}</div>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">经营结果</div>
+            <h2>收益与库存</h2>
+          </div>
         </div>
-        <n-table
-          v-if="batchPricingResult && batchPricingResult.items && batchPricingResult.items.length > 0"
-          striped
-          size="small"
-        >
-          <thead>
-            <tr>
-              <th>交易 ID</th>
-              <th>标题</th>
-              <th>当前价</th>
-              <th>建议价</th>
-              <th>动作</th>
-              <th>紧急度</th>
-              <th>持有天数</th>
-              <th>是否已应用</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in batchPricingResult.items" :key="item.trade_id">
-              <td>{{ item.trade_id }}</td>
-              <td class="title-cell">{{ item.title }}</td>
-              <td>¥{{ toMoney(item.current_target_price) }}</td>
-              <td>¥{{ toMoney(item.recommended_price) }}</td>
-              <td>
-                <n-tag size="small" :type="getActionType(item.action)">
-                  {{ getActionText(item.action) }}
-                </n-tag>
-              </td>
-              <td>
-                <n-tag size="small" :type="getUrgencyType(item.urgency)">
-                  {{ getUrgencyText(item.urgency) }}
-                </n-tag>
-              </td>
-              <td>{{ item.holding_days }}</td>
-              <td>{{ item.applied ? "是" : "否" }}</td>
-            </tr>
-          </tbody>
-        </n-table>
-        <n-empty v-else description="暂无重定价结果"></n-empty>
-      </n-space>
-    </n-modal>
 
-    <n-modal
-      negative-text="Cancel"
-      positive-text="Create"
-      preset="dialog"
-      title="Create Validation Batch"
-      v-model:show="forwardValidationModalVisible"
-      :positive-button-props="{ loading: forwardValidationActionLoading === 'create' }"
-      @positive-click="submitForwardValidationBatch"
-    >
-      <n-form label-placement="left" :label-width="120">
-        <n-form-item label="Batch Name">
-          <n-input v-model:value="forwardValidationForm.name"></n-input>
-        </n-form-item>
-        <n-form-item label="Target Size">
-          <n-input-number
-            style="width: 100%"
-            v-model:value="forwardValidationForm.target_sample_size"
-            :max="500"
-            :min="1"
-          ></n-input-number>
-        </n-form-item>
-        <n-form-item label="Auto Enroll">
-          <n-switch v-model:value="forwardValidationForm.auto_enroll"></n-switch>
-        </n-form-item>
-        <n-form-item label="Note">
-          <n-input type="textarea" v-model:value="forwardValidationForm.note"></n-input>
-        </n-form-item>
-      </n-form>
-    </n-modal>
+        <div class="metric-list">
+          <div v-for="item in profitabilityRows" :key="item.label" class="metric-row">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
 
-    <n-modal
-      preset="card"
-      style="width: 90%; max-width: 760px"
-      title="商品信息"
-      v-model:show="listingModalVisible"
-    >
-      <n-spin :show="listingLoading">
-        <div v-if="listingPayload">
-          <n-descriptions bordered label-placement="left" :column="2">
-            <n-descriptions-item label="标题">
-              {{ listingPayload.title }}
-            </n-descriptions-item>
-            <n-descriptions-item label="当前价">
-              CNY {{ toMoney(listingPayload.list_price) }}
-            </n-descriptions-item>
-            <n-descriptions-item label="来源">
-              {{ listingPayload.source || "-" }}
-            </n-descriptions-item>
-            <n-descriptions-item label="状态">
-              {{ listingPayload.status || "-" }}
-            </n-descriptions-item>
-            <n-descriptions-item label="卖家 ID">
-              {{ listingPayload.seller_id || "-" }}
-            </n-descriptions-item>
-            <n-descriptions-item label="上架时间">
-              {{ listingPayload.listed_at || "-" }}
-            </n-descriptions-item>
-            <n-descriptions-item label="商品 ID">
-              {{ listingPayload.listing_id || "-" }}
-            </n-descriptions-item>
-            <n-descriptions-item label="链接">
-              <span v-if="listingPayload.listing_url">
-                <a
-                  rel="noreferrer"
-                  target="_blank"
-                  :href="listingPayload.listing_url"
-                >打开链接</a>
-              </span>
-              <span v-else>-</span>
-            </n-descriptions-item>
-          </n-descriptions>
-          <div class="listing-description">
-            <div class="listing-label">描述</div>
-            <div class="listing-text">
-              {{ listingPayload.description || "-" }}
+        <div class="sub-grid">
+          <div class="subpanel">
+            <div class="subpanel-title">近 7 天来源贡献</div>
+            <div v-if="sourceLeaders.length" class="mini-list">
+              <div v-for="item in sourceLeaders" :key="item.name" class="metric-row compact">
+                <span>{{ item.name }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+            </div>
+            <n-empty v-else size="small" description="暂无来源贡献数据"></n-empty>
+          </div>
+          <div class="subpanel">
+            <div class="subpanel-title">近 7 天卖家贡献</div>
+            <div v-if="sellerLeaders.length" class="mini-list">
+              <div v-for="item in sellerLeaders" :key="item.name" class="metric-row compact">
+                <span>{{ item.name }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+            </div>
+            <n-empty v-else size="small" description="暂无卖家贡献数据"></n-empty>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">服务透明度</div>
+            <h2>后台服务状态</h2>
+          </div>
+        </div>
+
+        <div class="service-list">
+          <div v-for="item in serviceRows" :key="item.id" class="service-row">
+            <div>
+              <strong>{{ item.label }}</strong>
+              <div class="muted">{{ item.note }}</div>
+            </div>
+            <div class="service-side">
+              <n-tag size="small" :type="item.type">{{ item.value }}</n-tag>
+              <span class="muted">{{ item.time }}</span>
             </div>
           </div>
-          <div v-if="rawListingJson" class="listing-raw">
-            <div class="listing-label">原始数据</div>
-            <pre>{{ rawListingJson }}</pre>
+        </div>
+
+        <div v-if="runtimeReasons.length" class="reason-wrap">
+          <span v-for="reason in runtimeReasons" :key="reason" class="reason-pill">{{ reason }}</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">风险状态</div>
+            <h2>当前告警与阻塞</h2>
+          </div>
+          <span class="muted">{{ alertItems.length }} 条</span>
+        </div>
+
+        <div v-if="alertItems.length" class="alert-list">
+          <div v-for="item in alertItems" :key="item.alert_key || item.code" class="alert-row">
+            <div class="alert-top">
+              <strong>{{ item.title || item.code || "未知告警" }}</strong>
+              <n-tag size="small" :type="severityTagType(item.effective_severity || item.severity)">
+                {{ severityText(item.effective_severity || item.severity) }}
+              </n-tag>
+            </div>
+            <div class="muted">{{ item.target || item.message || "-" }}</div>
+            <div class="alert-meta">
+              <span>优先级：{{ item.incident_priority || "-" }}</span>
+              <span>责任人：{{ item.incident_owner || "-" }}</span>
+              <span>通道：{{ item.delivery_lane || "-" }}</span>
+              <span>
+                SLA：{{ item.sla_breached ? "已超时" : `${item.sla_remaining_minutes || 0} 分钟` }}
+              </span>
+            </div>
           </div>
         </div>
-      </n-spin>
-    </n-modal>
+        <n-empty v-else description="当前没有活动告警"></n-empty>
+
+        <div v-if="blockingReasons.length" class="reason-wrap">
+          <span v-for="reason in blockingReasons" :key="reason" class="reason-pill">{{ reason }}</span>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">观测期</div>
+            <h2>验证基线</h2>
+          </div>
+        </div>
+
+        <div class="metric-list">
+          <div class="metric-row">
+            <span>基线状态</span>
+            <strong>{{ baselineSummary.status }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>可调参</span>
+            <strong>{{ baselineSummary.readyForTune }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>可扩量</span>
+            <strong>{{ baselineSummary.readyForScale }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>方向</span>
+            <strong>{{ baselineSummary.direction }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>最近建议</span>
+            <strong>{{ baselineSummary.recommendation }}</strong>
+          </div>
+        </div>
+
+        <div class="sub-grid">
+          <div class="subpanel">
+            <div class="subpanel-title">最近验证批次</div>
+            <div v-if="recentBatches.length" class="mini-list">
+              <div v-for="batch in recentBatches" :key="batch.id" class="metric-row compact">
+                <span>{{ batch.name || `批次 #${batch.id}` }}</span>
+                <strong>{{ batch.status || "-" }}</strong>
+              </div>
+            </div>
+            <n-empty v-else size="small" description="暂无前向验证批次"></n-empty>
+          </div>
+          <div class="subpanel">
+            <div class="subpanel-title">基线阻塞项</div>
+            <div v-if="baselineBlockingCodes.length" class="reason-wrap compact-wrap">
+              <span v-for="code in baselineBlockingCodes" :key="code" class="reason-pill">{{ code }}</span>
+            </div>
+            <n-empty v-else size="small" description="暂无阻塞项"></n-empty>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">质量信号</div>
+            <h2>数据完整性与启动检查</h2>
+          </div>
+        </div>
+
+        <div class="metric-list">
+          <div class="metric-row">
+            <span>数据完整性</span>
+            <strong>{{ integrityStatusText }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>唯一索引</span>
+            <strong>{{ uniqueIndexText }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>重复机会单</span>
+            <strong>{{ duplicateTradeText }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>启动检查</span>
+            <strong>{{ startupStatusText }}</strong>
+          </div>
+        </div>
+
+        <div v-if="startupCheckCodes.length" class="reason-wrap">
+          <span v-for="item in startupCheckCodes" :key="item" class="reason-pill">{{ item }}</span>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">策略护栏</div>
+            <h2>单账号保守模式</h2>
+          </div>
+        </div>
+
+        <div class="metric-list">
+          <div class="metric-row">
+            <span>运行模式</span>
+            <strong>{{ operatingModeText }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>策略档位</span>
+            <strong>{{ strategyProfileText }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>护栏对齐</span>
+            <strong>{{ guardrailAlignedText }}</strong>
+          </div>
+          <div class="metric-row">
+            <span>利润保护</span>
+            <strong>{{ profitProtectionText }}</strong>
+          </div>
+        </div>
+
+        <div v-if="guardrailCodes.length" class="reason-wrap">
+          <span v-for="item in guardrailCodes" :key="item" class="reason-pill">{{ item }}</span>
+        </div>
+      </article>
+    </section>
   </div>
 </template>
 
-<script>
-import { defineComponent } from "vue";
+<script setup>
+import { computed } from "vue";
 
-import "@/views/card-flip-ops/cardFlipOps.scss";
-import AutomationControlPanel from "@/views/card-flip-ops/AutomationControlPanel.vue";
-import AutotradeOpsConsole from "@/views/card-flip-ops/AutotradeOpsConsole.vue";
-import AutotradePanel from "@/views/card-flip-ops/AutotradePanel.vue";
-import ExecutionRetryPanel from "@/views/card-flip-ops/ExecutionRetryPanel.vue";
-import OpsOverviewHeader from "@/views/card-flip-ops/OpsOverviewHeader.vue";
-import TradeDataTabs from "@/views/card-flip-ops/TradeDataTabs.vue";
 import useCardFlipOpsPage from "@/views/card-flip-ops/useCardFlipOpsPage";
-import ValidationInsightsPanel from "@/views/card-flip-ops/ValidationInsightsPanel.vue";
 
-export default defineComponent({
-  name: "CardFlipOpsPage",
-  components: {
-    AutomationControlPanel,
-    AutotradeOpsConsole,
-    AutotradePanel,
-    ExecutionRetryPanel,
-    OpsOverviewHeader,
-    TradeDataTabs,
-    ValidationInsightsPanel,
-  },
-  setup() {
-    return useCardFlipOpsPage();
-  },
+const page = useCardFlipOpsPage();
+
+const {
+  currentRoleKey,
+  loading,
+  loadData,
+  metrics,
+  blockedOpportunities,
+  healthStatus,
+  automationStatus,
+  autotradeStatus,
+  autotradeCockpit,
+  executionStatus,
+  executionRetryServiceStatus,
+  startupCheckAlert,
+  geminiAlert,
+  profitProtectionAlert,
+  dataIntegrityAlert,
+  guardAlert,
+  tuningBroadcast,
+  toMoney,
+  toPercent,
+  shardErrors,
+} = page;
+
+const roleTagType = computed(() => {
+  if (currentRoleKey.value === "viewer")
+    return "warning";
+  if (currentRoleKey.value === "ops")
+    return "info";
+  return "success";
 });
+
+const roleLabel = computed(() => {
+  if (currentRoleKey.value === "viewer")
+    return "只读模式";
+  if (currentRoleKey.value === "ops")
+    return "运营模式";
+  return "管理模式";
+});
+
+const formatMoney = (value) => `¥${toMoney(value)}`;
+const emptyText = (value, fallback = "-") => {
+  const text = String(value || "").trim();
+  return text || fallback;
+};
+const formatTime = (value) => {
+  const text = String(value || "").trim();
+  if (!text)
+    return "暂无记录";
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? text : parsed.toLocaleString("zh-CN", { hour12: false });
+};
+
+const cockpit = computed(() => autotradeCockpit.value || {});
+const profit = computed(() => metrics.value?.profit_cockpit || {});
+const today = computed(() => profit.value.today || {});
+const last7d = computed(() => profit.value.last_7d || {});
+const inventory = computed(() => profit.value.inventory || {});
+const validationBaseline = computed(() => autotradeStatus.value?.validation_baseline || {});
+const recentBatches = computed(() => {
+  const recent = metrics.value?.forward_validation?.recent_batches;
+  return Array.isArray(recent) ? recent.slice(0, 5) : [];
+});
+const alertItems = computed(() => (Array.isArray(cockpit.value.alerts) ? cockpit.value.alerts.slice(0, 8) : []));
+
+const summaryCards = computed(() => [
+  {
+    id: "pending",
+    label: "待审机会",
+    value: String(metrics.value?.pending_review_count || 0),
+    note: `${metrics.value?.total_trade_count || 0} 笔累计交易`,
+    tone: "neutral",
+  },
+  {
+    id: "active",
+    label: "进行中交易",
+    value: String(metrics.value?.active_trades_count || 0),
+    note: `${inventory.value?.listed_trade_count || 0} 笔已挂售`,
+    tone: "neutral",
+  },
+  {
+    id: "sold",
+    label: "已卖出记录",
+    value: String(metrics.value?.sold_count || 0),
+    note: `利润命中率 ${toPercent(metrics.value?.profit_hit_rate || 0)}`,
+    tone: "positive",
+  },
+  {
+    id: "blocked",
+    label: "风控拦截",
+    value: String(blockedOpportunities.value?.length || 0),
+    note: "等待后台自动处置",
+    tone: blockedOpportunities.value?.length ? "warning" : "neutral",
+  },
+  {
+    id: "gross",
+    label: "累计毛利",
+    value: formatMoney(metrics.value?.gross_profit || 0),
+    note: `近 7 天净利 ${formatMoney(last7d.value?.realized_net_profit || 0)}`,
+    tone: Number(metrics.value?.gross_profit || 0) > 0 ? "positive" : "neutral",
+  },
+  {
+    id: "capital",
+    label: "在途资金",
+    value: formatMoney(inventory.value?.deployed_capital || 0),
+    note: `预期价差 ${formatMoney(inventory.value?.expected_exit_spread || 0)}`,
+    tone: "neutral",
+  },
+  {
+    id: "server",
+    label: "服务器状态",
+    value: cockpit.value?.ready ? "就绪" : "受限",
+    note: `${alertItems.value.length} 条活动告警`,
+    tone: cockpit.value?.ready ? "positive" : "warning",
+  },
+  {
+    id: "baseline",
+    label: "观测基线",
+    value: emptyText(validationBaseline.value?.status, "观察中"),
+    note: emptyText(validationBaseline.value?.direction, "暂无方向"),
+    tone: validationBaseline.value?.ready ? "positive" : "warning",
+  },
+]);
+
+const profitabilityRows = computed(() => [
+  { label: "今日净利", value: formatMoney(today.value?.realized_net_profit || 0) },
+  { label: "近 7 天净利", value: formatMoney(last7d.value?.realized_net_profit || 0) },
+  { label: "平均已实现 ROI", value: toPercent(metrics.value?.avg_realized_roi || 0) },
+  { label: "平均持有天数", value: `${Number(metrics.value?.avg_holding_days || 0).toFixed(1)} 天` },
+  { label: "中位持有天数", value: `${Number(metrics.value?.median_holding_days || 0).toFixed(1)} 天` },
+  { label: "目标退出价值", value: formatMoney(inventory.value?.target_exit_value || 0) },
+]);
+
+const sourceLeaders = computed(() =>
+  (Array.isArray(profit.value?.source_leaderboard_7d) ? profit.value.source_leaderboard_7d : [])
+    .slice(0, 5)
+    .map(item => ({
+      name: emptyText(item?.source, "未知来源"),
+      value: formatMoney(item?.realized_net_profit || 0),
+    })),
+);
+
+const sellerLeaders = computed(() =>
+  (Array.isArray(profit.value?.seller_leaderboard_7d) ? profit.value.seller_leaderboard_7d : [])
+    .slice(0, 5)
+    .map(item => ({
+      name: emptyText(item?.seller_id, "未知卖家"),
+      value: formatMoney(item?.realized_net_profit || 0),
+    })),
+);
+
+const serviceRows = computed(() => {
+  const automation = automationStatus.value || {};
+  const monitor = automation.monitor || {};
+  const autoTrade = autotradeStatus.value || {};
+  const retry = executionRetryServiceStatus.value || {};
+  const live = executionStatus.value || {};
+  return [
+    {
+      id: "monitor",
+      label: "市场监听",
+      value: monitor.is_running ? "运行中" : "已停止",
+      note: monitor.circuit_open ? `熔断：${emptyText(monitor.circuit_reason)}` : "后台采集服务",
+      time: formatTime(monitor.last_run_at),
+      type: monitor.is_running ? "success" : "default",
+    },
+    {
+      id: "autotrade",
+      label: "自动交易审批",
+      value: autoTrade.running ? "运行中" : "已停止",
+      note: `累计审批 ${autoTrade.total_approved || 0} 笔`,
+      time: formatTime(autoTrade.last_run_at),
+      type: autoTrade.running ? "success" : "default",
+    },
+    {
+      id: "retry",
+      label: "执行重试",
+      value: retry.running ? "运行中" : "已停止",
+      note: `累计重试 ${retry.total_retried || 0} 笔`,
+      time: formatTime(retry.last_run_at),
+      type: retry.running ? "success" : "default",
+    },
+    {
+      id: "execution",
+      label: "实盘执行",
+      value: live.live_enabled ? "已启用" : "未启用",
+      note: `提供方 ${emptyText(live.provider, "mock")}`,
+      time: "后台控制",
+      type: live.live_enabled ? "warning" : "default",
+    },
+  ];
+});
+
+const cockpitReadyTagType = computed(() => (cockpit.value?.ready ? "success" : "warning"));
+const cockpitReadyLabel = computed(() => (cockpit.value?.ready ? "后台就绪" : "后台受限"));
+const executionLiveTagType = computed(() => (executionStatus.value?.live_enabled ? "warning" : "default"));
+const executionLiveLabel = computed(() => (executionStatus.value?.live_enabled ? "实盘已启用" : "实盘未启用"));
+const baselineTagType = computed(() => (validationBaseline.value?.ready ? "success" : "warning"));
+const baselineLabel = computed(() => `基线：${emptyText(validationBaseline.value?.status, "观察中")}`);
+const generatedAtLabel = computed(() => formatTime(cockpit.value?.generated_at || autotradeStatus.value?.last_run_at));
+
+const runtimeReasons = computed(() => {
+  const reasons = [];
+  if (Array.isArray(cockpit.value?.blocking_reasons))
+    reasons.push(...cockpit.value.blocking_reasons.filter(Boolean));
+  const healthReasons = healthStatus.value?.runtime?.health_reasons || healthStatus.value?.health_reasons;
+  if (Array.isArray(healthReasons))
+    reasons.push(...healthReasons.filter(Boolean));
+  return [...new Set(reasons)].slice(0, 8);
+});
+
+const blockingReasons = computed(() => {
+  const reasons = [];
+  if (Array.isArray(validationBaseline.value?.blocking_codes))
+    reasons.push(...validationBaseline.value.blocking_codes);
+  if (Array.isArray(validationBaseline.value?.tune_blocking_codes))
+    reasons.push(...validationBaseline.value.tune_blocking_codes);
+  return [...new Set(reasons)].filter(Boolean).slice(0, 8);
+});
+
+const baselineSummary = computed(() => ({
+  status: emptyText(validationBaseline.value?.status, "观察中"),
+  readyForTune: validationBaseline.value?.ready_for_tune ? "是" : "否",
+  readyForScale: validationBaseline.value?.ready_for_scale ? "是" : "否",
+  direction: emptyText(validationBaseline.value?.direction, "暂无方向"),
+  recommendation: emptyText(validationBaseline.value?.recommendation, "继续观察"),
+}));
+
+const integrity = computed(() => healthStatus.value?.data_integrity || {});
+const integrityStatusText = computed(() => (integrity.value?.ok ? "正常" : "异常"));
+const uniqueIndexText = computed(() => (integrity.value?.trade_opportunity_unique_index ? "已建立" : "缺失"));
+const duplicateTradeText = computed(() => `${integrity.value?.duplicate_trade_opportunity_count || 0} 条`);
+const startupChecks = computed(() => healthStatus.value?.startup_checks || {});
+const startupStatusText = computed(() => emptyText(startupChecks.value?.status, "未知"));
+const startupCheckCodes = computed(() =>
+  (Array.isArray(startupChecks.value?.items) ? startupChecks.value.items : [])
+    .slice(0, 8)
+    .map(item => emptyText(item?.code))
+    .filter(Boolean),
+);
+
+const operatingModeText = computed(() => emptyText(cockpit.value?.operating_state?.state, "标准"));
+const strategyProfileText = computed(() => emptyText(autotradeStatus.value?.strategy_profile, "balanced"));
+const guardrailAlignedText = computed(() => {
+  const profile = healthStatus.value?.operating_state?.operating_profile || {};
+  if (profile.aligned === true)
+    return "已对齐";
+  if (profile.aligned === false)
+    return "存在漂移";
+  return "未知";
+});
+const guardrailCodes = computed(() => {
+  const profile = healthStatus.value?.operating_state?.operating_profile || {};
+  return Array.isArray(profile?.failing_codes) ? profile.failing_codes.slice(0, 8) : [];
+});
+const profitProtectionText = computed(() => {
+  const guard = autotradeStatus.value?.profit_guard || {};
+  if (!guard.enabled)
+    return "未启用";
+  if (guard.blocked)
+    return "已拦截";
+  return "保护中";
+});
+
+const headlineAlerts = computed(() => {
+  const items = [];
+  if (dataIntegrityAlert.value) {
+    items.push({ title: "数据完整性", message: dataIntegrityAlert.value, type: "error" });
+  }
+  if (guardAlert.value) {
+    items.push({ title: "自动化护栏", message: guardAlert.value, type: "warning" });
+  }
+  if (profitProtectionAlert.value) {
+    items.push({ title: "利润保护", message: profitProtectionAlert.value, type: "warning" });
+  }
+  if (startupCheckAlert.value) {
+    items.push({ title: "启动检查", message: startupCheckAlert.value, type: "warning" });
+  }
+  if (geminiAlert.value) {
+    items.push({ title: "AI 能力状态", message: "Gemini 不可用或退化，当前已回退到非 AI 逻辑。", type: "warning" });
+  }
+  if (tuningBroadcast.value?.content) {
+    items.push({
+      title: emptyText(tuningBroadcast.value?.title, "策略更新"),
+      message: tuningBroadcast.value.content,
+      type: tuningBroadcast.value.type || "info",
+    });
+  }
+  return items.slice(0, 3);
+});
+
+const errorText = computed(() => {
+  return Object.values(shardErrors || {}).find(Boolean) || "";
+});
+
+const severityText = (severity) => {
+  const text = String(severity || "").toLowerCase();
+  if (text === "error")
+    return "错误";
+  if (text === "warning")
+    return "警告";
+  if (text === "info")
+    return "提示";
+  return emptyText(severity, "未知");
+};
+
+const severityTagType = (severity) => {
+  const text = String(severity || "").toLowerCase();
+  if (text === "error")
+    return "error";
+  if (text === "warning")
+    return "warning";
+  return "info";
+};
 </script>
+
+<style scoped lang="scss">
+.executive-page {
+  display: grid;
+  gap: 20px;
+  padding: 4px;
+}
+
+.hero,
+.panel,
+.summary-card,
+.error-banner {
+  border-radius: 18px;
+  border: 1px solid var(--border-light);
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-light);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) 280px;
+  gap: 20px;
+  padding: 28px 30px;
+}
+
+.hero-kicker,
+.panel-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary-color-light);
+  color: var(--primary-color);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.hero h1,
+.panel h2 {
+  margin: 14px 0 10px;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.hero h1 {
+  font-size: clamp(28px, 3vw, 40px);
+}
+
+.hero p,
+.muted,
+.summary-note,
+.alert-meta,
+.hero-time {
+  color: #475569;
+}
+
+.hero p {
+  max-width: 760px;
+  line-height: 1.8;
+}
+
+.hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.hero-side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  justify-items: end;
+}
+
+.hero-stamp {
+  color: #0f172a;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.headline-list {
+  display: grid;
+  gap: 12px;
+}
+
+.error-banner {
+  padding: 16px 18px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.summary-card {
+  padding: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.summary-label {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.summary-value {
+  color: #0f172a;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.summary-note.warning {
+  color: #c2410c;
+}
+
+.summary-note.positive {
+  color: #15803d;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.panel {
+  padding: 22px 24px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.metric-list,
+.service-list,
+.alert-list,
+.mini-list {
+  display: grid;
+  gap: 12px;
+}
+
+.metric-row,
+.service-row,
+.alert-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.metric-row strong,
+.service-row strong,
+.alert-row strong {
+  color: #0f172a;
+}
+
+.metric-row.compact,
+.service-row,
+.alert-row {
+  display: grid;
+}
+
+.service-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.subpanel {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.subpanel-title {
+  margin-bottom: 12px;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.alert-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.alert-meta,
+.reason-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.reason-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(191, 219, 254, 0.45);
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.compact-wrap {
+  margin-top: 0;
+}
+
+@media (max-width: 1280px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .hero,
+  .content-grid,
+  .sub-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-side {
+    justify-items: start;
+  }
+}
+
+@media (max-width: 640px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero,
+  .panel,
+  .summary-card {
+    padding: 18px;
+  }
+}
+</style>
