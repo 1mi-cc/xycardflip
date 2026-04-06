@@ -596,11 +596,13 @@ watch(isAdmin, (nextIsAdmin) => {
 .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
 .panel-head h2 { margin: 10px 0 0; color: var(--text-primary); font-size: 24px; line-height: 1.1; }
 .metric-list, .mini-list, .service-list, .alert-list { display: grid; gap: 12px; }
-.metric-row, .service-row, .alert-row, .activity-row { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 14px; background: #fafcff; border: 1px solid var(--border-light); }
+.metric-row, .service-row, .alert-row, .activity-row { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 14px; background: #fafcff; border: 1px solid var(--border-light); color: #0f172a; }
+.metric-row span, .metric-row strong, .service-row strong, .service-row .muted, .activity-row strong, .activity-row div, .alert-row strong, .alert-row div, .alert-meta span { color: #0f172a; }
+.service-row .muted, .activity-row .muted, .alert-row .muted { color: #475569; }
 .service-row, .activity-row, .alert-row { display: grid; }
 .service-side { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .subpanel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
-.subpanel { padding: 16px; border-radius: 14px; background: #fafcff; border: 1px solid var(--border-light); }
+.subpanel { padding: 16px; border-radius: 14px; background: #fafcff; border: 1px solid var(--border-light); color: #0f172a; }
 .subpanel-title { margin-bottom: 12px; color: var(--text-primary); font-size: 14px; font-weight: 700; }
 .reason-wrap, .alert-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .reason-pill { padding: 6px 10px; border-radius: 999px; background: rgba(197, 48, 48, 0.08); color: #c53030; font-size: 12px; font-weight: 600; }

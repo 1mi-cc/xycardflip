@@ -314,9 +314,16 @@ onMounted(async () => {
   box-shadow: 0 28px 60px rgba(15, 23, 42, 0.12);
 }
 
+.auth-intro,
+.auth-intro * ,
+.auth-card,
+.auth-card * {
+  color: #0f172a;
+}
+
 .eyebrow {
   margin: 0;
-  color: #2563eb;
+  color: #2563eb !important;
   font-size: 13px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -332,7 +339,7 @@ onMounted(async () => {
 .intro-copy {
   margin: 0;
   max-width: 620px;
-  color: #475569;
+  color: #475569 !important;
   line-height: 1.8;
 }
 
@@ -347,15 +354,16 @@ onMounted(async () => {
   border-radius: 20px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
+  color: #0f172a !important;
 
   h3 {
     margin: 0 0 8px;
-    color: #0f172a;
+    color: #0f172a !important;
   }
 
   p {
     margin: 0;
-    color: #475569;
+    color: #475569 !important;
     line-height: 1.7;
   }
 }
@@ -374,7 +382,7 @@ onMounted(async () => {
 
   p {
     margin: 4px 0 0;
-    color: #475569;
+    color: #475569 !important;
   }
 }
 
@@ -405,7 +413,7 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   min-height: 40px;
-  color: #64748b;
+  color: #64748b !important;
   font-size: 13px;
 }
 
@@ -417,6 +425,13 @@ onMounted(async () => {
 :deep(.n-input),
 :deep(.n-input-wrapper) {
   background: #fff !important;
+}
+
+:deep(.n-input) {
+  --n-border: 1px solid #cbd5e1 !important;
+  --n-border-hover: 1px solid #94a3b8 !important;
+  --n-border-focus: 1px solid #2563eb !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(37, 99, 235, 0.15) !important;
 }
 
 :deep(.n-input__input-el),
