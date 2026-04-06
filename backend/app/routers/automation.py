@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from ..config import settings
+from ..route_guard import require_cardflip_operate
+from ..route_guard import require_cardflip_view
 from ..services.automation import automation_service
 
-router = APIRouter(prefix="/automation", tags=["automation"])
+router = APIRouter(
+    prefix="/automation",
+    tags=["automation"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 
 @router.get("/status")
@@ -13,7 +19,7 @@ def status() -> dict:
     return automation_service.status()
 
 
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(require_cardflip_operate)])
 def start(
     include_monitor: bool = settings.automation_default_include_monitor,
     include_autotrade: bool = settings.automation_default_include_autotrade,
@@ -28,7 +34,7 @@ def start(
     )
 
 
-@router.post("/stop")
+@router.post("/stop", dependencies=[Depends(require_cardflip_operate)])
 def stop(
     include_monitor: bool = settings.automation_default_include_monitor,
     include_autotrade: bool = settings.automation_default_include_autotrade,
@@ -43,7 +49,7 @@ def stop(
     )
 
 
-@router.post("/run-once")
+@router.post("/run-once", dependencies=[Depends(require_cardflip_operate)])
 def run_once(
     include_monitor: bool = settings.automation_default_include_monitor,
     include_scan: bool = settings.automation_default_include_scan,
@@ -70,7 +76,7 @@ def run_once(
     )
 
 
-@router.post("/simulation-bootstrap")
+@router.post("/simulation-bootstrap", dependencies=[Depends(require_cardflip_operate)])
 def simulation_bootstrap(
     count: int = Query(default=6, ge=1, le=30),
 ) -> dict:

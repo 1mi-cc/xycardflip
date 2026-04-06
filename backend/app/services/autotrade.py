@@ -6,8 +6,23 @@ from typing import Any
 
 from .. import repositories as repo
 from ..config import settings
+from ..config import single_account_guardrail_status
 from ..errors import BusyStateError
+from .autotrade_alerting import (
+    alerts_meet_min_severity,
+    alert_delivery_lane,
+    build_alert_payload,
+    dispatch_alert_email,
+    dispatch_alert_slack,
+    dispatch_alert_telegram,
+    dispatch_alert_webhook,
+    highest_alert_severity,
+    normalize_alert_severity,
+)
+from .listing_normalizer import TRADABLE_ITEM_TYPES
 from .execution import execution_service
+from .market_monitor import monitor_service
+from .risk_overrides import risk_overrides_service
 from .seller_controls import seller_controls_service
 
 
@@ -87,6 +102,30 @@ class AutoTradeService:
         tuning_min_closed_batches: int | None = None,
         tuning_latest_min_sold_count: int | None = None,
         tuning_previous_min_sold_count: int | None = None,
+        alert_email_auto_enabled: bool | None = None,
+        alert_escalation_minutes: int | None = None,
+        alert_ack_timeout_minutes: int | None = None,
+        alert_renotify_minutes: int | None = None,
+        alert_email_cooldown_minutes: int | None = None,
+        alert_email_min_severity: str | None = None,
+        alert_webhook_auto_enabled: bool | None = None,
+        alert_webhook_cooldown_minutes: int | None = None,
+        alert_webhook_min_severity: str | None = None,
+        alert_slack_auto_enabled: bool | None = None,
+        alert_slack_cooldown_minutes: int | None = None,
+        alert_slack_min_severity: str | None = None,
+        alert_slack_min_stage: int | None = None,
+        alert_telegram_auto_enabled: bool | None = None,
+        alert_telegram_cooldown_minutes: int | None = None,
+        alert_telegram_min_severity: str | None = None,
+        alert_telegram_min_stage: int | None = None,
+        source_observe_base_multiplier: float | None = None,
+        source_observe_release_streak: int | None = None,
+        source_cashout_max_holding_days: float | None = None,
+        portfolio_max_deployed_capital: float | None = None,
+        max_source_capital_share: float | None = None,
+        max_cluster_batch_share: float | None = None,
+        max_cluster_capital_share: float | None = None,
     ) -> dict[str, Any]:
         with self._lock:
             if interval_sec is not None:
@@ -130,6 +169,150 @@ class AutoTradeService:
                 self._tuning_latest_min_sold_count = max(1, min(100, int(tuning_latest_min_sold_count)))
             if tuning_previous_min_sold_count is not None:
                 self._tuning_previous_min_sold_count = max(1, min(100, int(tuning_previous_min_sold_count)))
+            if alert_email_auto_enabled is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_email_auto_enabled",
+                    bool(alert_email_auto_enabled),
+                )
+            if alert_escalation_minutes is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_escalation_minutes",
+                    max(1, min(24 * 60, int(alert_escalation_minutes))),
+                )
+            if alert_ack_timeout_minutes is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_ack_timeout_minutes",
+                    max(1, min(24 * 60, int(alert_ack_timeout_minutes))),
+                )
+            if alert_renotify_minutes is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_renotify_minutes",
+                    max(1, min(24 * 60, int(alert_renotify_minutes))),
+                )
+            if alert_email_cooldown_minutes is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_email_cooldown_minutes",
+                    max(1, min(24 * 60, int(alert_email_cooldown_minutes))),
+                )
+            if alert_email_min_severity is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_email_min_severity",
+                    normalize_alert_severity(alert_email_min_severity),
+                )
+            if alert_webhook_auto_enabled is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_webhook_auto_enabled",
+                    bool(alert_webhook_auto_enabled),
+                )
+            if alert_webhook_cooldown_minutes is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_webhook_cooldown_minutes",
+                    max(1, min(24 * 60, int(alert_webhook_cooldown_minutes))),
+                )
+            if alert_webhook_min_severity is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_webhook_min_severity",
+                    normalize_alert_severity(alert_webhook_min_severity),
+                )
+            if alert_slack_auto_enabled is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_slack_auto_enabled",
+                    bool(alert_slack_auto_enabled),
+                )
+            if alert_slack_cooldown_minutes is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_slack_cooldown_minutes",
+                    max(1, min(24 * 60, int(alert_slack_cooldown_minutes))),
+                )
+            if alert_slack_min_severity is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_slack_min_severity",
+                    normalize_alert_severity(alert_slack_min_severity),
+                )
+            if alert_slack_min_stage is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_slack_min_stage",
+                    max(1, min(10, int(alert_slack_min_stage))),
+                )
+            if alert_telegram_auto_enabled is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_telegram_auto_enabled",
+                    bool(alert_telegram_auto_enabled),
+                )
+            if alert_telegram_cooldown_minutes is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_telegram_cooldown_minutes",
+                    max(1, min(24 * 60, int(alert_telegram_cooldown_minutes))),
+                )
+            if alert_telegram_min_severity is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_telegram_min_severity",
+                    normalize_alert_severity(alert_telegram_min_severity),
+                )
+            if alert_telegram_min_stage is not None:
+                object.__setattr__(
+                    settings,
+                    "autotrade_alert_telegram_min_stage",
+                    max(1, min(10, int(alert_telegram_min_stage))),
+                )
+            if source_observe_base_multiplier is not None:
+                object.__setattr__(
+                    settings,
+                    "auto_approve_source_observe_base_multiplier",
+                    max(0.05, min(0.6, float(source_observe_base_multiplier))),
+                )
+            if source_observe_release_streak is not None:
+                object.__setattr__(
+                    settings,
+                    "auto_approve_source_observe_release_streak",
+                    max(1, min(50, int(source_observe_release_streak))),
+                )
+            if source_cashout_max_holding_days is not None:
+                object.__setattr__(
+                    settings,
+                    "auto_approve_source_cashout_max_holding_days",
+                    max(0.5, min(90.0, float(source_cashout_max_holding_days))),
+                )
+            if portfolio_max_deployed_capital is not None:
+                object.__setattr__(
+                    settings,
+                    "auto_approve_portfolio_max_deployed_capital",
+                    max(0.0, float(portfolio_max_deployed_capital)),
+                )
+            if max_source_capital_share is not None:
+                object.__setattr__(
+                    settings,
+                    "auto_approve_max_source_capital_share",
+                    max(0.1, min(1.0, float(max_source_capital_share))),
+                )
+            if max_cluster_batch_share is not None:
+                object.__setattr__(
+                    settings,
+                    "auto_approve_max_cluster_batch_share",
+                    max(0.1, min(1.0, float(max_cluster_batch_share))),
+                )
+            if max_cluster_capital_share is not None:
+                object.__setattr__(
+                    settings,
+                    "auto_approve_max_cluster_capital_share",
+                    max(0.1, min(1.0, float(max_cluster_capital_share))),
+                )
         return self.status()
 
     def tuning_snapshot(self) -> dict[str, Any]:
@@ -394,6 +577,7 @@ class AutoTradeService:
         policy = self.tuning_policy()
         current_config = self.tuning_snapshot()
         report = repo.get_dashboard_metrics()
+        validation_baseline = self._validation_baseline_snapshot(report)
         forward_validation = report.get("forward_validation") or {}
         recent_batches = (
             list(forward_validation.get("recent_batches") or [])
@@ -418,6 +602,13 @@ class AutoTradeService:
         else:
             if not proposal.get("should_apply"):
                 reasons.append("Current batch does not justify a threshold change")
+
+            if bool(settings.single_account_mode) and not bool(validation_baseline.get("ready_for_tune")):
+                reasons.append("Single-account observation baseline is not ready")
+                reasons.extend(
+                    f"Baseline drift: {code}"
+                    for code in list(validation_baseline.get("tune_blocking_codes") or [])[:3]
+                )
 
             closed_batches = [
                 batch for batch in recent_batches if str(batch.get("status") or "") == "closed"
@@ -470,6 +661,7 @@ class AutoTradeService:
         return {
             "policy": policy,
             "proposal": proposal,
+            "validation_baseline": validation_baseline,
             "guard": {
                 "ready": len(reasons) == 0,
                 "reasons": reasons if reasons else ["Guardrails passed"],
@@ -560,6 +752,38 @@ class AutoTradeService:
                 "tuning_min_closed_batches": self._tuning_min_closed_batches,
                 "tuning_latest_min_sold_count": self._tuning_latest_min_sold_count,
                 "tuning_previous_min_sold_count": self._tuning_previous_min_sold_count,
+                "alert_email_auto_enabled": bool(settings.autotrade_alert_email_auto_enabled),
+                "alert_ack_timeout_minutes": int(settings.autotrade_alert_ack_timeout_minutes),
+                "alert_escalation_minutes": int(settings.autotrade_alert_escalation_minutes),
+                "alert_renotify_minutes": int(settings.autotrade_alert_renotify_minutes),
+                "alert_email_cooldown_minutes": int(settings.autotrade_alert_email_cooldown_minutes),
+                "alert_email_min_severity": normalize_alert_severity(
+                    settings.autotrade_alert_email_min_severity,
+                ),
+                "alert_webhook_auto_enabled": bool(settings.autotrade_alert_webhook_auto_enabled),
+                "alert_webhook_cooldown_minutes": int(settings.autotrade_alert_webhook_cooldown_minutes),
+                "alert_webhook_min_severity": normalize_alert_severity(
+                    settings.autotrade_alert_webhook_min_severity,
+                ),
+                "alert_slack_auto_enabled": bool(settings.autotrade_alert_slack_auto_enabled),
+                "alert_slack_cooldown_minutes": int(settings.autotrade_alert_slack_cooldown_minutes),
+                "alert_slack_min_severity": normalize_alert_severity(
+                    settings.autotrade_alert_slack_min_severity,
+                ),
+                "alert_slack_min_stage": int(settings.autotrade_alert_slack_min_stage),
+                "alert_telegram_auto_enabled": bool(settings.autotrade_alert_telegram_auto_enabled),
+                "alert_telegram_cooldown_minutes": int(settings.autotrade_alert_telegram_cooldown_minutes),
+                "alert_telegram_min_severity": normalize_alert_severity(
+                    settings.autotrade_alert_telegram_min_severity,
+                ),
+                "alert_telegram_min_stage": int(settings.autotrade_alert_telegram_min_stage),
+                "source_observe_base_multiplier": float(settings.auto_approve_source_observe_base_multiplier),
+                "source_observe_release_streak": int(settings.auto_approve_source_observe_release_streak),
+                "source_cashout_max_holding_days": float(settings.auto_approve_source_cashout_max_holding_days),
+                "portfolio_max_deployed_capital": float(settings.auto_approve_portfolio_max_deployed_capital),
+                "max_source_capital_share": float(settings.auto_approve_max_source_capital_share),
+                "max_cluster_batch_share": float(settings.auto_approve_max_cluster_batch_share),
+                "max_cluster_capital_share": float(settings.auto_approve_max_cluster_capital_share),
                 "last_run_at": self._last_run_at,
                 "last_error": self._last_error,
                 "last_busy_at": self._last_busy_at,
@@ -587,6 +811,12 @@ class AutoTradeService:
             int(snapshot["batch_size"]),
             source_strategy_map,
             pending_rows,
+            dashboard_metrics,
+        )
+        cluster_controls_map, cluster_controls = self._build_cluster_position_controls(
+            int(snapshot["batch_size"]),
+            pending_rows,
+            dashboard_metrics,
         )
         _, seller_position_controls = self._build_seller_position_controls(
             int(snapshot["batch_size"]),
@@ -594,9 +824,13 @@ class AutoTradeService:
             pending_rows,
         )
         snapshot["source_position_controls"] = position_controls[:5]
+        snapshot["cluster_position_controls"] = cluster_controls[:5]
         snapshot["seller_position_controls"] = seller_position_controls[:8]
+        snapshot["source_overrides"] = risk_overrides_service.source_status_summary()
+        snapshot["cluster_overrides"] = risk_overrides_service.cluster_status_summary()
         snapshot["seller_controls"] = seller_control_sync.get("status") or {}
         snapshot["seller_control_presets"] = repo.list_seller_control_presets(limit=20)
+        snapshot["validation_baseline"] = self._validation_baseline_snapshot(dashboard_metrics)
         snapshot["loss_recovery_state"] = {
             "enabled": bool(snapshot["loss_recovery_enabled"]),
             "active": False,
@@ -686,6 +920,707 @@ class AutoTradeService:
             "weakest_source_7d": cockpit.get("weakest_source_7d"),
         }
 
+    def _validation_timeline_point(
+        self,
+        batch: dict[str, Any],
+        *,
+        sample_target: int,
+        min_hit_rate: float,
+        min_avg_roi: float,
+        max_avg_holding_days: float,
+    ) -> dict[str, Any]:
+        sold_count = int(batch.get("sold_count") or 0)
+        hit_rate = float(batch.get("profit_hit_rate") or 0.0)
+        avg_roi = float(batch.get("avg_realized_roi") or 0.0)
+        avg_holding_days = float(batch.get("avg_holding_days") or 0.0)
+        realized_net_profit = float(batch.get("realized_net_profit") or 0.0)
+
+        score = 0
+        score += 2 if sold_count >= int(sample_target) else -2
+        score += 2 if hit_rate >= float(min_hit_rate) else -2
+        score += 2 if avg_roi >= float(min_avg_roi) else -2
+        score += 1 if 0 < avg_holding_days <= float(max_avg_holding_days) else -1
+        score += 1 if realized_net_profit > 0 else -1
+
+        status = "weak"
+        status_label = "Weak"
+        tag_type = "error"
+        if score >= 5:
+            status = "strengthening"
+            status_label = "Strengthening"
+            tag_type = "success"
+        elif score >= 2:
+            status = "healthy"
+            status_label = "Healthy"
+            tag_type = "success"
+        elif score >= 0:
+            status = "mixed"
+            status_label = "Mixed"
+            tag_type = "warning"
+
+        return {
+            "id": int(batch.get("id") or 0),
+            "name": str(batch.get("name") or f"batch-{batch.get('id') or '-'}"),
+            "time": str(batch.get("closed_at") or batch.get("created_at") or ""),
+            "sold_count": sold_count,
+            "profit_hit_rate": round(hit_rate, 4),
+            "avg_realized_roi": round(avg_roi, 4),
+            "avg_holding_days": round(avg_holding_days, 2),
+            "realized_net_profit": round(realized_net_profit, 2),
+            "score": int(score),
+            "status": status,
+            "status_label": status_label,
+            "tag_type": tag_type,
+        }
+
+    def _validation_timeline_snapshot(
+        self,
+        closed_batches: list[dict[str, Any]],
+        *,
+        sample_target: int,
+        min_hit_rate: float,
+        min_avg_roi: float,
+        max_avg_holding_days: float,
+    ) -> dict[str, Any]:
+        points = [
+            self._validation_timeline_point(
+                batch,
+                sample_target=sample_target,
+                min_hit_rate=min_hit_rate,
+                min_avg_roi=min_avg_roi,
+                max_avg_holding_days=max_avg_holding_days,
+            )
+            for batch in reversed(list(closed_batches)[:5])
+        ]
+        if len(points) < 2:
+            return {
+                "direction": "insufficient",
+                "summary": "Need at least two closed validation batches to judge the trend.",
+                "delta_score": 0,
+                "points": points,
+            }
+
+        delta_score = int(points[-1]["score"]) - int(points[0]["score"])
+        direction = "stable"
+        summary = "Observation quality is broadly stable across recent validation batches."
+        if delta_score >= 2:
+            direction = "improving"
+            summary = "Observation quality is improving across recent validation batches."
+        elif delta_score <= -2:
+            direction = "worsening"
+            summary = "Observation quality is deteriorating across recent validation batches."
+
+        return {
+            "direction": direction,
+            "summary": summary,
+            "delta_score": delta_score,
+            "points": points,
+        }
+
+    @staticmethod
+    def _validation_snapshot_trajectory(
+        snapshot_history: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        history = list((snapshot_history or {}).get("hourly") or [])
+        if len(history) < 2:
+            return {
+                "available": False,
+                "direction": "insufficient",
+                "health_delta": 0.0,
+                "tune_regressed": False,
+                "scale_regressed": False,
+                "blocked_streak": 0,
+                "worsening_streak": 0,
+                "alert_level": "info",
+                "summary": "Need more persisted hourly snapshots before judging drawdown.",
+            }
+
+        latest = history[-1]
+        previous = history[-2]
+        latest_snapshot = dict(latest.get("snapshot") or {})
+        previous_snapshot = dict(previous.get("snapshot") or {})
+        latest_health = float(
+            latest_snapshot.get("scale_health_score")
+            or latest_snapshot.get("health_score")
+            or 0.0
+        )
+        previous_health = float(
+            previous_snapshot.get("scale_health_score")
+            or previous_snapshot.get("health_score")
+            or 0.0
+        )
+        health_delta = round(latest_health - previous_health, 1)
+        tune_regressed = bool(previous.get("ready_for_tune")) and not bool(latest.get("ready_for_tune"))
+        scale_regressed = bool(previous.get("ready_for_scale")) and not bool(latest.get("ready_for_scale"))
+
+        blocked_streak = 0
+        for item in reversed(history):
+            if bool(item.get("ready_for_scale")):
+                break
+            blocked_streak += 1
+
+        worsening_streak = 0
+        for item in reversed(history):
+            if (
+                str(item.get("direction") or "") == "worsening"
+                or str(item.get("status") or "") in {"blocked", "build"}
+            ):
+                worsening_streak += 1
+                continue
+            break
+
+        alert_level = "info"
+        direction = "stable"
+        summary = "Persisted baseline is broadly stable."
+        if scale_regressed or worsening_streak >= 3 or health_delta <= -20.0:
+            alert_level = "error"
+            direction = "drawdown"
+            summary = "Observation baseline regressed sharply and needs immediate review."
+        elif tune_regressed or blocked_streak >= 2 or health_delta <= -10.0:
+            alert_level = "warning"
+            direction = "regressing"
+            summary = "Observation baseline is regressing and should be watched closely."
+        elif health_delta >= 10.0 and bool(latest.get("ready_for_tune")):
+            alert_level = "success"
+            direction = "recovering"
+            summary = "Observation baseline is recovering versus the previous hourly snapshot."
+
+        return {
+            "available": True,
+            "direction": direction,
+            "health_delta": health_delta,
+            "tune_regressed": tune_regressed,
+            "scale_regressed": scale_regressed,
+            "blocked_streak": blocked_streak,
+            "worsening_streak": worsening_streak,
+            "alert_level": alert_level,
+            "summary": summary,
+            "latest_bucket_key": str(latest.get("bucket_key") or ""),
+            "previous_bucket_key": str(previous.get("bucket_key") or ""),
+        }
+
+    def _validation_baseline_snapshot(
+        self,
+        dashboard_metrics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        metrics = dashboard_metrics or repo.get_dashboard_metrics()
+        tuning_policy = self.tuning_policy()
+        cockpit = metrics.get("profit_cockpit") or {}
+        last_7d = cockpit.get("last_7d") or {}
+        source_items = list(cockpit.get("source_leaderboard_7d") or [])
+        forward_validation = metrics.get("forward_validation") or {}
+        closed_batches = [
+            batch
+            for batch in list(forward_validation.get("recent_batches") or [])
+            if str(batch.get("status") or "").strip().lower() == "closed"
+        ]
+        latest_closed_batch = closed_batches[0] if closed_batches else None
+        previous_closed_batch = closed_batches[1] if len(closed_batches) > 1 else None
+        total_source_sold = sum(int(item.get("sold_count") or 0) for item in source_items)
+        top_source = max(
+            source_items,
+            key=lambda item: int(item.get("sold_count") or 0),
+            default={},
+        )
+        top_source_share = (
+            (int(top_source.get("sold_count") or 0) / total_source_sold)
+            if total_source_sold > 0
+            else 0.0
+        )
+        execution_summary = repo.get_execution_log_summary(
+            limit=settings.operating_state_execution_window,
+            dry_run=False,
+        )
+        monitor_status = monitor_service.status()
+        monitor_health = monitor_status.get("health", {}) if isinstance(monitor_status, dict) else {}
+        operating_state_name = "normal"
+        if bool(monitor_status.get("circuit_open")) or bool(monitor_health.get("guard_triggered")):
+            operating_state_name = "recovery"
+        elif (
+            float(execution_summary.get("failure_rate") or 0.0)
+            >= float(settings.operating_state_recovery_failure_rate)
+            or int(execution_summary.get("business_ban_count") or 0)
+            >= int(settings.operating_state_recovery_business_bans)
+        ):
+            operating_state_name = "recovery"
+        elif (
+            float(execution_summary.get("failure_rate") or 0.0)
+            >= float(settings.operating_state_cautious_failure_rate)
+            or int(execution_summary.get("business_ban_count") or 0)
+            >= int(settings.operating_state_cautious_business_bans)
+        ):
+            operating_state_name = "cautious"
+        execution_readiness = execution_service.webhook_readiness()
+        operating_profile = single_account_guardrail_status()
+        source_overrides = risk_overrides_service.source_status_summary(limit=200)
+        cluster_overrides = risk_overrides_service.cluster_status_summary(limit=200)
+        monitor_samples = int(monitor_health.get("samples") or 0)
+        monitor_success_rate = float(monitor_health.get("success_rate") or 0.0)
+        execution_failure_rate = float(execution_summary.get("failure_rate") or 0.0)
+        execution_live_sample_size = int(execution_summary.get("sample_size") or 0)
+        business_ban_count = int(execution_summary.get("business_ban_count") or 0)
+        latest_closed_sold_count = int((latest_closed_batch or {}).get("sold_count") or 0)
+        previous_closed_sold_count = int((previous_closed_batch or {}).get("sold_count") or 0)
+        latest_closed_hit_rate = float((latest_closed_batch or {}).get("profit_hit_rate") or 0.0)
+        latest_closed_avg_roi = float((latest_closed_batch or {}).get("avg_realized_roi") or 0.0)
+        latest_closed_avg_holding_days = float((latest_closed_batch or {}).get("avg_holding_days") or 0.0)
+        latest_closed_net_profit = float((latest_closed_batch or {}).get("realized_net_profit") or 0.0)
+        required_monitor_samples = max(
+            int(settings.monitor_health_min_samples),
+            int(settings.operating_state_min_monitor_samples),
+        )
+
+        checks: list[dict[str, Any]] = []
+
+        def add_check(
+            *,
+            code: str,
+            label: str,
+            ok: bool,
+            detail: str,
+            blocks_tune: bool,
+            blocks_scale: bool,
+        ) -> None:
+            checks.append(
+                {
+                    "code": code,
+                    "label": label,
+                    "ok": bool(ok),
+                    "detail": detail,
+                    "blocks_tune": bool(blocks_tune),
+                    "blocks_scale": bool(blocks_scale),
+                }
+            )
+
+        add_check(
+            code="closed_validation_batches",
+            label="Closed validation batches",
+            ok=len(closed_batches) >= int(tuning_policy["min_closed_batches"]),
+            detail=(
+                f"closed_batches={len(closed_batches)} / "
+                f"required={int(tuning_policy['min_closed_batches'])}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="latest_closed_batch_sample",
+            label="Latest closed batch sample",
+            ok=latest_closed_batch is not None
+            and latest_closed_sold_count >= int(tuning_policy["latest_min_sold_count"]),
+            detail=(
+                f"latest_closed_batch={str((latest_closed_batch or {}).get('name') or 'none')} / "
+                f"sold={latest_closed_sold_count} / "
+                f"required={int(tuning_policy['latest_min_sold_count'])}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="previous_closed_batch_sample",
+            label="Previous closed batch sample",
+            ok=int(tuning_policy["min_closed_batches"]) < 2
+            or previous_closed_sold_count >= int(tuning_policy["previous_min_sold_count"]),
+            detail=(
+                f"previous_sold={previous_closed_sold_count} / "
+                f"required={int(tuning_policy['previous_min_sold_count'])}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="recent_sold_count",
+            label="Recent sold trades",
+            ok=int(last_7d.get("sold_count") or 0) >= int(settings.single_account_validation_min_sold_count),
+            detail=(
+                f"sold_count_7d={int(last_7d.get('sold_count') or 0)} / "
+                f"required={int(settings.single_account_validation_min_sold_count)}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="profit_hit_rate",
+            label="Profit hit rate",
+            ok=float(last_7d.get("profit_hit_rate") or 0.0)
+            >= float(settings.single_account_validation_min_profit_hit_rate),
+            detail=(
+                f"profit_hit_rate_7d={float(last_7d.get('profit_hit_rate') or 0.0):.4f} / "
+                f"required={float(settings.single_account_validation_min_profit_hit_rate):.4f}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="avg_realized_roi",
+            label="Average realized ROI",
+            ok=float(last_7d.get("avg_realized_roi") or 0.0)
+            >= float(settings.single_account_validation_min_avg_roi),
+            detail=(
+                f"avg_realized_roi_7d={float(last_7d.get('avg_realized_roi') or 0.0):.4f} / "
+                f"required={float(settings.single_account_validation_min_avg_roi):.4f}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="latest_closed_batch_hit_rate",
+            label="Latest batch hit rate",
+            ok=latest_closed_batch is not None
+            and latest_closed_hit_rate >= float(settings.observation_baseline_min_hit_rate),
+            detail=(
+                f"latest_hit_rate={latest_closed_hit_rate:.4f} / "
+                f"required={float(settings.observation_baseline_min_hit_rate):.4f}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="latest_closed_batch_avg_roi",
+            label="Latest batch average ROI",
+            ok=latest_closed_batch is not None
+            and latest_closed_avg_roi >= float(settings.observation_baseline_min_avg_roi),
+            detail=(
+                f"latest_avg_roi={latest_closed_avg_roi:.4f} / "
+                f"required={float(settings.observation_baseline_min_avg_roi):.4f}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="latest_closed_batch_holding_days",
+            label="Latest batch holding days",
+            ok=latest_closed_batch is not None
+            and latest_closed_avg_holding_days <= float(settings.observation_baseline_max_avg_holding_days),
+            detail=(
+                f"latest_avg_holding_days={latest_closed_avg_holding_days:.2f} / "
+                f"max={float(settings.observation_baseline_max_avg_holding_days):.2f}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="latest_closed_batch_net_profit",
+            label="Latest batch net profit",
+            ok=latest_closed_batch is not None and latest_closed_net_profit > 0.0,
+            detail=f"latest_realized_net_profit={latest_closed_net_profit:.2f}",
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="monitor_success_rate",
+            label="Monitor success rate",
+            ok=monitor_samples >= required_monitor_samples
+            and monitor_success_rate >= float(settings.observation_baseline_min_monitor_success_rate),
+            detail=(
+                f"monitor_samples={monitor_samples} / required={required_monitor_samples}, "
+                f"monitor_success_rate={monitor_success_rate:.4f} / "
+                f"required_rate={float(settings.observation_baseline_min_monitor_success_rate):.4f}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="operating_state",
+            label="Operating state",
+            ok=operating_state_name != "recovery",
+            detail=f"operating_state={operating_state_name}",
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="active_freezes",
+            label="Active freezes",
+            ok=(
+                int(source_overrides.get("active_freeze_count") or 0) == 0
+                and int(cluster_overrides.get("active_freeze_count") or 0) == 0
+            ),
+            detail=(
+                f"source_freeze={int(source_overrides.get('active_freeze_count') or 0)}, "
+                f"cluster_freeze={int(cluster_overrides.get('active_freeze_count') or 0)}"
+            ),
+            blocks_tune=True,
+            blocks_scale=True,
+        )
+        add_check(
+            code="source_diversity",
+            label="Source diversity",
+            ok=len(source_items) >= int(settings.single_account_validation_min_source_count),
+            detail=(
+                f"source_count_7d={len(source_items)} / "
+                f"required={int(settings.single_account_validation_min_source_count)}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+        add_check(
+            code="source_concentration",
+            label="Source concentration",
+            ok=top_source_share <= float(settings.single_account_validation_max_source_share),
+            detail=(
+                f"top_source={str(top_source.get('source') or '')}, "
+                f"share={top_source_share:.4f} / "
+                f"max={float(settings.single_account_validation_max_source_share):.4f}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+        add_check(
+            code="last_7d_net_profit",
+            label="Recent net profit",
+            ok=float(last_7d.get("realized_net_profit") or 0.0)
+            >= float(settings.observation_baseline_min_last_7d_net_profit),
+            detail=(
+                f"realized_net_profit_7d={float(last_7d.get('realized_net_profit') or 0.0):.2f} / "
+                f"required={float(settings.observation_baseline_min_last_7d_net_profit):.2f}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+        add_check(
+            code="execution_live_readiness",
+            label="Live execution readiness",
+            ok=bool(execution_readiness.get("live_ready")),
+            detail=(
+                f"live_ready={bool(execution_readiness.get('live_ready'))}, "
+                f"provider={str(execution_readiness.get('provider') or '')}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+        add_check(
+            code="execution_live_samples",
+            label="Live execution samples",
+            ok=execution_live_sample_size >= int(settings.observation_baseline_min_live_execution_samples),
+            detail=(
+                f"sample_size={execution_live_sample_size} / "
+                f"required={int(settings.observation_baseline_min_live_execution_samples)}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+        add_check(
+            code="execution_failure_rate",
+            label="Live execution failure rate",
+            ok=execution_failure_rate <= float(settings.observation_baseline_max_live_execution_failure_rate),
+            detail=(
+                f"failure_rate={execution_failure_rate:.4f} / "
+                f"max={float(settings.observation_baseline_max_live_execution_failure_rate):.4f}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+        add_check(
+            code="execution_business_bans",
+            label="Live execution bans",
+            ok=business_ban_count <= int(settings.observation_baseline_max_live_execution_business_bans),
+            detail=(
+                f"business_ban_count={business_ban_count} / "
+                f"max={int(settings.observation_baseline_max_live_execution_business_bans)}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+        add_check(
+            code="single_account_guardrails",
+            label="Single-account guardrails",
+            ok=not bool(operating_profile.get("enabled")) or bool(operating_profile.get("aligned")),
+            detail=(
+                f"mode={str(operating_profile.get('mode') or '')}, "
+                f"failing={', '.join(list(operating_profile.get('failing_codes') or [])[:4])}"
+            ),
+            blocks_tune=False,
+            blocks_scale=True,
+        )
+
+        timeline = self._validation_timeline_snapshot(
+            closed_batches,
+            sample_target=int(tuning_policy["latest_min_sold_count"]),
+            min_hit_rate=float(settings.observation_baseline_min_hit_rate),
+            min_avg_roi=float(settings.observation_baseline_min_avg_roi),
+            max_avg_holding_days=float(settings.observation_baseline_max_avg_holding_days),
+        )
+        tune_blocking_codes = [
+            str(item["code"])
+            for item in checks
+            if not bool(item["ok"]) and bool(item["blocks_tune"])
+        ]
+        scale_blocking_codes = [
+            str(item["code"])
+            for item in checks
+            if not bool(item["ok"]) and bool(item["blocks_scale"])
+        ]
+        ready_for_tune = len(tune_blocking_codes) == 0
+        ready_for_scale = len(scale_blocking_codes) == 0
+        blocking_codes = scale_blocking_codes
+
+        risk_block_codes = {"operating_state", "active_freezes", "execution_business_bans"}
+        status = "ready"
+        if not ready_for_scale:
+            if any(code in risk_block_codes for code in scale_blocking_codes):
+                status = "blocked"
+            elif ready_for_tune:
+                status = "observe"
+            else:
+                status = "build"
+        baseline = {
+            "enabled": bool(settings.single_account_mode),
+            "ready": ready_for_scale,
+            "ready_for_tune": ready_for_tune,
+            "ready_for_scale": ready_for_scale,
+            "status": status,
+            "blocking_codes": blocking_codes,
+            "tune_blocking_codes": tune_blocking_codes,
+            "scale_blocking_codes": scale_blocking_codes,
+            "checks": checks,
+            "timeline": timeline,
+            "policy": {
+                "min_closed_batches": int(tuning_policy["min_closed_batches"]),
+                "latest_min_sold_count": int(tuning_policy["latest_min_sold_count"]),
+                "previous_min_sold_count": int(tuning_policy["previous_min_sold_count"]),
+                "min_recent_sold_count": int(settings.single_account_validation_min_sold_count),
+                "min_source_count": int(settings.single_account_validation_min_source_count),
+                "min_profit_hit_rate": float(settings.single_account_validation_min_profit_hit_rate),
+                "min_avg_roi": float(settings.single_account_validation_min_avg_roi),
+                "min_latest_hit_rate": float(settings.observation_baseline_min_hit_rate),
+                "min_latest_avg_roi": float(settings.observation_baseline_min_avg_roi),
+                "max_latest_avg_holding_days": float(settings.observation_baseline_max_avg_holding_days),
+                "min_monitor_success_rate": float(settings.observation_baseline_min_monitor_success_rate),
+                "min_monitor_samples": required_monitor_samples,
+                "max_source_share": float(settings.single_account_validation_max_source_share),
+                "min_last_7d_net_profit": float(settings.observation_baseline_min_last_7d_net_profit),
+                "min_live_execution_samples": int(settings.observation_baseline_min_live_execution_samples),
+                "max_live_execution_failure_rate": float(settings.observation_baseline_max_live_execution_failure_rate),
+                "max_live_execution_business_bans": int(settings.observation_baseline_max_live_execution_business_bans),
+            },
+            "metrics": {
+                "sold_count_7d": int(last_7d.get("sold_count") or 0),
+                "source_count_7d": len(source_items),
+                "profit_hit_rate_7d": round(float(last_7d.get("profit_hit_rate") or 0.0), 4),
+                "avg_realized_roi_7d": round(float(last_7d.get("avg_realized_roi") or 0.0), 4),
+                "realized_net_profit_7d": round(float(last_7d.get("realized_net_profit") or 0.0), 2),
+                "top_source": str(top_source.get("source") or ""),
+                "top_source_share": round(top_source_share, 4),
+                "business_ban_count": business_ban_count,
+                "execution_live_sample_size": execution_live_sample_size,
+                "execution_failure_rate": round(execution_failure_rate, 4),
+                "monitor_samples": monitor_samples,
+                "monitor_success_rate": round(monitor_success_rate, 4),
+                "latest_closed_batch_id": (
+                    int(latest_closed_batch.get("id") or 0) if latest_closed_batch else None
+                ),
+                "latest_closed_batch_sold_count": latest_closed_sold_count,
+                "latest_closed_batch_hit_rate": round(latest_closed_hit_rate, 4),
+                "latest_closed_batch_avg_roi": round(latest_closed_avg_roi, 4),
+                "latest_closed_batch_avg_holding_days": round(latest_closed_avg_holding_days, 2),
+                "latest_closed_batch_realized_net_profit": round(latest_closed_net_profit, 2),
+                "previous_closed_batch_sold_count": previous_closed_sold_count,
+            },
+            "recommendation": (
+                "Baseline is thick enough for the next controlled scale step."
+                if ready_for_scale
+                else (
+                    "Threshold tuning can be reviewed, but keep the account in local observation mode."
+                    if ready_for_tune
+                    else (
+                        "Stop automatic approvals and inspect live risk signals."
+                        if status == "blocked"
+                        else "Keep the account in observation mode until more sold evidence accumulates."
+                    )
+                )
+            ),
+        }
+        snapshot_payload = {
+            "status": baseline["status"],
+            "ready": baseline["ready"],
+            "ready_for_tune": baseline["ready_for_tune"],
+            "ready_for_scale": baseline["ready_for_scale"],
+            "direction": str(timeline.get("direction") or ""),
+            "summary": str(timeline.get("summary") or ""),
+            "blocking_codes": list(blocking_codes),
+            "tune_blocking_codes": list(tune_blocking_codes),
+            "scale_blocking_codes": list(scale_blocking_codes),
+            "health_score": round((sum(1 for item in checks if bool(item["ok"])) / max(1, len(checks))) * 100.0, 1),
+            "tune_health_score": round(
+                (
+                    (
+                        sum(1 for item in checks if bool(item["blocks_tune"]))
+                        - len(tune_blocking_codes)
+                    )
+                    / max(1, sum(1 for item in checks if bool(item["blocks_tune"])))
+                )
+                * 100.0,
+                1,
+            ),
+            "scale_health_score": round(
+                (
+                    (
+                        sum(1 for item in checks if bool(item["blocks_scale"]))
+                        - len(scale_blocking_codes)
+                    )
+                    / max(1, sum(1 for item in checks if bool(item["blocks_scale"])))
+                )
+                * 100.0,
+                1,
+            ),
+            "metrics": dict(baseline["metrics"]),
+        }
+        baseline["health_score"] = snapshot_payload["health_score"]
+        baseline["tune_health_score"] = snapshot_payload["tune_health_score"]
+        baseline["scale_health_score"] = snapshot_payload["scale_health_score"]
+        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        try:
+            repo.upsert_validation_baseline_snapshot(
+                bucket_type="hour",
+                bucket_key=now.isoformat(),
+                status=baseline["status"],
+                ready=bool(baseline["ready"]),
+                ready_for_tune=bool(baseline["ready_for_tune"]),
+                ready_for_scale=bool(baseline["ready_for_scale"]),
+                direction=str(timeline.get("direction") or ""),
+                summary=str(timeline.get("summary") or ""),
+                blocking_codes=list(blocking_codes),
+                snapshot=snapshot_payload,
+                captured_at=now.isoformat(),
+            )
+            repo.upsert_validation_baseline_snapshot(
+                bucket_type="day",
+                bucket_key=now.date().isoformat(),
+                status=baseline["status"],
+                ready=bool(baseline["ready"]),
+                ready_for_tune=bool(baseline["ready_for_tune"]),
+                ready_for_scale=bool(baseline["ready_for_scale"]),
+                direction=str(timeline.get("direction") or ""),
+                summary=str(timeline.get("summary") or ""),
+                blocking_codes=list(blocking_codes),
+                snapshot=snapshot_payload,
+                captured_at=now.isoformat(),
+            )
+            baseline["snapshot_history"] = {
+                "hourly": list(
+                    reversed(
+                        repo.list_validation_baseline_snapshots(
+                            bucket_type="hour",
+                            limit=12,
+                        ),
+                    )
+                ),
+                "daily": list(
+                    reversed(
+                        repo.list_validation_baseline_snapshots(
+                            bucket_type="day",
+                            limit=7,
+                        ),
+                    )
+                ),
+            }
+        except Exception:
+            baseline["snapshot_history"] = {"hourly": [], "daily": []}
+        baseline["trajectory"] = self._validation_snapshot_trajectory(
+            baseline.get("snapshot_history"),
+        )
+        return baseline
+
     @staticmethod
     def _source_strategy_map(metrics: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
         cockpit = (metrics or {}).get("profit_cockpit") or {}
@@ -707,11 +1642,54 @@ class AutoTradeService:
         }
 
     @staticmethod
+    def _source_action_exec_cap(*, lane: str, batch_limit: int) -> int:
+        normalized_lane = str(lane or "open").strip().lower()
+        if normalized_lane == "blocked":
+            return 0
+        if normalized_lane in {"observe", "reduced"}:
+            return 1
+        return max(1, int(batch_limit or 1))
+
+    @staticmethod
+    def _risk_cluster_key(row: Any) -> str:
+        try:
+            normalized_key = str(row["normalized_key"] or "").strip()
+        except Exception:
+            normalized_key = str(row.get("normalized_key") or "").strip() if isinstance(row, dict) else ""
+        if normalized_key:
+            return normalized_key
+        try:
+            item_type = str(row["item_type"] or "").strip()
+        except Exception:
+            item_type = str(row.get("item_type") or "").strip() if isinstance(row, dict) else ""
+        if item_type:
+            return f"item_type:{item_type}"
+        try:
+            source = str(row["source"] or "").strip()
+        except Exception:
+            source = str(row.get("source") or "").strip() if isinstance(row, dict) else ""
+        return f"source:{source or 'unknown'}"
+
+    @staticmethod
     def _build_source_position_controls(
         batch_limit: int,
         source_strategy_map: dict[str, dict[str, Any]],
         candidate_rows: list[Any],
+        metrics: dict[str, Any] | None = None,
     ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+        cockpit = (metrics or {}).get("profit_cockpit") or {}
+        inventory = cockpit.get("inventory") or {}
+        current_deployed_capital = float(inventory.get("deployed_capital") or 0.0)
+        portfolio_capital_limit = max(0.0, float(settings.auto_approve_portfolio_max_deployed_capital or 0.0))
+        remaining_portfolio_capital = (
+            max(0.0, portfolio_capital_limit - current_deployed_capital)
+            if portfolio_capital_limit > 0
+            else 0.0
+        )
+        max_source_capital_share = max(
+            0.1,
+            min(1.0, float(settings.auto_approve_max_source_capital_share or 1.0)),
+        )
         grouped: dict[str, dict[str, Any]] = {}
         for row in candidate_rows:
             source = str(row["source"] or "unknown").strip() or "unknown"
@@ -729,40 +1707,155 @@ class AutoTradeService:
         controls: dict[str, dict[str, Any]] = {}
         items: list[dict[str, Any]] = []
         normalized_batch_limit = max(1, int(batch_limit or 1))
+        active_items: list[dict[str, Any]] = []
+        total_pending_capacity = 0
         for source, bucket in grouped.items():
             strategy = source_strategy_map.get(source, {})
             intake_multiplier = float(strategy.get("intake_multiplier") or 1.0)
+            capital_multiplier = float(strategy.get("capital_multiplier") or intake_multiplier or 1.0)
+            source_lane = str(strategy.get("source_lane") or "open")
+            block_new_approvals = bool(strategy.get("block_new_approvals"))
             pending_count = int(bucket["pending_count"] or 0)
             avg_list_price = (
                 float(bucket["list_price_total"]) / pending_count if pending_count > 0 else 0.0
             )
-            batch_cap = max(
-                1,
-                min(
-                    pending_count,
-                    normalized_batch_limit,
-                    int(round(normalized_batch_limit * max(0.2, intake_multiplier))),
-                ),
-            )
-            capital_cap = round(
-                max(
-                    avg_list_price,
-                    avg_list_price * batch_cap * max(0.75, intake_multiplier),
-                ),
-                2,
-            )
-            item = {
-                "source": source,
-                "strategy_mode": str(strategy.get("strategy_mode") or "hold"),
-                "strategy_summary": str(strategy.get("strategy_summary") or ""),
-                "intake_multiplier": round(intake_multiplier, 2),
-                "batch_cap": batch_cap,
-                "capital_cap": capital_cap,
+            if block_new_approvals or source_lane == "blocked":
+                item = {
+                    "source": source,
+                    "source_lane": source_lane,
+                    "block_new_approvals": block_new_approvals,
+                    "strategy_mode": str(strategy.get("strategy_mode") or "hold"),
+                    "strategy_summary": str(strategy.get("strategy_summary") or ""),
+                    "intake_multiplier": round(intake_multiplier, 2),
+                    "capital_multiplier": round(capital_multiplier, 2),
+                    "batch_cap": 0,
+                    "capital_cap": 0.0,
                 "pending_count": pending_count,
                 "avg_list_price": round(avg_list_price, 2),
                 "realized_net_profit": float(strategy.get("realized_net_profit") or 0.0),
+                "portfolio_capital_limit": round(portfolio_capital_limit, 2),
+                "remaining_portfolio_capital": round(remaining_portfolio_capital, 2),
+                "max_source_capital_share": round(max_source_capital_share, 4),
+                "portfolio_capital_budget": 0.0,
+                "source_capital_share_limit_value": 0.0,
+                "batch_weight": 0.0,
+                "capital_weight": 0.0,
             }
-            controls[source] = item
+                controls[source] = item
+                items.append(item)
+                continue
+            batch_weight = max(0.05, intake_multiplier)
+            capital_weight = max(0.05, capital_multiplier)
+            active_item = {
+                "source": source,
+                "source_lane": source_lane,
+                "block_new_approvals": block_new_approvals,
+                "strategy_mode": str(strategy.get("strategy_mode") or "hold"),
+                "strategy_summary": str(strategy.get("strategy_summary") or ""),
+                "intake_multiplier": round(intake_multiplier, 2),
+                "capital_multiplier": round(capital_multiplier, 2),
+                "batch_cap": 0,
+                "capital_cap": 0.0,
+                "pending_count": pending_count,
+                "avg_list_price": round(avg_list_price, 2),
+                "realized_net_profit": float(strategy.get("realized_net_profit") or 0.0),
+                "portfolio_capital_limit": round(portfolio_capital_limit, 2),
+                "remaining_portfolio_capital": round(remaining_portfolio_capital, 2),
+                "max_source_capital_share": round(max_source_capital_share, 4),
+                "portfolio_capital_budget": 0.0,
+                "source_capital_share_limit_value": 0.0,
+                "batch_weight": round(batch_weight, 4),
+                "capital_weight": round(capital_weight, 4),
+            }
+            active_items.append(active_item)
+            total_pending_capacity += pending_count
+
+        total_batch_slots = min(normalized_batch_limit, total_pending_capacity)
+        if portfolio_capital_limit > 0 and remaining_portfolio_capital <= 0:
+            total_batch_slots = 0
+        if active_items and total_batch_slots > 0:
+            effective_max_source_capital_share = (
+                1.0 if len(active_items) == 1 else max_source_capital_share
+            )
+            total_batch_weight = sum(float(item["batch_weight"]) for item in active_items) or float(len(active_items))
+            batch_allocated = 0
+            for item in active_items:
+                expected = total_batch_slots * (float(item["batch_weight"]) / total_batch_weight)
+                item["batch_cap"] = min(int(item["pending_count"]), int(expected))
+                item["_batch_remainder"] = expected - int(item["batch_cap"])
+                batch_allocated += int(item["batch_cap"])
+
+            if batch_allocated == 0:
+                strongest = max(active_items, key=lambda item: (float(item["batch_weight"]), str(item["source"])))
+                strongest["batch_cap"] = min(int(strongest["pending_count"]), 1)
+                strongest["_batch_remainder"] = 0.0
+                batch_allocated = int(strongest["batch_cap"])
+
+            remainders = sorted(
+                active_items,
+                key=lambda item: (float(item.get("_batch_remainder") or 0.0), float(item["batch_weight"]), str(item["source"])),
+                reverse=True,
+            )
+            while batch_allocated < total_batch_slots:
+                progressed = False
+                for item in remainders:
+                    if int(item["batch_cap"]) >= int(item["pending_count"]):
+                        continue
+                    item["batch_cap"] = int(item["batch_cap"]) + 1
+                    batch_allocated += 1
+                    progressed = True
+                    if batch_allocated >= total_batch_slots:
+                        break
+                if not progressed:
+                    break
+
+            total_allocated_batch = sum(int(item["batch_cap"]) for item in active_items)
+            if total_allocated_batch > 0:
+                base_total_capital = sum(float(item["avg_list_price"]) * int(item["batch_cap"]) for item in active_items)
+                weighted_quality = (
+                    sum(
+                        int(item["batch_cap"]) * max(0.5, min(1.5, float(item["capital_multiplier"])))
+                        for item in active_items
+                    ) / total_allocated_batch
+                )
+                total_capital_budget = base_total_capital * weighted_quality
+                if portfolio_capital_limit > 0:
+                    total_capital_budget = min(total_capital_budget, remaining_portfolio_capital)
+                total_capital_weight = sum(
+                    max(0.05, float(item["capital_multiplier"])) * max(1, int(item["batch_cap"])) * max(0.01, float(item["avg_list_price"]))
+                    for item in active_items
+                ) or float(len(active_items))
+                for item in active_items:
+                    capital_share_weight = (
+                        max(0.05, float(item["capital_multiplier"]))
+                        * max(1, int(item["batch_cap"]))
+                        * max(0.01, float(item["avg_list_price"]))
+                    )
+                    capital_share = total_capital_budget * (capital_share_weight / total_capital_weight)
+                    source_capital_limit = (
+                        total_capital_budget * effective_max_source_capital_share
+                        if total_capital_budget > 0
+                        else 0.0
+                    )
+                    allowed_capital = capital_share
+                    if source_capital_limit > 0:
+                        allowed_capital = min(allowed_capital, source_capital_limit)
+                    if int(item["batch_cap"]) > 0 and portfolio_capital_limit <= 0:
+                        allowed_capital = max(float(item["avg_list_price"]), allowed_capital)
+                    item["capital_cap"] = round(
+                        max(0.0, allowed_capital),
+                        2,
+                    )
+                    item["portfolio_capital_budget"] = round(total_capital_budget, 2)
+                    item["source_capital_share_limit_value"] = round(source_capital_limit, 2)
+                for item in active_items:
+                    item.pop("_batch_remainder", None)
+            else:
+                for item in active_items:
+                    item["capital_cap"] = 0.0
+
+        for item in active_items:
+            controls[str(item["source"])] = item
             items.append(item)
 
         items.sort(
@@ -770,6 +1863,110 @@ class AutoTradeService:
                 {"tighten": 0, "hold": 1, "widen": 2}.get(str(item["strategy_mode"]), 1),
                 float(item["realized_net_profit"]),
                 int(item["pending_count"]),
+            ),
+            reverse=True,
+        )
+        return controls, items
+
+    @staticmethod
+    def _build_cluster_position_controls(
+        batch_limit: int,
+        candidate_rows: list[Any],
+        metrics: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+        cockpit = (metrics or {}).get("profit_cockpit") or {}
+        inventory = cockpit.get("inventory") or {}
+        current_deployed_capital = float(inventory.get("deployed_capital") or 0.0)
+        portfolio_capital_limit = max(0.0, float(settings.auto_approve_portfolio_max_deployed_capital or 0.0))
+        remaining_portfolio_capital = (
+            max(0.0, portfolio_capital_limit - current_deployed_capital)
+            if portfolio_capital_limit > 0
+            else 0.0
+        )
+        max_cluster_batch_share = max(
+            0.1,
+            min(1.0, float(settings.auto_approve_max_cluster_batch_share or 1.0)),
+        )
+        max_cluster_capital_share = max(
+            0.1,
+            min(1.0, float(settings.auto_approve_max_cluster_capital_share or 1.0)),
+        )
+
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in candidate_rows:
+            cluster_key = AutoTradeService._risk_cluster_key(row)
+            try:
+                source = str(row["source"] or "").strip() or "unknown"
+            except Exception:
+                source = str(row.get("source") or "").strip() or "unknown" if isinstance(row, dict) else "unknown"
+            try:
+                list_price = float(row["list_price"] or 0.0)
+            except Exception:
+                list_price = float(row.get("list_price") or 0.0) if isinstance(row, dict) else 0.0
+            bucket = grouped.setdefault(
+                cluster_key,
+                {
+                    "risk_cluster": cluster_key,
+                    "pending_count": 0,
+                    "list_price_total": 0.0,
+                    "sources": set(),
+                },
+            )
+            bucket["pending_count"] += 1
+            bucket["list_price_total"] += list_price
+            bucket["sources"].add(source)
+
+        controls: dict[str, dict[str, Any]] = {}
+        items: list[dict[str, Any]] = []
+        normalized_batch_limit = max(1, int(batch_limit or 1))
+        total_pending_capacity = sum(int(bucket["pending_count"] or 0) for bucket in grouped.values())
+        total_batch_slots = min(normalized_batch_limit, total_pending_capacity)
+        if portfolio_capital_limit > 0 and remaining_portfolio_capital <= 0:
+            total_batch_slots = 0
+
+        cluster_count = len(grouped)
+        effective_batch_share = 1.0 if cluster_count <= 1 else max_cluster_batch_share
+        effective_capital_share = 1.0 if cluster_count <= 1 else max_cluster_capital_share
+
+        for cluster_key, bucket in grouped.items():
+            pending_count = int(bucket["pending_count"] or 0)
+            avg_list_price = (
+                float(bucket["list_price_total"]) / pending_count if pending_count > 0 else 0.0
+            )
+            batch_cap = 0
+            if total_batch_slots > 0:
+                batch_cap = max(
+                    1,
+                    min(
+                        pending_count,
+                        int(round(total_batch_slots * effective_batch_share)),
+                    ),
+                )
+            if portfolio_capital_limit > 0:
+                capital_cap = round(max(0.0, remaining_portfolio_capital * effective_capital_share), 2)
+            else:
+                capital_cap = round(avg_list_price * max(0, batch_cap), 2)
+            item = {
+                "risk_cluster": cluster_key,
+                "pending_count": pending_count,
+                "avg_list_price": round(avg_list_price, 2),
+                "source_count": len(bucket["sources"]),
+                "sources": sorted(bucket["sources"]),
+                "batch_cap": batch_cap,
+                "capital_cap": capital_cap,
+                "portfolio_capital_limit": round(portfolio_capital_limit, 2),
+                "remaining_portfolio_capital": round(remaining_portfolio_capital, 2),
+                "max_cluster_batch_share": round(effective_batch_share, 4),
+                "max_cluster_capital_share": round(effective_capital_share, 4),
+            }
+            controls[cluster_key] = item
+            items.append(item)
+
+        items.sort(
+            key=lambda item: (
+                int(item["pending_count"]),
+                int(item["source_count"]),
+                str(item["risk_cluster"]),
             ),
             reverse=True,
         )
@@ -1075,6 +2272,258 @@ class AutoTradeService:
             "status": result.get("status"),
         }
 
+    def _maybe_dispatch_alert_email(
+        self,
+        *,
+        dashboard_metrics: dict[str, Any],
+        profit_guard: dict[str, Any],
+        source: str,
+    ) -> dict[str, Any]:
+        if not bool(settings.autotrade_alert_email_auto_enabled):
+            return {
+                "enabled": False,
+                "sent": False,
+                "reason": "auto_alert_email_disabled",
+            }
+
+        from .operating_state import operating_state_service
+
+        operating_state = operating_state_service.status()
+        execution_readiness = execution_service.webhook_readiness()
+        alert_payload = build_alert_payload(
+            enabled=bool(settings.auto_approve_enabled),
+            profit_guard=profit_guard,
+            dashboard_metrics=dashboard_metrics,
+            operating_state=operating_state,
+            execution_readiness=execution_readiness,
+            validation_baseline=self._validation_baseline_snapshot(dashboard_metrics),
+        )
+        alerts = list(alert_payload.get("alerts") or [])
+        if not alerts:
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "no_active_alerts",
+            }
+        min_severity = normalize_alert_severity(settings.autotrade_alert_email_min_severity)
+        highest_severity = highest_alert_severity(alerts)
+        if not alerts_meet_min_severity(alerts, min_severity=min_severity):
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "min_severity_not_met",
+                "min_severity": min_severity,
+                "highest_severity": highest_severity,
+            }
+        return {
+            "enabled": True,
+            **dispatch_alert_email(
+                cockpit={
+                    **alert_payload,
+                    "execution_readiness": execution_readiness,
+                    "operating_state": operating_state,
+                },
+                source=source,
+                force=False,
+            ),
+        }
+
+    def _maybe_dispatch_alert_slack(
+        self,
+        *,
+        dashboard_metrics: dict[str, Any],
+        profit_guard: dict[str, Any],
+        source: str,
+    ) -> dict[str, Any]:
+        if not bool(settings.autotrade_alert_slack_auto_enabled):
+            return {
+                "enabled": False,
+                "sent": False,
+                "reason": "auto_alert_slack_disabled",
+            }
+
+        from .operating_state import operating_state_service
+
+        operating_state = operating_state_service.status()
+        execution_readiness = execution_service.webhook_readiness()
+        alert_payload = build_alert_payload(
+            enabled=bool(settings.auto_approve_enabled),
+            profit_guard=profit_guard,
+            dashboard_metrics=dashboard_metrics,
+            operating_state=operating_state,
+            execution_readiness=execution_readiness,
+            validation_baseline=self._validation_baseline_snapshot(dashboard_metrics),
+        )
+        alerts = [
+            item
+            for item in list(alert_payload.get("alerts") or [])
+            if alert_delivery_lane(item) == "slack"
+        ]
+        if not alerts:
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "no_slack_stage_alerts",
+            }
+        min_severity = normalize_alert_severity(settings.autotrade_alert_slack_min_severity)
+        highest_severity = highest_alert_severity(alerts)
+        if not alerts_meet_min_severity(alerts, min_severity=min_severity):
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "min_severity_not_met",
+                "min_severity": min_severity,
+                "highest_severity": highest_severity,
+            }
+        return {
+            "enabled": True,
+            **dispatch_alert_slack(
+                cockpit={
+                    **alert_payload,
+                    "alerts": alerts,
+                    "execution_readiness": execution_readiness,
+                    "operating_state": operating_state,
+                },
+                source=source,
+                force=False,
+            ),
+        }
+
+    def _maybe_dispatch_alert_telegram(
+        self,
+        *,
+        dashboard_metrics: dict[str, Any],
+        profit_guard: dict[str, Any],
+        source: str,
+    ) -> dict[str, Any]:
+        if not bool(settings.autotrade_alert_telegram_auto_enabled):
+            return {
+                "enabled": False,
+                "sent": False,
+                "reason": "auto_alert_telegram_disabled",
+            }
+
+        from .operating_state import operating_state_service
+
+        operating_state = operating_state_service.status()
+        execution_readiness = execution_service.webhook_readiness()
+        alert_payload = build_alert_payload(
+            enabled=bool(settings.auto_approve_enabled),
+            profit_guard=profit_guard,
+            dashboard_metrics=dashboard_metrics,
+            operating_state=operating_state,
+            execution_readiness=execution_readiness,
+            validation_baseline=self._validation_baseline_snapshot(dashboard_metrics),
+        )
+        alerts = [
+            item
+            for item in list(alert_payload.get("alerts") or [])
+            if alert_delivery_lane(item) == "telegram"
+        ]
+        if not alerts:
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "no_telegram_stage_alerts",
+            }
+        min_severity = normalize_alert_severity(settings.autotrade_alert_telegram_min_severity)
+        highest_severity = highest_alert_severity(alerts)
+        if not alerts_meet_min_severity(alerts, min_severity=min_severity):
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "min_severity_not_met",
+                "min_severity": min_severity,
+                "highest_severity": highest_severity,
+            }
+        return {
+            "enabled": True,
+            **dispatch_alert_telegram(
+                cockpit={
+                    **alert_payload,
+                    "alerts": alerts,
+                    "execution_readiness": execution_readiness,
+                    "operating_state": operating_state,
+                },
+                source=source,
+                force=False,
+            ),
+        }
+
+    def _maybe_dispatch_alert_webhook(
+        self,
+        *,
+        dashboard_metrics: dict[str, Any],
+        profit_guard: dict[str, Any],
+        source: str,
+    ) -> dict[str, Any]:
+        if not bool(settings.autotrade_alert_webhook_auto_enabled):
+            return {
+                "enabled": False,
+                "sent": False,
+                "reason": "auto_alert_webhook_disabled",
+            }
+        legacy_provider = str(settings.alert_webhook_provider or "").strip().lower()
+        if legacy_provider == "slack" and bool(settings.autotrade_alert_slack_auto_enabled):
+            return {
+                "enabled": False,
+                "sent": False,
+                "reason": "dedicated_slack_channel_enabled",
+            }
+        if legacy_provider == "telegram" and bool(settings.autotrade_alert_telegram_auto_enabled):
+            return {
+                "enabled": False,
+                "sent": False,
+                "reason": "dedicated_telegram_channel_enabled",
+            }
+
+        from .operating_state import operating_state_service
+
+        operating_state = operating_state_service.status()
+        execution_readiness = execution_service.webhook_readiness()
+        alert_payload = build_alert_payload(
+            enabled=bool(settings.auto_approve_enabled),
+            profit_guard=profit_guard,
+            dashboard_metrics=dashboard_metrics,
+            operating_state=operating_state,
+            execution_readiness=execution_readiness,
+            validation_baseline=self._validation_baseline_snapshot(dashboard_metrics),
+        )
+        alerts = [
+            item
+            for item in list(alert_payload.get("alerts") or [])
+            if bool(item.get("external_escalation_ready"))
+        ]
+        if not alerts:
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "no_escalated_alerts",
+            }
+        min_severity = normalize_alert_severity(settings.autotrade_alert_webhook_min_severity)
+        highest_severity = highest_alert_severity(alerts)
+        if not alerts_meet_min_severity(alerts, min_severity=min_severity):
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "min_severity_not_met",
+                "min_severity": min_severity,
+                "highest_severity": highest_severity,
+            }
+        return {
+            "enabled": True,
+            **dispatch_alert_webhook(
+                cockpit={
+                    **alert_payload,
+                    "alerts": alerts,
+                    "execution_readiness": execution_readiness,
+                    "operating_state": operating_state,
+                },
+                source=source,
+                force=False,
+            ),
+        }
+
     def start(self) -> dict[str, Any]:
         with self._lock:
             if self._running:
@@ -1140,12 +2589,45 @@ class AutoTradeService:
                 daily_loss_limit=daily_loss_limit,
                 metrics=dashboard_metrics,
             )
+            validation_baseline = self._validation_baseline_snapshot(dashboard_metrics)
             source_strategy_map = self._source_strategy_map(dashboard_metrics)
             seller_strategy_map = self._seller_strategy_map(dashboard_metrics)
+            source_override_status = risk_overrides_service.source_status_summary(limit=200)
+            cluster_override_status = risk_overrides_service.cluster_status_summary(limit=200)
+            source_override_map = {
+                str(item.get("source") or "").strip(): item
+                for item in list(source_override_status.get("items") or [])
+                if str(item.get("source") or "").strip()
+            }
+            cluster_override_map = {
+                str(item.get("risk_cluster") or "").strip(): item
+                for item in list(cluster_override_status.get("items") or [])
+                if str(item.get("risk_cluster") or "").strip()
+            }
             if profit_guard["blocked"]:
                 loss_recovery = self._maybe_apply_loss_recovery_tuning(
                     profit_guard=profit_guard,
                     applied_by="profit_guard_bot" if loss_recovery_enabled else "operator",
+                )
+                alert_dispatch = self._maybe_dispatch_alert_email(
+                    dashboard_metrics=dashboard_metrics,
+                    profit_guard=profit_guard,
+                    source="autotrade_bot",
+                )
+                alert_slack_dispatch = self._maybe_dispatch_alert_slack(
+                    dashboard_metrics=dashboard_metrics,
+                    profit_guard=profit_guard,
+                    source="autotrade_bot",
+                )
+                alert_telegram_dispatch = self._maybe_dispatch_alert_telegram(
+                    dashboard_metrics=dashboard_metrics,
+                    profit_guard=profit_guard,
+                    source="autotrade_bot",
+                )
+                alert_webhook_dispatch = self._maybe_dispatch_alert_webhook(
+                    dashboard_metrics=dashboard_metrics,
+                    profit_guard=profit_guard,
+                    source="autotrade_bot",
                 )
                 block_reason = " | ".join(profit_guard["reasons"]) or "profit guard blocked"
                 with self._lock:
@@ -1161,7 +2643,37 @@ class AutoTradeService:
                     "reason": "profit_guard_blocked",
                     "blocked": True,
                     "profit_guard": profit_guard,
+                    "validation_baseline": validation_baseline,
                     "loss_recovery": loss_recovery,
+                    "alert_dispatch": alert_dispatch,
+                    "alert_slack_dispatch": alert_slack_dispatch,
+                    "alert_telegram_dispatch": alert_telegram_dispatch,
+                    "alert_webhook_dispatch": alert_webhook_dispatch,
+                }
+
+            if bool(settings.single_account_mode) and not bool(validation_baseline.get("ready")):
+                block_reason = ", ".join(list(validation_baseline.get("blocking_codes") or [])[:3]) or (
+                    "single_account_observation_baseline_not_ready"
+                )
+                with self._lock:
+                    self._last_run_at = datetime.now(timezone.utc).isoformat()
+                    self._last_error = block_reason
+                    self._total_runs += 1
+                return {
+                    "enabled": settings.auto_approve_enabled,
+                    "approved": 0,
+                    "errors": 0,
+                    "considered": 0,
+                    "batch_limit": batch_limit,
+                    "reason": "single_account_validation_baseline_not_ready",
+                    "blocked": True,
+                    "profit_guard": profit_guard,
+                    "validation_baseline": validation_baseline,
+                    "loss_recovery": {
+                        "enabled": bool(loss_recovery_enabled),
+                        "applied": False,
+                        "reason": "single_account_validation_baseline_not_ready",
+                    },
                 }
 
             loss_recovery = self._maybe_release_loss_recovery_tuning(
@@ -1180,6 +2692,12 @@ class AutoTradeService:
                 batch_limit,
                 source_strategy_map,
                 rows,
+                dashboard_metrics,
+            )
+            cluster_position_control_map, cluster_position_controls = self._build_cluster_position_controls(
+                batch_limit,
+                rows,
+                dashboard_metrics,
             )
             seller_position_control_map, seller_position_controls = self._build_seller_position_controls(
                 batch_limit,
@@ -1194,6 +2712,9 @@ class AutoTradeService:
             skipped_not_pending = 0
             skipped_source_batch_cap = 0
             skipped_source_capital = 0
+            skipped_cluster_batch_cap = 0
+            skipped_cluster_capital = 0
+            skipped_non_tradable = 0
             skipped_seller_blacklist = 0
             skipped_seller_batch_cap = 0
             skipped_seller_capital = 0
@@ -1202,6 +2723,8 @@ class AutoTradeService:
             picked_ids: list[int] = []
             source_approved_counts: dict[str, int] = {}
             source_approved_capital: dict[str, float] = {}
+            cluster_approved_counts: dict[str, int] = {}
+            cluster_approved_capital: dict[str, float] = {}
             seller_approved_counts: dict[str, int] = {}
             seller_approved_capital: dict[str, float] = {}
             buy_exec_attempted = 0
@@ -1210,12 +2733,25 @@ class AutoTradeService:
             list_exec_attempted = 0
             list_exec_succeeded = 0
             list_exec_failed = 0
+            list_exec_skipped_source_action = 0
+            list_exec_skipped_source_action_cap = 0
+            source_list_exec_counts: dict[str, int] = {}
 
             for row in rows:
                 if approved >= batch_limit:
                     break
                 opportunity_id = int(row["id"])
                 source = str(row["source"] or "unknown").strip() or "unknown"
+                try:
+                    item_type = str(row["item_type"] or "").strip()
+                except Exception:
+                    item_type = str(row.get("item_type") or "").strip() if isinstance(row, dict) else ""
+                try:
+                    normalized_key = str(row["normalized_key"] or "").strip()
+                except Exception:
+                    normalized_key = str(row.get("normalized_key") or "").strip() if isinstance(row, dict) else ""
+                if not item_type and ":" in normalized_key:
+                    item_type = normalized_key.split(":", 1)[0].strip()
                 try:
                     seller_raw = row["seller_id"]
                 except Exception:
@@ -1230,10 +2766,30 @@ class AutoTradeService:
                     skipped_seller_blacklist += 1
                     continue
                 source_strategy = source_strategy_map.get(source, {})
+                source_override = source_override_map.get(source) or {}
                 seller_strategy = seller_strategy_map.get(seller_key, {})
                 threshold_delta = source_strategy.get("threshold_delta") or {}
                 seller_threshold_delta = seller_strategy.get("threshold_delta") or {}
                 seller_runtime_delta = seller_runtime.get("threshold_delta") or {}
+                list_action_lane = str(source_strategy.get("list_action_lane") or "open")
+                allow_auto_list = bool(source_strategy.get("allow_auto_list", True))
+                list_action_cap = self._source_action_exec_cap(
+                    lane=list_action_lane,
+                    batch_limit=batch_limit,
+                )
+                if item_type and item_type not in TRADABLE_ITEM_TYPES:
+                    skipped_non_tradable += 1
+                    continue
+                risk_cluster = self._risk_cluster_key(row)
+                cluster_override = cluster_override_map.get(risk_cluster) or {}
+                source_override_state = str(source_override.get("state") or "normal")
+                cluster_override_state = str(cluster_override.get("state") or "normal")
+                if source_override_state == "frozen":
+                    skipped_source_batch_cap += 1
+                    continue
+                if cluster_override_state == "frozen":
+                    skipped_cluster_batch_cap += 1
+                    continue
                 effective_min_score = max(
                     0.0,
                     min(
@@ -1293,11 +2849,35 @@ class AutoTradeService:
                 }
                 current_source_count = int(source_approved_counts.get(source) or 0)
                 current_source_capital = float(source_approved_capital.get(source) or 0.0)
+                if source_override_state == "observe":
+                    position_control = {
+                        **position_control,
+                        "batch_cap": min(int(position_control["batch_cap"]), 1),
+                        "capital_cap": min(float(position_control["capital_cap"]), approved_buy_price),
+                    }
                 if current_source_count >= int(position_control["batch_cap"]):
                     skipped_source_batch_cap += 1
                     continue
                 if current_source_capital + approved_buy_price > float(position_control["capital_cap"]) + 1e-9:
                     skipped_source_capital += 1
+                    continue
+                cluster_position_control = cluster_position_control_map.get(risk_cluster) or {
+                    "batch_cap": batch_limit,
+                    "capital_cap": approved_buy_price * batch_limit,
+                }
+                current_cluster_count = int(cluster_approved_counts.get(risk_cluster) or 0)
+                current_cluster_capital = float(cluster_approved_capital.get(risk_cluster) or 0.0)
+                if cluster_override_state == "observe":
+                    cluster_position_control = {
+                        **cluster_position_control,
+                        "batch_cap": min(int(cluster_position_control["batch_cap"]), 1),
+                        "capital_cap": min(float(cluster_position_control["capital_cap"]), approved_buy_price),
+                    }
+                if current_cluster_count >= int(cluster_position_control["batch_cap"]):
+                    skipped_cluster_batch_cap += 1
+                    continue
+                if current_cluster_capital + approved_buy_price > float(cluster_position_control["capital_cap"]) + 1e-9:
+                    skipped_cluster_capital += 1
                     continue
                 seller_position_control = seller_position_control_map.get(seller_key) or {
                     "batch_cap": batch_limit,
@@ -1373,6 +2953,8 @@ class AutoTradeService:
                     picked_ids.append(opportunity_id)
                     source_approved_counts[source] = current_source_count + 1
                     source_approved_capital[source] = current_source_capital + approved_buy_price
+                    cluster_approved_counts[risk_cluster] = current_cluster_count + 1
+                    cluster_approved_capital[risk_cluster] = current_cluster_capital + approved_buy_price
                     seller_approved_counts[seller_key] = current_seller_count + 1
                     seller_approved_capital[seller_key] = current_seller_capital + approved_buy_price
                     if auto_execute_buy_on_approve:
@@ -1384,16 +2966,22 @@ class AutoTradeService:
                         if exec_res.get("success"):
                             buy_exec_succeeded += 1
                             if auto_execute_list_on_buy_success:
-                                list_exec_attempted += 1
-                                list_res = execution_service.execute_list(
-                                    trade_id=trade_id,
-                                    dry_run=auto_execute_list_dry_run,
-                                    note="auto listed after buy execution",
-                                )
-                                if list_res.get("success"):
-                                    list_exec_succeeded += 1
+                                if not allow_auto_list or list_action_lane == "blocked":
+                                    list_exec_skipped_source_action += 1
+                                elif int(source_list_exec_counts.get(source) or 0) >= int(list_action_cap):
+                                    list_exec_skipped_source_action_cap += 1
                                 else:
-                                    list_exec_failed += 1
+                                    list_exec_attempted += 1
+                                    list_res = execution_service.execute_list(
+                                        trade_id=trade_id,
+                                        dry_run=auto_execute_list_dry_run,
+                                        note="auto listed after buy execution",
+                                    )
+                                    if list_res.get("success"):
+                                        list_exec_succeeded += 1
+                                        source_list_exec_counts[source] = int(source_list_exec_counts.get(source) or 0) + 1
+                                    else:
+                                        list_exec_failed += 1
                         else:
                             buy_exec_failed += 1
                 except Exception:
@@ -1404,6 +2992,27 @@ class AutoTradeService:
                 self._last_error = "" if errors == 0 else f"errors={errors}"
                 self._total_runs += 1
                 self._total_approved += approved
+
+            alert_dispatch = self._maybe_dispatch_alert_email(
+                dashboard_metrics=dashboard_metrics,
+                profit_guard=profit_guard,
+                source="autotrade_bot",
+            )
+            alert_slack_dispatch = self._maybe_dispatch_alert_slack(
+                dashboard_metrics=dashboard_metrics,
+                profit_guard=profit_guard,
+                source="autotrade_bot",
+            )
+            alert_telegram_dispatch = self._maybe_dispatch_alert_telegram(
+                dashboard_metrics=dashboard_metrics,
+                profit_guard=profit_guard,
+                source="autotrade_bot",
+            )
+            alert_webhook_dispatch = self._maybe_dispatch_alert_webhook(
+                dashboard_metrics=dashboard_metrics,
+                profit_guard=profit_guard,
+                source="autotrade_bot",
+            )
 
             return {
                 "enabled": settings.auto_approve_enabled,
@@ -1419,6 +3028,9 @@ class AutoTradeService:
                 "skipped_not_pending": skipped_not_pending,
                 "skipped_source_batch_cap": skipped_source_batch_cap,
                 "skipped_source_capital": skipped_source_capital,
+                "skipped_cluster_batch_cap": skipped_cluster_batch_cap,
+                "skipped_cluster_capital": skipped_cluster_capital,
+                "skipped_non_tradable": skipped_non_tradable,
                 "skipped_seller_blacklist": skipped_seller_blacklist,
                 "skipped_seller_batch_cap": skipped_seller_batch_cap,
                 "skipped_seller_capital": skipped_seller_capital,
@@ -1431,14 +3043,22 @@ class AutoTradeService:
                 "list_exec_attempted": list_exec_attempted,
                 "list_exec_succeeded": list_exec_succeeded,
                 "list_exec_failed": list_exec_failed,
+                "list_exec_skipped_source_action": list_exec_skipped_source_action,
+                "list_exec_skipped_source_action_cap": list_exec_skipped_source_action_cap,
                 "list_exec_dry_run": auto_execute_list_dry_run,
                 "profit_guard": profit_guard,
+                "validation_baseline": validation_baseline,
                 "loss_recovery": loss_recovery,
                 "source_strategies": list(source_strategy_map.values())[:5],
                 "source_position_controls": source_position_controls[:5],
+                "cluster_position_controls": cluster_position_controls[:5],
                 "seller_strategies": list(seller_strategy_map.values())[:8],
                 "seller_position_controls": seller_position_controls[:8],
                 "seller_controls": seller_control_sync.get("status") or {},
+                "alert_dispatch": alert_dispatch,
+                "alert_slack_dispatch": alert_slack_dispatch,
+                "alert_telegram_dispatch": alert_telegram_dispatch,
+                "alert_webhook_dispatch": alert_webhook_dispatch,
             }
         finally:
             self._run_lock.release()

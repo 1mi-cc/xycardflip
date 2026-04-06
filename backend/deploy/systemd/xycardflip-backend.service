@@ -1,0 +1,27 @@
+[Unit]
+Description=XY Card Flip Backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xycardflip
+Group=xycardflip
+WorkingDirectory=/srv/xycardflip/current/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=FRONTEND_DIST=/srv/xycardflip/current/dist
+ExecStart=/srv/xycardflip/shared/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 18000
+Restart=always
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=20
+KillSignal=SIGINT
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/xycardflip/shared /srv/xycardflip/current/backend/data
+
+[Install]
+WantedBy=multi-user.target

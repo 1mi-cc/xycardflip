@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { useAuthStore } from "@/stores/auth";
+
 const cardFlipRequest = axios.create({
   baseURL: import.meta.env.VITE_CARD_FLIP_API_BASE || "/card-api",
   timeout: 60000,
@@ -7,6 +9,25 @@ const cardFlipRequest = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+});
+
+const resolveCardFlipUrl = (pathWithQuery = "") => {
+  const base = String(import.meta.env.VITE_CARD_FLIP_API_BASE || "/card-api").replace(/\/$/, "");
+  const suffix = String(pathWithQuery || "").startsWith("/")
+    ? String(pathWithQuery || "")
+    : `/${String(pathWithQuery || "")}`;
+  if (/^https?:\/\//i.test(base))
+    return `${base}${suffix}`;
+  return `${base}${suffix}`;
+};
+
+cardFlipRequest.interceptors.request.use((config) => {
+  const authStore = useAuthStore();
+  if (authStore.token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${authStore.token}`;
+  }
+  return config;
 });
 
 const clampListLimit = (value, fallback = 100) => {
@@ -159,6 +180,29 @@ const cardFlipApi = {
   getHealth() {
     return cardFlipRequest.get("/health");
   },
+  getAdminTransparencyOverview() {
+    return cardFlipRequest.get("/analysis/admin-overview");
+  },
+  openAdminTransparencyOverviewStream({
+    signal,
+    intervalSeconds = 5,
+  } = {}) {
+    const authStore = useAuthStore();
+    const headers = {
+      Accept: "text/event-stream",
+    };
+    if (authStore.token)
+      headers.Authorization = `Bearer ${authStore.token}`;
+    return fetch(
+      resolveCardFlipUrl(`/analysis/admin-overview/stream?interval_seconds=${encodeURIComponent(intervalSeconds)}`),
+      {
+        method: "GET",
+        headers,
+        credentials: "same-origin",
+        signal,
+      },
+    );
+  },
   getListing(listingRowId) {
     return cardFlipRequest.get(`/listings/${listingRowId}`);
   },
@@ -226,6 +270,63 @@ const cardFlipApi = {
   getAutotradeStatus() {
     return cardFlipRequest.get("/autotrade/status");
   },
+  getAutotradeCockpit() {
+    return cardFlipRequest.get("/autotrade/cockpit");
+  },
+  sendAutotradeAlertEmail(force = false) {
+    return cardFlipRequest.post("/autotrade/alerts/email", null, {
+      params: { force },
+    });
+  },
+  sendAutotradeAlertWebhook(force = false) {
+    return cardFlipRequest.post("/autotrade/alerts/webhook", null, {
+      params: { force },
+    });
+  },
+  sendAutotradeAlertSlack(force = false) {
+    return cardFlipRequest.post("/autotrade/alerts/slack", null, {
+      params: { force },
+    });
+  },
+  sendAutotradeAlertTelegram(force = false) {
+    return cardFlipRequest.post("/autotrade/alerts/telegram", null, {
+      params: { force },
+    });
+  },
+  acknowledgeAutotradeAlert(alertKey, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/ack`, payload);
+  },
+  snoozeAutotradeAlert(alertKey, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/snooze`, payload);
+  },
+  resumeAutotradeAlert(alertKey, actor = "operator") {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/resume`, null, {
+      params: { actor },
+    });
+  },
+  assignAutotradeAlertIncident(alertKey, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/assign`, payload);
+  },
+  noteAutotradeAlertIncident(alertKey, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/note`, payload);
+  },
+  handoffAutotradeAlertIncident(alertKey, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/handoff`, payload);
+  },
+  resolveAutotradeAlertIncident(alertKey, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/resolve`, payload);
+  },
+  prioritizeAutotradeAlertIncident(alertKey, payload = {}) {
+    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/priority`, payload);
+  },
+  listAutotradeAlertEvents(limit = 50, alertKey = "") {
+    return cardFlipRequest.get("/autotrade/alerts/events", {
+      params: {
+        limit,
+        alert_key: alertKey,
+      },
+    });
+  },
   startAutotrade() {
     return cardFlipRequest.post("/autotrade/start");
   },
@@ -239,6 +340,22 @@ const cardFlipApi = {
   },
   updateAutotradeConfig(payload = {}) {
     return cardFlipRequest.post("/autotrade/config", payload);
+  },
+  applySourceControlManualAction(payload = {}) {
+    return cardFlipRequest.post("/autotrade/source-controls/manual-action", payload);
+  },
+  applyClusterControlManualAction(payload = {}) {
+    return cardFlipRequest.post("/autotrade/cluster-controls/manual-action", payload);
+  },
+  listSourceControlEvents(limit = 50) {
+    return cardFlipRequest.get("/autotrade/source-controls/events", {
+      params: { limit },
+    });
+  },
+  listClusterControlEvents(limit = 50) {
+    return cardFlipRequest.get("/autotrade/cluster-controls/events", {
+      params: { limit },
+    });
   },
   applySellerControlManualAction(payload = {}) {
     return cardFlipRequest.post("/autotrade/seller-controls/manual-action", payload);

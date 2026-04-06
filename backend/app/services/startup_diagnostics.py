@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..config import settings
+from ..config import single_account_guardrail_status
 from .execution import execution_service
 from .gemini_client import GeminiClient
 
@@ -11,6 +12,20 @@ def startup_configuration_checks() -> dict[str, Any]:
     items: list[dict[str, str]] = []
     readiness = execution_service.webhook_readiness()
     gemini_runtime = GeminiClient().get_runtime_status()
+    guardrails = single_account_guardrail_status()
+
+    if bool(guardrails.get("enabled")) and not bool(guardrails.get("aligned")):
+        drift = ", ".join(str(code) for code in guardrails.get("failing_codes", []))
+        items.append(
+            {
+                "severity": "warning",
+                "code": "single_account_guardrails_drift",
+                "message": (
+                    "Single-account local mode is enabled but guardrails drifted"
+                    + (f": {drift}" if drift else "")
+                ),
+            }
+        )
 
     if bool(readiness.get("live_enabled")) and not bool(readiness.get("live_ready")):
         missing = ", ".join(str(part) for part in readiness.get("missing", []))

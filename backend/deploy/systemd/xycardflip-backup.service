@@ -1,0 +1,12 @@
+[Unit]
+Description=XY Card Flip Shared Data Backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/srv/xycardflip/bin/server_backup_backend_data.sh 7
+Nice=10
+

@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly XY Card Flip Backup Restore Rehearsal
+
+[Timer]
+OnCalendar=Sun *-*-* 04:11:00
+Persistent=true
+RandomizedDelaySec=20m
+Unit=xycardflip-restore-rehearsal.service
+
+[Install]
+WantedBy=timers.target

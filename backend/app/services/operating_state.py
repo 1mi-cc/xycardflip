@@ -81,8 +81,12 @@ class OperatingStateService:
         monitor = monitor_service.status()
         autotrade = auto_trade_service.status()
         execution_retry = execution_retry_service.status()
-        execution_health = repo.get_execution_log_summary(
+        execution_health_all = repo.get_execution_log_summary(
             limit=settings.operating_state_execution_window,
+        )
+        execution_health_live = repo.get_execution_log_summary(
+            limit=settings.operating_state_execution_window,
+            dry_run=False,
         )
 
         state = "normal"
@@ -91,9 +95,10 @@ class OperatingStateService:
         monitor_success_rate = float(monitor_health.get("success_rate") or 1.0)
         monitor_samples = int(monitor_health.get("samples") or 0)
         monitor_guard_triggered = bool(monitor_health.get("guard_triggered"))
-        execution_sample_size = int(execution_health.get("sample_size") or 0)
-        execution_failure_rate = float(execution_health.get("failure_rate") or 0.0)
-        execution_business_ban_count = int(execution_health.get("business_ban_count") or 0)
+        execution_sample_size = int(execution_health_live.get("sample_size") or 0)
+        execution_failure_rate = float(execution_health_live.get("failure_rate") or 0.0)
+        execution_business_ban_count = int(execution_health_live.get("business_ban_count") or 0)
+        execution_by_action = execution_health_live.get("by_action") or {}
 
         if bool(monitor.get("circuit_open")):
             state = _escalate(state, "recovery")
@@ -133,6 +138,34 @@ class OperatingStateService:
                     f"business_bans={execution_business_ban_count}"
                 )
 
+        for action in ("buy", "list"):
+            bucket = execution_by_action.get(action) or {}
+            action_sample_size = int(bucket.get("sample_size") or 0)
+            action_failure_rate = float(bucket.get("failure_rate") or 0.0)
+            action_business_ban_count = int(bucket.get("business_ban_count") or 0)
+            if action_sample_size < int(settings.operating_state_min_execution_samples):
+                continue
+            if (
+                action_failure_rate >= float(settings.operating_state_recovery_failure_rate)
+                or action_business_ban_count >= int(settings.operating_state_recovery_business_bans)
+            ):
+                state = _escalate(state, "recovery")
+                reasons.append(
+                    f"execution_action_recovery:{action}:"
+                    f"failure_rate={action_failure_rate:.2f},"
+                    f"business_bans={action_business_ban_count}"
+                )
+            elif (
+                action_failure_rate >= float(settings.operating_state_cautious_failure_rate)
+                or action_business_ban_count >= int(settings.operating_state_cautious_business_bans)
+            ):
+                state = _escalate(state, "cautious")
+                reasons.append(
+                    f"execution_action_cautious:{action}:"
+                    f"failure_rate={action_failure_rate:.2f},"
+                    f"business_bans={action_business_ban_count}"
+                )
+
         if execution_retry.get("last_error"):
             state = _escalate(state, "cautious")
             reasons.append("execution_retry_last_error")
@@ -156,12 +189,20 @@ class OperatingStateService:
                 "monitor_health_guard_triggered": monitor_guard_triggered,
                 "execution_sample_size": execution_sample_size,
                 "execution_success_rate": round(
-                    float(execution_health.get("success_rate") or 0.0),
+                    float(execution_health_live.get("success_rate") or 0.0),
                     4,
                 ),
                 "execution_failure_rate": round(execution_failure_rate, 4),
                 "execution_business_ban_count": execution_business_ban_count,
-                "execution_last_failure_at": execution_health.get("last_failure_at", ""),
+                "execution_last_failure_at": execution_health_live.get("last_failure_at", ""),
+                "execution_by_action": execution_by_action,
+                "execution_signal_scope": "live_only",
+                "execution_all_sample_size": int(execution_health_all.get("sample_size") or 0),
+                "execution_all_failure_rate": round(
+                    float(execution_health_all.get("failure_rate") or 0.0),
+                    4,
+                ),
+                "execution_live_sample_size": execution_sample_size,
                 "autotrade_running": bool(autotrade.get("running")),
                 "execution_retry_running": bool(execution_retry.get("running")),
             },

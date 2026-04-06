@@ -6,6 +6,7 @@ from typing import Any
 from .. import repositories as repo
 from ..config import settings
 from ..schemas import FeatureData
+from .listing_normalizer import TRADABLE_ITEM_TYPES
 from .feature_extractor import FeatureExtractor
 from .opportunity import score_opportunity
 from .risk_control import apply_risk_gate, assess_opportunity_risk, format_risk_note
@@ -13,11 +14,35 @@ from .seller_controls import seller_controls_service
 from .valuation import estimate_valuation
 
 _extractor = FeatureExtractor()
+_MARKET_STATE_LISTING_HOURS = 24 * 30
+_MARKET_STATE_SALES_DAYS = 30
+_MARKET_STATE_BLOCKED_REGIMES = {"thin", "noisy"}
+_MARKET_STATE_MIN_RECENT_SALES = 1
 
 
 def _iter_chunks(items: list[Any], chunk_size: int) -> list[list[Any]]:
     size = max(1, int(chunk_size))
     return [items[index : index + size] for index in range(0, len(items), size)]
+
+
+def _listing_item_type(row: Any) -> str:
+    if isinstance(row, dict):
+        item_type = str(row.get("item_type") or "").strip()
+        normalized_key = str(row.get("normalized_key") or "").strip()
+    else:
+        item_type = str(row["item_type"] or "").strip()
+        normalized_key = str(row["normalized_key"] or "").strip()
+    if item_type:
+        return item_type
+    if ":" in normalized_key:
+        return normalized_key.split(":", 1)[0].strip()
+    return "unknown"
+
+
+def _listing_normalized_key(row: Any) -> str:
+    if isinstance(row, dict):
+        return str(row.get("normalized_key") or "").strip()
+    return str(row["normalized_key"] or "").strip()
 
 
 def _source_scan_weights(metrics: dict[str, Any] | None) -> dict[str, float]:
@@ -120,6 +145,15 @@ async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
     seller_control_sync = seller_controls_service.sync_from_metrics(metrics=dashboard_metrics)
     noise_filtered = sum(1 for row in raw_open_listings if bool(row["normalization_blocked"]))
     candidate_listings = [row for row in raw_open_listings if not bool(row["normalization_blocked"])]
+    tradable_market_map = {
+        str(item.get("normalized_key") or "").strip(): item
+        for item in repo.get_normalized_market_snapshots(
+            limit=200,
+            listing_hours=_MARKET_STATE_LISTING_HOURS,
+            sales_days=_MARKET_STATE_SALES_DAYS,
+            scope="tradable",
+        )
+    }
     open_listings, source_budget = _allocate_source_scan_budget(
         candidate_listings,
         limit=requested_limit,
@@ -134,6 +168,8 @@ async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
     blocked = 0
     failed = 0
     seller_frozen = 0
+    market_quality_filtered = 0
+    market_quality_reasons: dict[str, int] = {}
     for chunk in _iter_chunks(open_listings, batch_size):
         prepared_items: list[dict[str, Any]] = []
         prepared_status_counts = {"pending_review": 0, "blocked_risk": 0, "ignored": 0}
@@ -181,6 +217,24 @@ async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
                             "rejected",
                             "duplicate_fingerprint_of_frozen_opportunity",
                         )
+                    ignored += 1
+                    continue
+
+                item_type = _listing_item_type(listing)
+                normalized_key = _listing_normalized_key(listing)
+                market_snapshot = tradable_market_map.get(normalized_key)
+                market_reason = ""
+                if item_type not in TRADABLE_ITEM_TYPES:
+                    market_reason = "non_tradable_item_type"
+                elif not normalized_key or market_snapshot is None:
+                    market_reason = "missing_tradable_market_snapshot"
+                elif int(market_snapshot.get("recent_sales_count_7d") or 0) < _MARKET_STATE_MIN_RECENT_SALES:
+                    market_reason = "insufficient_recent_sales"
+                elif str(market_snapshot.get("regime_tag") or "").strip() in _MARKET_STATE_BLOCKED_REGIMES:
+                    market_reason = f"market_regime_{str(market_snapshot.get('regime_tag') or '').strip()}"
+                if market_reason:
+                    market_quality_filtered += 1
+                    market_quality_reasons[market_reason] = market_quality_reasons.get(market_reason, 0) + 1
                     ignored += 1
                     continue
 
@@ -274,6 +328,8 @@ async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
         "ignored": ignored,
         "failed": failed,
         "seller_frozen": seller_frozen,
+        "market_quality_filtered": market_quality_filtered,
+        "market_quality_reasons": market_quality_reasons,
         "source_budget": source_budget,
         "seller_controls": seller_control_sync.get("status") or {},
     }

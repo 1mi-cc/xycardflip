@@ -268,7 +268,7 @@ const rawNavGroups = [
     label: "核心",
     icon: Home,
     children: [
-      { label: "控制台", path: "/admin/dashboard", icon: Home, permission: "dashboard:view" },
+      { label: "控制台", path: "/admin/dashboard", icon: Home, permission: "dashboard:view", adminOnly: true },
       { label: "游戏功能", path: "/admin/game-features", icon: Cube, permission: "game:feature:view" },
       {
         label: "卡片倒卖",
@@ -314,7 +314,6 @@ const rawNavGroups = [
 ];
 
 const defaultAffixTags = [
-  { title: "控制台", path: "/admin/dashboard", affix: true },
   { title: "Token 管理", path: "/tokens", affix: true },
 ];
 const defaultAffixOrder = new Map(defaultAffixTags.map((tag, index) => [tag.path, index]));
@@ -334,11 +333,17 @@ const hasPermission = (permission) => {
   return userPermissions.value.includes(permission);
 };
 
+const hasAdminAccess = (adminOnly) => {
+  if (!adminOnly)
+    return true;
+  return Boolean(authStore.userInfo?.isAdmin);
+};
+
 const filterNavItemsByPermission = (items = []) => {
   const filtered = [];
   for (const item of items) {
     const hasCurrent = hasPermission(item.permission);
-    if (!hasCurrent)
+    if (!hasCurrent || !hasAdminAccess(item.adminOnly))
       continue;
     if (Array.isArray(item.children) && item.children.length > 0) {
       const children = filterNavItemsByPermission(item.children);

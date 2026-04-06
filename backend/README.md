@@ -64,7 +64,9 @@ DB_WRITE_BATCH_SIZE=50
 31. `GET /autotrade/tuning-history|tuning-activity|tuning-daily-report|tuning-evaluation` inspect threshold audit trail, recent decisions, 24h report, and current auto-tune guard state.
 32. `POST /autotrade/tuning/apply` apply a manual threshold tune with persistence.
 33. `POST /autotrade/tuning-history/{id}/rollback` revert one recorded threshold tune.
-34. `GET /setup/status|audit|test-gemini` and `POST /setup/apply` support first-run setup flow.
+34. `GET /autotrade/cockpit` returns a delivery/operations cockpit including readiness, blocking reasons, portfolio budget, and source/cluster controls.
+35. `POST /autotrade/config` updates execution, recovery, and portfolio-risk knobs for live operations.
+36. `GET /setup/status|audit|test-gemini` and `POST /setup/apply` support first-run setup flow.
 
 ## 3. Gemini setup
 
@@ -124,6 +126,12 @@ is configured, the extractor automatically switches to rule-based mode.
 - Forward validation batches let you enroll the next 30-100 approved trades automatically and review realized hit rate / holding days.
 - Auto-tune can optionally apply threshold changes after a forward-validation batch is closed, but only if guardrails pass.
 - Auto-tune decisions are written to both a tuning history table and an activity feed so you can audit why the system tuned, skipped, or blocked itself.
+- Autotrade now exposes operator-ready delivery controls:
+  - source-level batch/capital controls
+  - source-action lanes for `buy|list|sell`
+  - risk-cluster controls using `normalized_key` / `item_type`
+  - portfolio-level capital cap and single-source concentration cap
+- `GET /autotrade/cockpit` is the primary operator surface for go-live checks.
 
 ### Auto-tune env
 
@@ -177,12 +185,62 @@ AUTO_EXECUTE_LIST_ON_BUY_SUCCESS=false
 AUTO_EXECUTE_LIST_DRY_RUN=true
 AUTO_START_AUTOTRADE=false
 AUTO_START_EXECUTION_RETRY=false
+
+AUTO_APPROVE_SOURCE_OBSERVE_BASE_MULTIPLIER=0.2
+AUTO_APPROVE_SOURCE_OBSERVE_RELEASE_STREAK=3
+AUTO_APPROVE_SOURCE_CASHOUT_MAX_HOLDING_DAYS=5.0
+
+AUTO_APPROVE_PORTFOLIO_MAX_DEPLOYED_CAPITAL=0
+AUTO_APPROVE_MAX_SOURCE_CAPITAL_SHARE=0.6
+AUTO_APPROVE_MAX_CLUSTER_BATCH_SHARE=0.6
+AUTO_APPROVE_MAX_CLUSTER_CAPITAL_SHARE=0.6
 ```
 
 When `EXECUTION_WEBHOOK_SECRET` is set, webhook requests include:
 - `X-CardFlip-Timestamp`
 - `X-CardFlip-Signature` (`HMAC-SHA256(secret, timestamp + "." + rawBody)`)
 - `X-Idempotency-Key`
+
+### Delivery Controls
+
+- `AUTO_APPROVE_SOURCE_OBSERVE_BASE_MULTIPLIER`
+  Base approval flow allowed when a source is in `observe`.
+- `AUTO_APPROVE_SOURCE_OBSERVE_RELEASE_STREAK`
+  Number of consecutive live execution successes required before a recovering source can fully expand again.
+- `AUTO_APPROVE_SOURCE_CASHOUT_MAX_HOLDING_DAYS`
+  Cashout quality threshold used before `list/sell` lanes can expand.
+- `AUTO_APPROVE_PORTFOLIO_MAX_DEPLOYED_CAPITAL`
+  Hard portfolio capital ceiling for approved/open exposure. `0` means disabled.
+- `AUTO_APPROVE_MAX_SOURCE_CAPITAL_SHARE`
+  Max fraction of the current portfolio capital budget assignable to one source.
+- `AUTO_APPROVE_MAX_CLUSTER_BATCH_SHARE`
+  Max fraction of one run's approval batch assignable to one risk cluster.
+- `AUTO_APPROVE_MAX_CLUSTER_CAPITAL_SHARE`
+  Max fraction of one run's capital budget assignable to one risk cluster.
+
+## 7. Operator Runbook
+
+Before enabling live automation:
+
+1. `GET /health/ready`
+   Ensure the API reports ready and there is no degraded reason.
+2. `GET /execution/readiness`
+   Confirm webhook/live execution is actually ready.
+3. `GET /autotrade/cockpit`
+   Verify `ready=true`, inspect `blocking_reasons`, and confirm portfolio remaining capital is positive.
+4. `POST /autotrade/config`
+   Set portfolio and concentration caps for the current bankroll.
+5. `POST /autotrade/run-once?force=true`
+   Run one dry operational approval cycle and inspect `source_position_controls`, `cluster_position_controls`, and execution counters.
+6. `POST /automation/run-once`
+   Run the full orchestrated loop only after the previous checks are clean.
+
+During operations, use:
+
+- `GET /autotrade/cockpit` for the top-level operator view
+- `GET /trades/metrics-summary` for realized performance and cashout quality
+- `GET /execution/logs` for action-level execution audit
+- `GET /autotrade/tuning-history` and `GET /autotrade/tuning-activity` for threshold audit trail
 
 ### UI permission env
 

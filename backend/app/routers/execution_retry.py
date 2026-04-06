@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from ..route_guard import require_cardflip_operate
+from ..route_guard import require_cardflip_view
 from ..services.execution_retry import execution_retry_service
 
-router = APIRouter(prefix="/execution-retry", tags=["execution-retry"])
+router = APIRouter(
+    prefix="/execution-retry",
+    tags=["execution-retry"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 
 class ExecutionRetryConfigPatch(BaseModel):
@@ -21,17 +27,17 @@ def status() -> dict:
     return execution_retry_service.status()
 
 
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(require_cardflip_operate)])
 def start() -> dict:
     return execution_retry_service.start()
 
 
-@router.post("/stop")
+@router.post("/stop", dependencies=[Depends(require_cardflip_operate)])
 def stop() -> dict:
     return execution_retry_service.stop()
 
 
-@router.post("/run-once")
+@router.post("/run-once", dependencies=[Depends(require_cardflip_operate)])
 def run_once(
     limit: int = Query(default=0, ge=0, le=200),
     force: bool = False,
@@ -53,7 +59,7 @@ def run_once(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/config")
+@router.post("/config", dependencies=[Depends(require_cardflip_operate)])
 def update_config(payload: ExecutionRetryConfigPatch) -> dict:
     return execution_retry_service.update_config(
         interval_sec=payload.interval_sec,

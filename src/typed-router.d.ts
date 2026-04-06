@@ -20,6 +20,7 @@ declare module 'vue-router/auto-routes' {
   export interface RouteNamedMap {
     '/BatchDailyTasks': RouteRecordInfo<'/BatchDailyTasks', '/BatchDailyTasks', Record<never, never>, Record<never, never>>,
     '/card-flip-ops/AutomationControlPanel': RouteRecordInfo<'/card-flip-ops/AutomationControlPanel', '/card-flip-ops/AutomationControlPanel', Record<never, never>, Record<never, never>>,
+    '/card-flip-ops/AutotradeOpsConsole': RouteRecordInfo<'/card-flip-ops/AutotradeOpsConsole', '/card-flip-ops/AutotradeOpsConsole', Record<never, never>, Record<never, never>>,
     '/card-flip-ops/AutotradePanel': RouteRecordInfo<'/card-flip-ops/AutotradePanel', '/card-flip-ops/AutotradePanel', Record<never, never>, Record<never, never>>,
     '/card-flip-ops/CardFlipDocsPage': RouteRecordInfo<'/card-flip-ops/CardFlipDocsPage', '/card-flip-ops/CardFlipDocsPage', Record<never, never>, Record<never, never>>,
     '/card-flip-ops/CardFlipOpsPage': RouteRecordInfo<'/card-flip-ops/CardFlipOpsPage', '/card-flip-ops/CardFlipOpsPage', Record<never, never>, Record<never, never>>,

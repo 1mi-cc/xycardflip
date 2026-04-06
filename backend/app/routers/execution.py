@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .. import repositories as repo
+from ..route_guard import require_cardflip_operate
+from ..route_guard import require_cardflip_view
 from ..services.execution import execution_service
 
-router = APIRouter(prefix="/execution", tags=["execution"])
+router = APIRouter(
+    prefix="/execution",
+    tags=["execution"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 
 class ExecutionConfigPayload(BaseModel):
@@ -35,7 +41,7 @@ def readiness() -> dict:
     return execution_service.webhook_readiness()
 
 
-@router.post("/config")
+@router.post("/config", dependencies=[Depends(require_cardflip_operate)])
 def update_config(payload: ExecutionConfigPayload) -> dict:
     try:
         return execution_service.update_config(**payload.model_dump(exclude_none=True))
@@ -43,7 +49,7 @@ def update_config(payload: ExecutionConfigPayload) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/buy/{trade_id}")
+@router.post("/buy/{trade_id}", dependencies=[Depends(require_cardflip_operate)])
 def execute_buy(
     trade_id: int,
     dry_run: bool = True,
@@ -61,7 +67,7 @@ def execute_buy(
         _raise_for_value_error(exc)
 
 
-@router.post("/list/{trade_id}")
+@router.post("/list/{trade_id}", dependencies=[Depends(require_cardflip_operate)])
 def execute_list(
     trade_id: int,
     dry_run: bool = True,
@@ -85,7 +91,7 @@ def execute_list(
         _raise_for_value_error(exc)
 
 
-@router.post("/sell/{trade_id}")
+@router.post("/sell/{trade_id}", dependencies=[Depends(require_cardflip_operate)])
 def execute_sell(
     trade_id: int,
     dry_run: bool = True,
@@ -109,7 +115,7 @@ def execute_sell(
         _raise_for_value_error(exc)
 
 
-@router.post("/retry-failed")
+@router.post("/retry-failed", dependencies=[Depends(require_cardflip_operate)])
 def retry_failed(
     action: str | None = Query(default=None, pattern="^(buy|list|sell)$"),
     limit: int = Query(default=20, ge=1, le=200),

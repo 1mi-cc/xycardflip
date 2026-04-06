@@ -180,6 +180,47 @@
       @update:execution-live-confirm-token="executionLiveConfirmToken = $event"
     ></AutotradePanel>
 
+    <AutotradeOpsConsole
+      :audit-feed="autotradeAuditFeed"
+      :audit-loading="autotradeAuditFeedLoading"
+      :alert-dispatch-loading="autotradeAlertDispatchLoading"
+      :alert-control-loading="autotradeAlertControlLoading"
+      :slack-dispatch-loading="autotradeSlackDispatchLoading"
+      :telegram-dispatch-loading="autotradeTelegramDispatchLoading"
+      :alert-timeline="autotradeAlertTimeline"
+      :alert-timeline-loading="autotradeAlertTimelineLoading"
+      :autotrade-config-loading="autotradeConfigLoading"
+      :autotrade-status="autotradeStatus"
+      :webhook-dispatch-loading="autotradeWebhookDispatchLoading"
+      :can-operate="canOperate"
+      :cockpit="autotradeCockpit"
+      :cockpit-loading="autotradeCockpitLoading"
+      :override-action-loading="autotradeOverrideActionLoading"
+      :to-money="toMoney"
+      @apply-cluster-control-action="applyClusterControlAction"
+      @apply-source-control-action="applySourceControlAction"
+      @acknowledge-alert="acknowledgeAutotradeAlert"
+      @assign-alert-incident="assignAutotradeAlertIncident"
+      @adjust-alert-policy-number="adjustAutotradeAlertPolicyNumber"
+      @dispatch-alert-email="dispatchAutotradeAlertEmail"
+      @dispatch-alert-slack="dispatchAutotradeAlertSlack"
+      @dispatch-alert-telegram="dispatchAutotradeAlertTelegram"
+      @dispatch-alert-webhook="dispatchAutotradeAlertWebhook"
+      @handoff-alert-incident="handoffAutotradeAlertIncident"
+      @load-alert-timeline="loadAutotradeAlertTimeline"
+      @load-autotrade-cockpit="refreshAutotradeOperatorConsole"
+      @note-alert-incident="noteAutotradeAlertIncident"
+      @prioritize-alert-incident="prioritizeAutotradeAlertIncident"
+      @resume-alert="resumeAutotradeAlert"
+      @resolve-alert-incident="resolveAutotradeAlertIncident"
+      @set-alert-policy-severity="setAutotradeAlertPolicySeverity"
+      @snooze-alert="snoozeAutotradeAlert"
+      @toggle-alert-auto-email="toggleAutotradeAlertAutoEmail"
+      @toggle-alert-auto-slack="toggleAutotradeAlertAutoSlack"
+      @toggle-alert-auto-telegram="toggleAutotradeAlertAutoTelegram"
+      @toggle-alert-auto-webhook="toggleAutotradeAlertAutoWebhook"
+    ></AutotradeOpsConsole>
+
     <ExecutionRetryPanel
       :can-operate="canOperate"
       :execution-retry-action-options="executionRetryActionOptions"
@@ -587,6 +628,7 @@ import { defineComponent } from "vue";
 
 import "@/views/card-flip-ops/cardFlipOps.scss";
 import AutomationControlPanel from "@/views/card-flip-ops/AutomationControlPanel.vue";
+import AutotradeOpsConsole from "@/views/card-flip-ops/AutotradeOpsConsole.vue";
 import AutotradePanel from "@/views/card-flip-ops/AutotradePanel.vue";
 import ExecutionRetryPanel from "@/views/card-flip-ops/ExecutionRetryPanel.vue";
 import OpsOverviewHeader from "@/views/card-flip-ops/OpsOverviewHeader.vue";
@@ -598,6 +640,7 @@ export default defineComponent({
   name: "CardFlipOpsPage",
   components: {
     AutomationControlPanel,
+    AutotradeOpsConsole,
     AutotradePanel,
     ExecutionRetryPanel,
     OpsOverviewHeader,

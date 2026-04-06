@@ -669,6 +669,23 @@ def init_db() -> None:
         FOREIGN KEY(related_event_id) REFERENCES autotrade_tuning_events(id)
     );
 
+    CREATE TABLE IF NOT EXISTS validation_baseline_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bucket_type TEXT NOT NULL DEFAULT '',
+        bucket_key TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT '',
+        ready INTEGER NOT NULL DEFAULT 0,
+        ready_for_tune INTEGER NOT NULL DEFAULT 0,
+        ready_for_scale INTEGER NOT NULL DEFAULT 0,
+        direction TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL DEFAULT '',
+        blocking_codes_json TEXT NOT NULL DEFAULT '[]',
+        snapshot_json TEXT NOT NULL DEFAULT '{}',
+        captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(bucket_type, bucket_key)
+    );
+
     CREATE TABLE IF NOT EXISTS system_setting_audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         actor TEXT NOT NULL DEFAULT '',
@@ -708,6 +725,113 @@ def init_db() -> None:
         source TEXT NOT NULL,
         seller_id TEXT NOT NULL,
         event_type TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        next_state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS source_control_states (
+        source TEXT NOT NULL PRIMARY KEY,
+        state TEXT NOT NULL DEFAULT 'normal',
+        reason TEXT NOT NULL DEFAULT '',
+        frozen_until TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS source_control_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        next_state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS cluster_control_states (
+        risk_cluster TEXT NOT NULL PRIMARY KEY,
+        state TEXT NOT NULL DEFAULT 'normal',
+        reason TEXT NOT NULL DEFAULT '',
+        frozen_until TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS cluster_control_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        risk_cluster TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        next_state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_delivery_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel TEXT NOT NULL DEFAULT '',
+        provider TEXT NOT NULL DEFAULT '',
+        channel_label TEXT NOT NULL DEFAULT '',
+        delivery_stage TEXT NOT NULL DEFAULT '',
+        alert_signature TEXT NOT NULL DEFAULT '',
+        alert_keys_json TEXT NOT NULL DEFAULT '[]',
+        alert_context_json TEXT NOT NULL DEFAULT '{}',
+        alert_count INTEGER NOT NULL DEFAULT 0,
+        subject TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        success INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS autotrade_alert_states (
+        alert_signature TEXT NOT NULL PRIMARY KEY,
+        alert_code TEXT NOT NULL DEFAULT '',
+        scope TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        current_severity TEXT NOT NULL DEFAULT 'warning',
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_cleared_at TEXT,
+        occurrence_count INTEGER NOT NULL DEFAULT 1,
+        active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_signal_states (
+        alert_key TEXT NOT NULL PRIMARY KEY,
+        code TEXT NOT NULL DEFAULT '',
+        scope TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        last_message TEXT NOT NULL DEFAULT '',
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_severity TEXT NOT NULL DEFAULT 'info',
+        acked_at TEXT,
+        acked_by TEXT NOT NULL DEFAULT '',
+        snoozed_until TEXT,
+        snooze_reason TEXT NOT NULL DEFAULT '',
+        incident_owner TEXT NOT NULL DEFAULT '',
+        incident_status TEXT NOT NULL DEFAULT 'open',
+        incident_priority TEXT NOT NULL DEFAULT '',
+        incident_sla_due_at TEXT,
+        latest_case_note TEXT NOT NULL DEFAULT '',
+        last_case_actor TEXT NOT NULL DEFAULT '',
+        last_case_updated_at TEXT,
+        resolved_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_signal_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alert_key TEXT NOT NULL,
+        action TEXT NOT NULL DEFAULT '',
+        actor TEXT NOT NULL DEFAULT '',
         reason TEXT NOT NULL DEFAULT '',
         previous_state_json TEXT NOT NULL DEFAULT '{}',
         next_state_json TEXT NOT NULL DEFAULT '{}',
@@ -811,6 +935,8 @@ def init_db() -> None:
         ON opportunities(status, score DESC);
     CREATE INDEX IF NOT EXISTS idx_trades_status_updated
         ON trades(status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_validation_baseline_snapshots_bucket
+        ON validation_baseline_snapshots(bucket_type, captured_at DESC);
     CREATE INDEX IF NOT EXISTS idx_forward_validation_batches_status_created
         ON forward_validation_batches(status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_forward_validation_trades_batch_trade
@@ -837,6 +963,26 @@ def init_db() -> None:
         ON seller_control_states(state, frozen_until);
     CREATE INDEX IF NOT EXISTS idx_seller_control_events_created
         ON seller_control_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_source_control_states_state
+        ON source_control_states(state, frozen_until);
+    CREATE INDEX IF NOT EXISTS idx_source_control_events_created
+        ON source_control_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_cluster_control_states_state
+        ON cluster_control_states(state, frozen_until);
+    CREATE INDEX IF NOT EXISTS idx_cluster_control_events_created
+        ON cluster_control_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_channel_created
+        ON alert_delivery_events(channel, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_signature_created
+        ON alert_delivery_events(channel, alert_signature, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_autotrade_alert_states_active_updated
+        ON autotrade_alert_states(active, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_signal_states_active
+        ON alert_signal_states(resolved_at, last_seen_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_signal_events_created
+        ON alert_signal_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_signal_events_key_created
+        ON alert_signal_events(alert_key, id DESC);
     CREATE INDEX IF NOT EXISTS idx_seller_control_presets_updated
         ON seller_control_presets(updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_seller_control_preset_runs_preset_created
@@ -882,6 +1028,26 @@ def init_db() -> None:
             "last_matched_count": "last_matched_count INTEGER NOT NULL DEFAULT 0",
             "last_processed_count": "last_processed_count INTEGER NOT NULL DEFAULT 0",
             "last_matched_items_json": "last_matched_items_json TEXT NOT NULL DEFAULT '[]'",
+        })
+        _ensure_table_columns(conn, "alert_signal_states", {
+            "acked_at": "acked_at TEXT",
+            "acked_by": "acked_by TEXT NOT NULL DEFAULT ''",
+            "snoozed_until": "snoozed_until TEXT",
+            "snooze_reason": "snooze_reason TEXT NOT NULL DEFAULT ''",
+            "incident_owner": "incident_owner TEXT NOT NULL DEFAULT ''",
+            "incident_status": "incident_status TEXT NOT NULL DEFAULT 'open'",
+            "incident_priority": "incident_priority TEXT NOT NULL DEFAULT ''",
+            "incident_sla_due_at": "incident_sla_due_at TEXT",
+            "latest_case_note": "latest_case_note TEXT NOT NULL DEFAULT ''",
+            "last_case_actor": "last_case_actor TEXT NOT NULL DEFAULT ''",
+            "last_case_updated_at": "last_case_updated_at TEXT",
+        })
+        _ensure_table_columns(conn, "alert_delivery_events", {
+            "provider": "provider TEXT NOT NULL DEFAULT ''",
+            "channel_label": "channel_label TEXT NOT NULL DEFAULT ''",
+            "delivery_stage": "delivery_stage TEXT NOT NULL DEFAULT ''",
+            "alert_keys_json": "alert_keys_json TEXT NOT NULL DEFAULT '[]'",
+            "alert_context_json": "alert_context_json TEXT NOT NULL DEFAULT '{}'",
         })
         _ensure_seed_admin(conn)
         _ensure_trade_uniqueness(conn)

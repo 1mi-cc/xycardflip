@@ -44,6 +44,196 @@
       </n-tag>
     </div>
 
+    <div v-if="validationBaseline" class="service-section">
+      <div class="validation-recommendation-head">
+        <div>
+          <div class="summary-label">Observation Baseline</div>
+          <div class="summary-value">
+            {{ validationBaseline.label || validationBaseline.status || "Observe" }}
+          </div>
+          <div class="summary-meta">
+            {{ validationBaseline.recommendation || validationBaseline.summary || "Collect more sold evidence before widening." }}
+          </div>
+        </div>
+
+        <n-space>
+          <n-tag size="small" :type="validationBaselineStatusType">
+            {{ validationBaseline.ready_for_tune ? "Tune ready" : "Tune blocked" }}
+          </n-tag>
+          <n-tag size="small" :type="validationBaseline.ready_for_scale ? 'success' : 'warning'">
+            {{ validationBaseline.ready_for_scale ? "Scale ready" : "Scale blocked" }}
+          </n-tag>
+          <n-tag
+            v-if="validationTrajectory.available"
+            size="small"
+            :type="validationTrajectoryTagType"
+          >
+            {{ validationTrajectory.direction }}
+          </n-tag>
+        </n-space>
+      </div>
+
+      <div class="validation-grid">
+        <div class="summary-chip">
+          <div class="summary-label">Closed Batches</div>
+          <div class="summary-value">{{ validationBaseline.metrics?.latest_closed_batch_id ? validationBaseline.closed_batch_count || 0 : 0 }}</div>
+          <div class="summary-meta">
+            latest sold {{ validationBaseline.metrics?.latest_closed_batch_sold_count || 0 }}
+          </div>
+        </div>
+        <div class="summary-chip">
+          <div class="summary-label">7d Hit Rate</div>
+          <div class="summary-value">{{ toPercent(validationBaseline.metrics?.profit_hit_rate_7d || 0) }}</div>
+          <div class="summary-meta">
+            ROI {{ toPercent(validationBaseline.metrics?.avg_realized_roi_7d || 0) }}
+          </div>
+        </div>
+        <div class="summary-chip">
+          <div class="summary-label">Monitor</div>
+          <div class="summary-value">{{ toPercent(validationBaseline.metrics?.monitor_success_rate || 0) }}</div>
+          <div class="summary-meta">
+            samples {{ validationBaseline.metrics?.monitor_samples || 0 }}
+          </div>
+        </div>
+        <div class="summary-chip">
+          <div class="summary-label">Live Failures</div>
+          <div class="summary-value">{{ toPercent(validationBaseline.metrics?.execution_failure_rate || 0) }}</div>
+          <div class="summary-meta">
+            bans {{ validationBaseline.metrics?.business_ban_count || 0 }}
+          </div>
+        </div>
+      </div>
+
+      <n-space v-if="validationBaselineCodes.length" wrap>
+        <n-tag
+          v-for="code in validationBaselineCodes"
+          :key="`baseline-${code}`"
+          size="small"
+          :type="validationBaselineStatusType"
+        >
+          {{ code }}
+        </n-tag>
+      </n-space>
+      <div
+        v-if="validationTrajectory.available"
+        class="summary-meta"
+        style="margin-top: 8px"
+      >
+        {{ validationTrajectory.summary }} | Δ {{ validationTrajectory.health_delta }}
+      </div>
+    </div>
+
+    <div
+      v-if="validationBaselineTrendPoints.length"
+      class="service-section"
+    >
+      <div class="validation-recommendation-head">
+        <div>
+          <div class="summary-label">Observation Trend</div>
+          <div class="summary-value">
+            {{ validationBaselineTrendLabel }}
+          </div>
+          <div class="summary-meta">
+            {{ validationBaselineTrendSummary }}
+          </div>
+        </div>
+
+        <n-space>
+          <n-tag size="small" :type="validationBaselineTrendType">
+            {{ validationBaselineTrendDirection }}
+          </n-tag>
+          <n-tag size="small" type="info">
+            Δ {{ validationBaselineTrendDelta }}
+          </n-tag>
+        </n-space>
+      </div>
+
+      <div class="validation-grid">
+        <div
+          v-for="point in validationBaselineTrendPoints"
+          :key="`trend-${point.id || point.time || point.name}`"
+          class="summary-chip"
+        >
+          <div class="summary-label">{{ point.name }}</div>
+          <div class="summary-value">{{ point.status_label }}</div>
+          <div class="summary-meta">
+            sold {{ point.sold_count || 0 }} / hit {{ toPercent(point.profit_hit_rate || 0) }}
+          </div>
+          <div class="summary-meta">
+            roi {{ toPercent(point.avg_realized_roi || 0) }} / hold {{ formatDays(point.avg_holding_days || 0) }}
+          </div>
+          <div class="summary-meta">{{ point.time || "-" }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="validationSnapshotHourly.length || validationSnapshotDaily.length"
+      class="service-section"
+    >
+      <div class="validation-recommendation-head">
+        <div>
+          <div class="summary-label">Persistent Trajectory</div>
+          <div class="summary-value">Hourly / Daily snapshots</div>
+          <div class="summary-meta">
+            Snapshot history survives refreshes and shows whether the observation baseline is recovering or slipping.
+          </div>
+        </div>
+      </div>
+
+      <div class="validation-table-block" v-if="validationSnapshotHourly.length">
+        <div class="validation-table-title">Hourly</div>
+        <n-table striped class="ops-table" size="small">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Status</th>
+              <th>Tune</th>
+              <th>Scale</th>
+              <th>Direction</th>
+              <th>Blocking</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in validationSnapshotHourly" :key="`hour-${item.bucket_key}`">
+              <td>{{ item.captured_at || item.bucket_key }}</td>
+              <td>{{ item.status || "-" }}</td>
+              <td>{{ item.ready_for_tune ? "ready" : "blocked" }}</td>
+              <td>{{ item.ready_for_scale ? "ready" : "blocked" }}</td>
+              <td>{{ item.direction || "-" }}</td>
+              <td class="title-cell">{{ (item.blocking_codes || []).slice(0, 3).join(", ") || "-" }}</td>
+            </tr>
+          </tbody>
+        </n-table>
+      </div>
+
+      <div class="validation-table-block" v-if="validationSnapshotDaily.length">
+        <div class="validation-table-title">Daily</div>
+        <n-table striped class="ops-table" size="small">
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Status</th>
+              <th>Tune</th>
+              <th>Scale</th>
+              <th>Direction</th>
+              <th>Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in validationSnapshotDaily" :key="`day-${item.bucket_key}`">
+              <td>{{ item.bucket_key || "-" }}</td>
+              <td>{{ item.status || "-" }}</td>
+              <td>{{ item.ready_for_tune ? "ready" : "blocked" }}</td>
+              <td>{{ item.ready_for_scale ? "ready" : "blocked" }}</td>
+              <td>{{ item.direction || "-" }}</td>
+              <td class="title-cell">{{ item.summary || "-" }}</td>
+            </tr>
+          </tbody>
+        </n-table>
+      </div>
+    </div>
+
     <div class="service-section">
       <div class="validation-recommendation-head">
         <div>
@@ -514,6 +704,82 @@ const formatBatchProgress = (batch) => {
 const latestClosedBatch = computed(() =>
   recentBatches.value.find((batch) => batch?.status === "closed") || null,
 );
+const validationBaseline = computed(() => props.autotradeStatus?.validation_baseline || null);
+const validationBaselineStatusType = computed(() => {
+  if (validationBaseline.value?.ready_for_scale)
+    return "success";
+  if (validationBaseline.value?.status === "blocked")
+    return "error";
+  return "warning";
+});
+const validationBaselineCodes = computed(() => {
+  if (!validationBaseline.value)
+    return [];
+  if (validationBaseline.value.ready_for_tune)
+    return Array.isArray(validationBaseline.value.scale_blocking_codes)
+      ? validationBaseline.value.scale_blocking_codes
+      : [];
+  return Array.isArray(validationBaseline.value.tune_blocking_codes)
+    ? validationBaseline.value.tune_blocking_codes
+    : [];
+});
+const validationBaselineTrend = computed(() => validationBaseline.value?.timeline || {});
+const validationBaselineTrendPoints = computed(() =>
+  Array.isArray(validationBaselineTrend.value?.points)
+    ? validationBaselineTrend.value.points
+    : [],
+);
+const validationBaselineTrendDirection = computed(() =>
+  String(validationBaselineTrend.value?.direction || "insufficient"),
+);
+const validationBaselineTrendSummary = computed(() =>
+  String(validationBaselineTrend.value?.summary || "Trend data not available yet."),
+);
+const validationBaselineTrendDelta = computed(() =>
+  Number(validationBaselineTrend.value?.delta_score || 0),
+);
+const validationBaselineTrendLabel = computed(() => {
+  const direction = validationBaselineTrendDirection.value;
+  if (direction === "improving")
+    return "Improving";
+  if (direction === "worsening")
+    return "Worsening";
+  if (direction === "stable")
+    return "Stable";
+  return "Insufficient Signal";
+});
+const validationBaselineTrendType = computed(() => {
+  const direction = validationBaselineTrendDirection.value;
+  if (direction === "improving")
+    return "success";
+  if (direction === "worsening")
+    return "error";
+  if (direction === "stable")
+    return "warning";
+  return "default";
+});
+const validationSnapshotHistory = computed(() => validationBaseline.value?.snapshot_history || {});
+const validationSnapshotHourly = computed(() =>
+  Array.isArray(validationSnapshotHistory.value?.hourly)
+    ? validationSnapshotHistory.value.hourly
+    : [],
+);
+const validationSnapshotDaily = computed(() =>
+  Array.isArray(validationSnapshotHistory.value?.daily)
+    ? validationSnapshotHistory.value.daily
+    : [],
+);
+const validationTrajectory = computed(() => validationBaseline.value?.trajectory || {});
+const validationTrajectoryTagType = computed(() => {
+  const level = String(validationTrajectory.value?.alert_level || "info");
+  if (level === "error")
+    return "error";
+  if (level === "warning")
+    return "warning";
+  if (level === "success")
+    return "success";
+  return "default";
+});
 
 const topBlockedReasons = computed(() =>
   Array.isArray(props.autotradeTuningDailyReport?.top_blocked_reasons)

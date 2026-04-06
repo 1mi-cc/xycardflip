@@ -2,21 +2,41 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from statistics import mean, stdev
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from .. import repositories as repo
+from ..auth_utils import build_user_profile
+from ..auth_utils import require_current_user
+from ..config import single_account_guardrail_status
+from ..database import get_database_health_snapshot
 from ..database import get_conn
+from ..database import get_data_integrity_status
+from ..route_guard import require_cardflip_operate
+from ..route_guard import require_cardflip_view
 from ..services.automation import automation_service
 from ..services.autotrade import auto_trade_service
-from ..services.strategy_advisor import get_strategy_proposal
+from ..services.autotrade_alerting import build_alert_payload
+from ..services.autotrade_alerting import public_cockpit_payload
+from ..services.execution import execution_service
+from ..services.execution_retry import execution_retry_service
+from ..services.market_monitor import monitor_service
+from ..services.operating_state import operating_state_service
+from ..services.risk_overrides import risk_overrides_service
 from ..services.strategy_advisor import build_market_snapshot_documents
 from ..services.strategy_advisor import get_strategy_proposal
+from ..services.supabase_sync import supabase_sync_service
+from ..services.startup_diagnostics import startup_configuration_checks
 
-router = APIRouter(prefix="/analysis", tags=["analysis"])
+router = APIRouter(
+    prefix="/analysis",
+    tags=["analysis"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 MAX_ANALYSIS_LIMIT = 500
 RECOMMENDATION_AUTOTRADE_CAP = 200
@@ -25,6 +45,199 @@ HIGH_RISK_AVG_THRESHOLD = 50.0
 HIGH_RISK_SUGGESTED_MIN_SCORE = 70.0
 NEGATIVE_MOMENTUM_THRESHOLD = -3.0
 NEGATIVE_MOMENTUM_SUGGESTED_MIN_SCORE = 75.0
+
+
+def _require_admin_profile(request: Request) -> dict[str, Any]:
+    with get_conn() as conn:
+        user_row = require_current_user(conn, request)
+        profile = build_user_profile(user_row)
+    if not bool(profile.get("isAdmin")):
+        raise HTTPException(status_code=403, detail="admin overview requires admin role")
+    return profile
+
+
+def _health_reasons(
+    *,
+    database_status: dict[str, Any],
+    data_integrity: dict[str, Any],
+    operating_state: dict[str, Any],
+) -> list[str]:
+    reasons: list[str] = []
+    if not bool(data_integrity.get("ok")):
+        reasons.append("data_integrity_not_ok")
+    for reason in list(database_status.get("degraded_reasons") or []):
+        reasons.append(f"database:{reason}")
+    if str(operating_state.get("state") or "").strip().lower() == "recovery":
+        reasons.append("operating_state:recovery")
+    return reasons
+
+
+def _service_snapshot(service: dict[str, Any], *, keys: tuple[str, ...]) -> dict[str, Any]:
+    return {key: service.get(key) for key in keys}
+
+
+def _admin_overview_payload(*, viewer: dict[str, Any]) -> dict[str, Any]:
+    metrics = repo.get_dashboard_metrics()
+    profit_cockpit = dict(metrics.get("profit_cockpit") or {})
+    operating_state = operating_state_service.status()
+    autotrade_status = auto_trade_service.status()
+    execution_readiness = execution_service.webhook_readiness()
+    operating_profile = single_account_guardrail_status()
+    alert_payload = build_alert_payload(
+        enabled=bool(autotrade_status.get("enabled")),
+        profit_guard=dict(autotrade_status.get("profit_guard") or {}),
+        dashboard_metrics=metrics,
+        operating_state=operating_state,
+        execution_readiness=execution_readiness,
+        validation_baseline=dict(autotrade_status.get("validation_baseline") or {}),
+    )
+    database_status = get_database_health_snapshot()
+    data_integrity = get_data_integrity_status()
+    health_reasons = _health_reasons(
+        database_status=database_status,
+        data_integrity=data_integrity,
+        operating_state=operating_state,
+    )
+    automation_status = automation_service.status()
+    monitor_status = monitor_service.status()
+    execution_retry_status = execution_retry_service.status()
+    supabase_status = supabase_sync_service.status()
+
+    return public_cockpit_payload({
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "viewer": viewer,
+        "profitability": {
+            "pending_review_count": int(metrics.get("pending_review_count") or 0),
+            "total_trade_count": int(metrics.get("total_trade_count") or 0),
+            "active_trades_count": int(metrics.get("active_trades_count") or 0),
+            "sold_count": int(metrics.get("sold_count") or 0),
+            "gross_profit": float(metrics.get("gross_profit") or 0.0),
+            "realized_net_profit": float(metrics.get("realized_net_profit") or 0.0),
+            "profit_hit_rate": float(metrics.get("profit_hit_rate") or 0.0),
+            "avg_realized_roi": float(metrics.get("avg_realized_roi") or 0.0),
+            "avg_holding_days": float(metrics.get("avg_holding_days") or 0.0),
+            "median_holding_days": float(metrics.get("median_holding_days") or 0.0),
+            "profit_cockpit": profit_cockpit,
+            "forward_validation": dict(metrics.get("forward_validation") or {}),
+        },
+        "runtime": {
+            "server_ready": not health_reasons,
+            "health_status": "ready" if not health_reasons else "degraded",
+            "health_reasons": health_reasons,
+            "database": {
+                "journal_mode": str(database_status.get("journal_mode") or ""),
+                "degraded_reasons": list(database_status.get("degraded_reasons") or []),
+            },
+            "data_integrity": data_integrity,
+            "operating_state": operating_state,
+            "operating_profile": operating_profile,
+            "execution_readiness": execution_readiness,
+            "automation": _service_snapshot(
+                automation_status,
+                keys=(
+                    "busy",
+                    "all_running",
+                    "default_include_monitor",
+                    "default_include_scan",
+                    "default_include_autotrade",
+                    "default_include_execution_retry",
+                    "default_include_supabase_sync",
+                    "auto_start_monitor",
+                    "auto_start_autotrade",
+                    "auto_start_execution_retry",
+                    "auto_start_supabase_sync",
+                    "last_run_at",
+                    "last_run_result",
+                    "last_busy_at",
+                    "last_busy_reason",
+                ),
+            ),
+            "services": {
+                "monitor": _service_snapshot(
+                    monitor_status,
+                    keys=(
+                        "is_running",
+                        "runs",
+                        "last_run_at",
+                        "last_inserted",
+                        "last_error",
+                        "circuit_open",
+                        "circuit_reason",
+                        "health",
+                        "last_scan",
+                    ),
+                ),
+                "autotrade": _service_snapshot(
+                    autotrade_status,
+                    keys=(
+                        "enabled",
+                        "running",
+                        "busy",
+                        "last_run_at",
+                        "last_error",
+                        "last_busy_at",
+                        "last_busy_reason",
+                        "total_runs",
+                        "total_approved",
+                        "profit_guard",
+                        "validation_baseline",
+                        "loss_recovery_state",
+                    ),
+                ),
+                "execution_retry": _service_snapshot(
+                    execution_retry_status,
+                    keys=(
+                        "enabled",
+                        "running",
+                        "busy",
+                        "last_run_at",
+                        "last_error",
+                        "last_busy_at",
+                        "last_busy_reason",
+                        "total_runs",
+                        "total_retried",
+                        "total_succeeded",
+                        "total_failed",
+                    ),
+                ),
+                "supabase_sync": _service_snapshot(
+                    supabase_status,
+                    keys=(
+                        "enabled",
+                        "configured",
+                        "is_running",
+                        "last_run_at_unix",
+                        "last_result",
+                        "last_error",
+                    ),
+                ),
+            },
+        },
+        "alerts": {
+            "summary": dict(alert_payload.get("alert_summary") or {}),
+            "items": list(alert_payload.get("alerts") or [])[:8],
+            "portfolio": dict(alert_payload.get("portfolio") or {}),
+            "incident_automation": dict(alert_payload.get("incident_automation") or {}),
+            "delivery": dict(alert_payload.get("alert_delivery") or {}),
+        },
+        "deployment_readiness": {
+            "startup_checks": startup_configuration_checks(),
+            "operating_profile": operating_profile,
+            "execution_readiness": execution_readiness,
+            "validation_baseline": dict(autotrade_status.get("validation_baseline") or {}),
+            "alert_delivery": dict(alert_payload.get("alert_delivery") or {}),
+            "auto_start": {
+                "monitor": bool(automation_status.get("auto_start_monitor")),
+                "autotrade": bool(automation_status.get("auto_start_autotrade")),
+                "execution_retry": bool(automation_status.get("auto_start_execution_retry")),
+                "supabase_sync": bool(automation_status.get("auto_start_supabase_sync")),
+            },
+        },
+        "overrides": {
+            "source": risk_overrides_service.source_status_summary(limit=6),
+            "cluster": risk_overrides_service.cluster_status_summary(limit=6),
+        },
+    })
 
 
 def _parse_risk_score(note: str) -> float | None:
@@ -84,6 +297,10 @@ def _trade_records(limit: int) -> list[dict[str, Any]]:
 
 def _market_snapshot() -> dict[str, Any]:
     metrics = repo.get_dashboard_metrics()
+    normalized_market_preview = repo.get_normalized_market_snapshots(limit=5, scope="full")
+    tradable_market_preview = repo.get_normalized_market_snapshots(limit=5, scope="tradable")
+    normalized_market_count = len(repo.get_normalized_market_snapshots(limit=200, scope="full"))
+    tradable_market_count = len(repo.get_normalized_market_snapshots(limit=200, scope="tradable"))
     with get_conn() as conn:
         open_listing_row = conn.execute(
             """
@@ -109,7 +326,11 @@ def _market_snapshot() -> dict[str, Any]:
         "open_listing_avg_price": round(float(open_listing_row["avg_price"]), 2) if open_listing_row else 0.0,
         "last_sale_price": float(last_sale_row["sold_price"]) if last_sale_row else None,
         "last_sale_at": str(last_sale_row["sold_at"]) if last_sale_row else "",
-        "normalized_market_preview": repo.get_normalized_market_snapshots(limit=5),
+        "normalized_market_preview": normalized_market_preview,
+        "normalized_market_count": normalized_market_count,
+        "tradable_market_preview": tradable_market_preview,
+        "tradable_market_count": tradable_market_count,
+        "strategy_market_count": tradable_market_count,
     }
 
 
@@ -308,18 +529,35 @@ def get_normalized_market(
     limit: int = Query(default=20, ge=1, le=200),
     listing_hours: int = Query(default=24, ge=1, le=24 * 30),
     sales_days: int = Query(default=7, ge=1, le=90),
+    scope: Literal["full", "tradable"] = Query(default="full"),
 ) -> dict[str, Any]:
     items = repo.get_normalized_market_snapshots(
         limit=limit,
         listing_hours=listing_hours,
         sales_days=sales_days,
+        scope=scope,
     )
     return {
         "items": items,
         "count": len(items),
         "listing_hours": listing_hours,
         "sales_days": sales_days,
+        "scope": scope,
     }
+
+
+@router.get("/data/tradable-market")
+def get_tradable_market(
+    limit: int = Query(default=20, ge=1, le=200),
+    listing_hours: int = Query(default=24, ge=1, le=24 * 30),
+    sales_days: int = Query(default=7, ge=1, le=90),
+) -> dict[str, Any]:
+    return get_normalized_market(
+        limit=limit,
+        listing_hours=listing_hours,
+        sales_days=sales_days,
+        scope="tradable",
+    )
 
 
 @router.get("/calculation/overview")
@@ -342,15 +580,18 @@ def get_market_docs(
     limit: int = Query(default=20, ge=1, le=200),
     listing_hours: int = Query(default=24, ge=1, le=24 * 30),
     sales_days: int = Query(default=7, ge=1, le=90),
+    scope: Literal["full", "tradable"] = Query(default="tradable"),
 ) -> dict[str, Any]:
     items = build_market_snapshot_documents(
         limit=limit,
         listing_hours=listing_hours,
         sales_days=sales_days,
+        scope=scope,
     )
     return {
         "items": items,
         "count": len(items),
+        "scope": scope,
     }
 
 
@@ -391,7 +632,7 @@ def get_strategy_proposal_view(
     )
 
 
-@router.post("/automation/run-once")
+@router.post("/automation/run-once", dependencies=[Depends(require_cardflip_operate)])
 def run_automation_once_from_analysis(
     force: bool = False,
     include_monitor: bool = False,
@@ -419,13 +660,63 @@ def run_automation_once_from_analysis(
     }
 
 
+@router.get("/admin-overview")
+def get_admin_overview(request: Request) -> dict[str, Any]:
+    viewer = _require_admin_profile(request)
+    return _admin_overview_payload(viewer=viewer)
+
+
+@router.get("/admin-overview/stream")
+async def stream_admin_overview(
+    request: Request,
+    interval_seconds: float = Query(default=5.0, ge=0.0, le=30.0),
+    max_events: int = Query(default=0, ge=0, le=50),
+) -> StreamingResponse:
+    viewer = _require_admin_profile(request)
+
+    async def event_gen():
+        emitted = 0
+        last_payload = ""
+        while max_events <= 0 or emitted < max_events:
+            payload = _admin_overview_payload(viewer=viewer)
+            encoded = json.dumps(payload, ensure_ascii=False)
+            if encoded != last_payload:
+                yield f"event: overview\ndata: {encoded}\n\n"
+                last_payload = encoded
+            else:
+                heartbeat = json.dumps(
+                    {
+                        "generated_at": payload.get("generated_at"),
+                        "status": "alive",
+                    },
+                    ensure_ascii=False,
+                )
+                yield f"event: heartbeat\ndata: {heartbeat}\n\n"
+            emitted += 1
+            if max_events > 0 and emitted >= max_events:
+                break
+            if interval_seconds > 0:
+                await asyncio.sleep(interval_seconds)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/report")
 def generate_report(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     data_layer = {
         "price_history": _price_history(limit=limit),
         "trade_records": _trade_records(limit=limit),
         "market_snapshot": _market_snapshot(),
-        "normalized_market": repo.get_normalized_market_snapshots(limit=min(20, limit)),
+        "normalized_market_full": repo.get_normalized_market_snapshots(limit=min(20, limit), scope="full"),
+        "normalized_market_tradable": repo.get_normalized_market_snapshots(limit=min(20, limit), scope="tradable"),
     }
     calculation_layer = _calculation_overview(limit=limit)
     advanced_calculation = _advanced_metrics(limit=limit)

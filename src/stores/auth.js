@@ -216,10 +216,16 @@ export const useAuthStore = defineStore("auth", () => {
   };
 
   const getDefaultHomeRoute = () => {
-    if (hasPermission("support:ticket:manage"))
+    if (Boolean(user.value?.isAdmin) || hasPermission("system:settings"))
       return "/admin/dashboard";
+    if (hasPermission("cardflip:view"))
+      return "/admin/card-flip-ops";
     if (hasPermission("support:ticket:view"))
       return "/support/tickets";
+    if (hasPermission("token:view"))
+      return "/tokens";
+    if (hasPermission("profile:view"))
+      return "/admin/profile";
     return "/login";
   };
 

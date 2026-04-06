@@ -134,6 +134,15 @@ export function useCardFlipOpsPage() {
   const autotradeStatusLoading = ref(false);
   const autotradeActionLoading = ref("");
   const autotradeConfigLoading = ref(false);
+  const autotradeCockpitLoading = ref(false);
+  const autotradeOverrideActionLoading = ref("");
+  const autotradeAuditFeedLoading = ref(false);
+  const autotradeAlertDispatchLoading = ref(false);
+  const autotradeSlackDispatchLoading = ref(false);
+  const autotradeTelegramDispatchLoading = ref(false);
+  const autotradeWebhookDispatchLoading = ref(false);
+  const autotradeAlertControlLoading = ref("");
+  const autotradeAlertTimelineLoading = ref(false);
   const sellerControlActionLoading = ref("");
   const sellerControlBatchActionLoading = ref("");
   const sellerControlPresetActionLoading = ref("");
@@ -261,6 +270,23 @@ export function useCardFlipOpsPage() {
     auto_execute_buy_dry_run: true,
     auto_execute_list_on_buy_success: false,
     auto_execute_list_dry_run: true,
+    alert_email_auto_enabled: false,
+    alert_ack_timeout_minutes: 240,
+    alert_escalation_minutes: 60,
+    alert_renotify_minutes: 180,
+    alert_email_cooldown_minutes: 30,
+    alert_email_min_severity: "warning",
+    alert_slack_auto_enabled: false,
+    alert_slack_cooldown_minutes: 30,
+    alert_slack_min_severity: "error",
+    alert_slack_min_stage: 1,
+    alert_telegram_auto_enabled: false,
+    alert_telegram_cooldown_minutes: 30,
+    alert_telegram_min_severity: "error",
+    alert_telegram_min_stage: 2,
+    alert_webhook_auto_enabled: false,
+    alert_webhook_cooldown_minutes: 30,
+    alert_webhook_min_severity: "error",
     max_consecutive_losses: 3,
     daily_loss_limit: 100,
     loss_recovery_enabled: true,
@@ -288,6 +314,90 @@ export function useCardFlipOpsPage() {
       weakest_source_7d: null,
     },
     last_run_at: "",
+  });
+  const autotradeCockpit = ref({
+    ready: false,
+    blocking_reasons: [],
+    alerts: [],
+    alert_summary: {
+      count: 0,
+      counts_by_severity: { error: 0, warning: 0, info: 0 },
+    },
+    incident_automation: {
+      auto_assign_enabled: false,
+      auto_resolve_enabled: false,
+      auto_escalate_on_sla_breach: false,
+      default_owner: "",
+      high_priority_owner: "",
+      critical_priority_owner: "",
+      slack_owner: "",
+      telegram_owner: "",
+    },
+    alert_delivery: {
+      email_enabled: false,
+      email_ready: false,
+      auto_email_enabled: false,
+      auto_email_min_severity: "warning",
+      alert_ack_timeout_minutes: 240,
+      alert_escalation_minutes: 60,
+      alert_renotify_minutes: 180,
+      email_cooldown_minutes: 30,
+      slack_enabled: false,
+      slack_ready: false,
+      auto_slack_enabled: false,
+      auto_slack_min_severity: "error",
+      slack_min_stage: 1,
+      slack_cooldown_minutes: 30,
+      last_slack_event: null,
+      recent_slack_events: [],
+      telegram_enabled: false,
+      telegram_ready: false,
+      auto_telegram_enabled: false,
+      auto_telegram_min_severity: "error",
+      telegram_min_stage: 2,
+      telegram_cooldown_minutes: 30,
+      last_telegram_event: null,
+      recent_telegram_events: [],
+      webhook_enabled: false,
+      webhook_ready: false,
+      auto_webhook_enabled: false,
+      auto_webhook_min_severity: "error",
+      webhook_cooldown_minutes: 30,
+      last_webhook_event: null,
+      recent_webhook_events: [],
+      last_email_event: null,
+      recent_email_events: [],
+    },
+    execution_readiness: {},
+    operating_state: {},
+    portfolio: {
+      capital_limit: 0,
+      deployed_capital: 0,
+      remaining_capital: 0,
+    },
+    autotrade: {
+      source_position_controls: [],
+      cluster_position_controls: [],
+    },
+    source_overrides: {
+      active_freeze_count: 0,
+      active_observe_count: 0,
+      items: [],
+      recent_events: [],
+      daily_report: {},
+    },
+    cluster_overrides: {
+      active_freeze_count: 0,
+      active_observe_count: 0,
+      items: [],
+      recent_events: [],
+      daily_report: {},
+    },
+  });
+  const autotradeAuditFeed = ref([]);
+  const autotradeAlertTimeline = ref({
+    alert: null,
+    items: [],
   });
   const sellerControlPresetHistory = ref({
     preset: null,
@@ -1431,6 +1541,17 @@ export function useCardFlipOpsPage() {
       }
     }
 
+    const validationBaseline = autotradeStatus.value?.validation_baseline || {};
+    if (validationBaseline.ready_for_tune === false) {
+      reasons.push("Single-account observation baseline is not ready");
+      const baselineCodes = Array.isArray(validationBaseline.tune_blocking_codes)
+        ? validationBaseline.tune_blocking_codes
+        : [];
+      baselineCodes.slice(0, 3).forEach((code) => {
+        reasons.push(`Baseline drift: ${code}`);
+      });
+    }
+
     return {
       ready: reasons.length === 0,
       reasons: reasons.length ? reasons : ["Guardrails passed"],
@@ -1613,6 +1734,427 @@ export function useCardFlipOpsPage() {
       if (!silent && isLatestRequest("autotrade", requestId)) {
         autotradeStatusLoading.value = false;
       }
+    }
+  };
+  const loadAutotradeCockpit = async (silent = false) => {
+    if (!silent)
+      autotradeCockpitLoading.value = true;
+    try {
+      const cockpit = await cardFlipApi.getAutotradeCockpit();
+      autotradeCockpit.value = cockpit || autotradeCockpit.value;
+      return cockpit;
+    } catch (error) {
+      if (!silent)
+        showActionError("Load operator cockpit failed", error);
+      return null;
+    } finally {
+      if (!silent)
+        autotradeCockpitLoading.value = false;
+    }
+  };
+  const loadAutotradeAuditFeed = async (silent = false) => {
+    if (!silent)
+      autotradeAuditFeedLoading.value = true;
+    try {
+      const [sourceRes, clusterRes, alertRes] = await Promise.all([
+        cardFlipApi.listSourceControlEvents(20),
+        cardFlipApi.listClusterControlEvents(20),
+        cardFlipApi.listAutotradeAlertEvents(20),
+      ]);
+      const sourceItems = Array.isArray(sourceRes?.items)
+        ? sourceRes.items.map((item) => ({
+            ...item,
+            scope: "source",
+            target: String(item?.source || "").trim(),
+            actor: "",
+          }))
+        : [];
+      const clusterItems = Array.isArray(clusterRes?.items)
+        ? clusterRes.items.map((item) => ({
+            ...item,
+            scope: "cluster",
+            target: String(item?.risk_cluster || "").trim(),
+            actor: "",
+          }))
+        : [];
+      const extractAuditSequence = (item) => {
+        const explicit = Number(item?.event_id || 0);
+        if (explicit)
+          return explicit;
+        const matched = String(item?.id || "").match(/(\d+)(?!.*\d)/);
+        return matched ? Number(matched[1]) : 0;
+      };
+      const mappedAlertItems = Array.isArray(alertRes?.items)
+        ? alertRes.items.map((item) => ({
+            ...item,
+            scope: String(item?.kind || "").trim() === "delivery" ? "alert_delivery" : "alert",
+            event_type: String(
+              item?.kind === "delivery"
+                ? `${item?.channel_label || item?.channel || "delivery"} / ${item?.action || ""}`
+                : (item?.action || ""),
+            ).trim(),
+            target: String(
+              item?.target
+              || item?.next_state?.title
+              || item?.previous_state?.title
+              || item?.alert_key
+              || item?.channel_label
+              || "",
+            ).trim(),
+            reason: String(item?.reason || item?.summary || "").trim(),
+          }))
+        : [];
+      autotradeAuditFeed.value = [...sourceItems, ...clusterItems, ...mappedAlertItems]
+        .sort((left, right) => {
+          const leftTime = Date.parse(String(left?.created_at || "").replace(" ", "T")) || 0;
+          const rightTime = Date.parse(String(right?.created_at || "").replace(" ", "T")) || 0;
+          if (leftTime !== rightTime)
+            return rightTime - leftTime;
+          return extractAuditSequence(right) - extractAuditSequence(left);
+        })
+        .slice(0, 20);
+      return autotradeAuditFeed.value;
+    } catch (error) {
+      if (!silent)
+        showActionError("Load override audit feed failed", error);
+      return null;
+    } finally {
+      if (!silent)
+        autotradeAuditFeedLoading.value = false;
+    }
+  };
+  const refreshAutotradeOperatorConsole = async (silent = false) =>
+    Promise.allSettled([
+      loadAutotradeCockpit(silent),
+      loadAutotradeAuditFeed(silent),
+    ]);
+  const dispatchAutotradeAlertEmail = async (force = false) => {
+    autotradeAlertDispatchLoading.value = true;
+    try {
+      const result = await cardFlipApi.sendAutotradeAlertEmail(force);
+      if (result?.sent) {
+        message.success(`Alert digest sent (${result.alert_count || 0} alerts)`);
+      } else if (result?.reason === "cooldown_active") {
+        const lastAt = result?.last_success_event?.created_at || "recently";
+        message.info(`Alert digest skipped due to cooldown. Last sent at ${lastAt}.`);
+      } else if (result?.reason === "no_active_alerts" || result?.reason === "no_email_stage_alerts") {
+        message.info("No email-stage alerts to send");
+      } else {
+        message.warning("Alert email not sent. Check SMTP readiness.");
+      }
+      await loadAutotradeCockpit(true);
+      return result;
+    } catch (error) {
+      showActionError("Send alert digest failed", error);
+      return null;
+    } finally {
+      autotradeAlertDispatchLoading.value = false;
+    }
+  };
+  const dispatchAutotradeAlertWebhook = async (force = false) => {
+    autotradeWebhookDispatchLoading.value = true;
+    try {
+      const result = await cardFlipApi.sendAutotradeAlertWebhook(force);
+      if (result?.sent) {
+        message.success(`Escalation webhook sent (${result.alert_count || 0} alerts)`);
+      } else if (result?.reason === "cooldown_active") {
+        const lastAt = result?.last_success_event?.created_at || "recently";
+        message.info(`Escalation webhook skipped due to cooldown. Last sent at ${lastAt}.`);
+      } else if (result?.reason === "no_escalated_alerts") {
+        message.info("No escalated alerts to send");
+      } else {
+        message.warning("Escalation webhook not sent. Check webhook readiness.");
+      }
+      await loadAutotradeCockpit(true);
+      return result;
+    } catch (error) {
+      showActionError("Send escalation webhook failed", error);
+      return null;
+    } finally {
+      autotradeWebhookDispatchLoading.value = false;
+    }
+  };
+  const dispatchAutotradeAlertSlack = async (force = false) => {
+    autotradeSlackDispatchLoading.value = true;
+    try {
+      const result = await cardFlipApi.sendAutotradeAlertSlack(force);
+      if (result?.sent) {
+        message.success(`Slack escalation sent (${result.alert_count || 0} alerts)`);
+      } else if (result?.reason === "cooldown_active") {
+        const lastAt = result?.last_success_event?.created_at || "recently";
+        message.info(`Slack escalation skipped due to cooldown. Last sent at ${lastAt}.`);
+      } else if (result?.reason === "no_slack_stage_alerts") {
+        message.info("No Slack-stage alerts to send");
+      } else {
+        message.warning("Slack escalation not sent. Check Slack readiness.");
+      }
+      await loadAutotradeCockpit(true);
+      return result;
+    } catch (error) {
+      showActionError("Send Slack escalation failed", error);
+      return null;
+    } finally {
+      autotradeSlackDispatchLoading.value = false;
+    }
+  };
+  const dispatchAutotradeAlertTelegram = async (force = false) => {
+    autotradeTelegramDispatchLoading.value = true;
+    try {
+      const result = await cardFlipApi.sendAutotradeAlertTelegram(force);
+      if (result?.sent) {
+        message.success(`Telegram escalation sent (${result.alert_count || 0} alerts)`);
+      } else if (result?.reason === "cooldown_active") {
+        const lastAt = result?.last_success_event?.created_at || "recently";
+        message.info(`Telegram escalation skipped due to cooldown. Last sent at ${lastAt}.`);
+      } else if (result?.reason === "no_telegram_stage_alerts") {
+        message.info("No Telegram-stage alerts to send");
+      } else {
+        message.warning("Telegram escalation not sent. Check Telegram readiness.");
+      }
+      await loadAutotradeCockpit(true);
+      return result;
+    } catch (error) {
+      showActionError("Send Telegram escalation failed", error);
+      return null;
+    } finally {
+      autotradeTelegramDispatchLoading.value = false;
+    }
+  };
+  const toggleAutotradeAlertAutoEmail = async () => {
+    await updateAutotradeConfig({
+      alert_email_auto_enabled: !autotradeStatus.value?.alert_email_auto_enabled,
+    });
+    await loadAutotradeCockpit(true);
+  };
+  const toggleAutotradeAlertAutoSlack = async () => {
+    await updateAutotradeConfig({
+      alert_slack_auto_enabled: !autotradeStatus.value?.alert_slack_auto_enabled,
+    });
+    await loadAutotradeCockpit(true);
+  };
+  const toggleAutotradeAlertAutoTelegram = async () => {
+    await updateAutotradeConfig({
+      alert_telegram_auto_enabled: !autotradeStatus.value?.alert_telegram_auto_enabled,
+    });
+    await loadAutotradeCockpit(true);
+  };
+  const toggleAutotradeAlertAutoWebhook = async () => {
+    await updateAutotradeConfig({
+      alert_webhook_auto_enabled: !autotradeStatus.value?.alert_webhook_auto_enabled,
+    });
+    await loadAutotradeCockpit(true);
+  };
+  const adjustAutotradeAlertPolicyNumber = async (key, delta, min, max) => {
+    const current = Number(autotradeStatus.value?.[key] ?? 0);
+    const next = clamp(Number((current + delta).toFixed(0)), min, max);
+    if (next === current)
+      return;
+    await updateAutotradeConfig({ [key]: next });
+    await loadAutotradeCockpit(true);
+  };
+  const setAutotradeAlertPolicySeverity = async (key, value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!["info", "warning", "error"].includes(normalized))
+      return;
+    if (String(autotradeStatus.value?.[key] || "").toLowerCase() === normalized)
+      return;
+    await updateAutotradeConfig({ [key]: normalized });
+    await loadAutotradeCockpit(true);
+  };
+  const acknowledgeAutotradeAlert = async (alert) => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    if (!alertKey)
+      return null;
+    autotradeAlertControlLoading.value = `ack:${alertKey}`;
+    try {
+      const result = await cardFlipApi.acknowledgeAutotradeAlert(alertKey, {
+        actor: operatorIdentity.value,
+      });
+      message.success("Alert acknowledged");
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      return result;
+    } catch (error) {
+      showActionError("Acknowledge alert failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const snoozeAutotradeAlert = async (alert, minutes = 60) => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    if (!alertKey)
+      return null;
+    autotradeAlertControlLoading.value = `snooze:${alertKey}`;
+    try {
+      const result = await cardFlipApi.snoozeAutotradeAlert(alertKey, {
+        actor: operatorIdentity.value,
+        minutes,
+        reason: `operator snooze ${minutes}m`,
+      });
+      message.success(`Alert snoozed for ${minutes}m`);
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      return result;
+    } catch (error) {
+      showActionError("Snooze alert failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const resumeAutotradeAlert = async (alert) => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    if (!alertKey)
+      return null;
+    autotradeAlertControlLoading.value = `resume:${alertKey}`;
+    try {
+      const result = await cardFlipApi.resumeAutotradeAlert(
+        alertKey,
+        operatorIdentity.value,
+      );
+      message.success("Alert resumed");
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      return result;
+    } catch (error) {
+      showActionError("Resume alert failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const assignAutotradeAlertIncident = async (alert, owner, note = "") => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    const normalizedOwner = String(owner || "").trim();
+    if (!alertKey || !normalizedOwner)
+      return null;
+    autotradeAlertControlLoading.value = `assign:${alertKey}`;
+    try {
+      const result = await cardFlipApi.assignAutotradeAlertIncident(alertKey, {
+        actor: operatorIdentity.value,
+        owner: normalizedOwner,
+        note: String(note || "").trim(),
+      });
+      message.success(`Incident assigned to ${normalizedOwner}`);
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      await loadAutotradeAuditFeed(true);
+      await loadAutotradeAlertTimeline(alert);
+      return result;
+    } catch (error) {
+      showActionError("Assign incident failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const noteAutotradeAlertIncident = async (alert, note) => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    const normalizedNote = String(note || "").trim();
+    if (!alertKey || !normalizedNote)
+      return null;
+    autotradeAlertControlLoading.value = `note:${alertKey}`;
+    try {
+      const result = await cardFlipApi.noteAutotradeAlertIncident(alertKey, {
+        actor: operatorIdentity.value,
+        note: normalizedNote,
+      });
+      message.success("Incident note added");
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      await loadAutotradeAuditFeed(true);
+      await loadAutotradeAlertTimeline(alert);
+      return result;
+    } catch (error) {
+      showActionError("Add incident note failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const handoffAutotradeAlertIncident = async (alert, owner, note = "") => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    const normalizedOwner = String(owner || "").trim();
+    if (!alertKey || !normalizedOwner)
+      return null;
+    autotradeAlertControlLoading.value = `handoff:${alertKey}`;
+    try {
+      const result = await cardFlipApi.handoffAutotradeAlertIncident(alertKey, {
+        actor: operatorIdentity.value,
+        owner: normalizedOwner,
+        note: String(note || "").trim(),
+      });
+      message.success(`Incident handed off to ${normalizedOwner}`);
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      await loadAutotradeAuditFeed(true);
+      await loadAutotradeAlertTimeline(alert);
+      return result;
+    } catch (error) {
+      showActionError("Incident handoff failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const resolveAutotradeAlertIncident = async (alert, note = "") => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    if (!alertKey)
+      return null;
+    autotradeAlertControlLoading.value = `resolve:${alertKey}`;
+    try {
+      const result = await cardFlipApi.resolveAutotradeAlertIncident(alertKey, {
+        actor: operatorIdentity.value,
+        note: String(note || "").trim(),
+      });
+      message.success("Incident resolved");
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      await loadAutotradeAuditFeed(true);
+      await loadAutotradeAlertTimeline(alert);
+      return result;
+    } catch (error) {
+      showActionError("Resolve incident failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const prioritizeAutotradeAlertIncident = async (alert, priority, note = "") => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    const normalizedPriority = String(priority || "").trim().toLowerCase();
+    if (!alertKey || !["low", "normal", "high", "critical"].includes(normalizedPriority))
+      return null;
+    autotradeAlertControlLoading.value = `priority:${alertKey}`;
+    try {
+      const result = await cardFlipApi.prioritizeAutotradeAlertIncident(alertKey, {
+        actor: operatorIdentity.value,
+        priority: normalizedPriority,
+        note: String(note || "").trim(),
+      });
+      message.success(`Incident priority set to ${normalizedPriority}`);
+      autotradeCockpit.value = result?.cockpit || autotradeCockpit.value;
+      await loadAutotradeAuditFeed(true);
+      await loadAutotradeAlertTimeline(alert);
+      return result;
+    } catch (error) {
+      showActionError("Set incident priority failed", error);
+      return null;
+    } finally {
+      autotradeAlertControlLoading.value = "";
+    }
+  };
+  const loadAutotradeAlertTimeline = async (alert) => {
+    const alertKey = String(alert?.alert_key || "").trim();
+    if (!alertKey)
+      return null;
+    autotradeAlertTimelineLoading.value = true;
+    try {
+      const result = await cardFlipApi.listAutotradeAlertEvents(20, alertKey);
+      autotradeAlertTimeline.value = {
+        alert,
+        items: Array.isArray(result?.items) ? result.items : [],
+      };
+      return result;
+    } catch (error) {
+      showActionError("Load alert timeline failed", error);
+      return null;
+    } finally {
+      autotradeAlertTimelineLoading.value = false;
     }
   };
   const loadExecutionRetryServiceStatus = async (silent = false) => {
@@ -2258,6 +2800,8 @@ export function useCardFlipOpsPage() {
         loadAutotradeTuningDailyReport(true),
         loadAutomationStatus(true),
         loadAutotradeStatus(true),
+        loadAutotradeCockpit(true),
+        loadAutotradeAuditFeed(true),
         loadExecutionRetryServiceStatus(true),
         loadLists(true),
       ]);
@@ -2287,6 +2831,8 @@ export function useCardFlipOpsPage() {
       loadHealth(true),
       loadAutomationStatus(true),
       loadAutotradeStatus(true),
+      loadAutotradeCockpit(true),
+      loadAutotradeAuditFeed(true),
       loadExecutionRetryServiceStatus(true),
     ];
     if (includeLists)
@@ -2411,6 +2957,100 @@ export function useCardFlipOpsPage() {
       return null;
     } finally {
       sellerControlActionLoading.value = "";
+    }
+  };
+
+  const applySourceControlAction = async ({
+    source,
+    action,
+    reason = "",
+    durationHours = null,
+  }) => {
+    const normalizedSource = String(source || "").trim();
+    if (!normalizedSource || !action)
+      return null;
+    const actionLabelMap = {
+      freeze: "Freeze",
+      observe: "Observe",
+      normal: "Restore",
+    };
+    const actionLabel = actionLabelMap[action] || action;
+    if (
+      !await confirmAction(
+        `${actionLabel} source ${normalizedSource}?`,
+        "Source override",
+      )
+    ) {
+      return null;
+    }
+    autotradeOverrideActionLoading.value = `source:${action}:${normalizedSource}`;
+    try {
+      const result = await cardFlipApi.applySourceControlManualAction({
+        source: normalizedSource,
+        action,
+        reason: String(reason || "").trim(),
+        actor: operatorIdentity.value,
+        duration_hours: durationHours,
+      });
+      message.success(`${actionLabel} applied to source ${normalizedSource}`);
+      await Promise.allSettled([
+        loadAutotradeStatus(true),
+        loadAutotradeCockpit(true),
+        loadAutotradeAuditFeed(true),
+      ]);
+      return result;
+    } catch (error) {
+      showActionError(`Source ${actionLabel.toLowerCase()} failed`, error);
+      return null;
+    } finally {
+      autotradeOverrideActionLoading.value = "";
+    }
+  };
+
+  const applyClusterControlAction = async ({
+    riskCluster,
+    action,
+    reason = "",
+    durationHours = null,
+  }) => {
+    const normalizedCluster = String(riskCluster || "").trim();
+    if (!normalizedCluster || !action)
+      return null;
+    const actionLabelMap = {
+      freeze: "Freeze",
+      observe: "Observe",
+      normal: "Restore",
+    };
+    const actionLabel = actionLabelMap[action] || action;
+    if (
+      !await confirmAction(
+        `${actionLabel} cluster ${normalizedCluster}?`,
+        "Cluster override",
+      )
+    ) {
+      return null;
+    }
+    autotradeOverrideActionLoading.value = `cluster:${action}:${normalizedCluster}`;
+    try {
+      const result = await cardFlipApi.applyClusterControlManualAction({
+        risk_cluster: normalizedCluster,
+        action,
+        reason: String(reason || "").trim(),
+        actor: operatorIdentity.value,
+        duration_hours: durationHours,
+      });
+      message.success(`${actionLabel} applied to cluster ${normalizedCluster}`);
+      await Promise.allSettled([
+        loadAutotradeStatus(true),
+        loadAutotradeCockpit(true),
+        loadAutotradeAuditFeed(true),
+      ]);
+      return result;
+    } catch (error) {
+      showActionError(`Cluster ${actionLabel.toLowerCase()} failed`, error);
+      return null;
+    } finally {
+      autotradeOverrideActionLoading.value = "";
     }
   };
 
@@ -3170,6 +3810,15 @@ export function useCardFlipOpsPage() {
     autotradeStatusLoading,
     autotradeActionLoading,
     autotradeConfigLoading,
+    autotradeCockpitLoading,
+    autotradeOverrideActionLoading,
+    autotradeAuditFeedLoading,
+    autotradeAlertDispatchLoading,
+    autotradeSlackDispatchLoading,
+    autotradeTelegramDispatchLoading,
+    autotradeWebhookDispatchLoading,
+    autotradeAlertControlLoading,
+    autotradeAlertTimelineLoading,
     sellerControlActionLoading,
     sellerControlBatchActionLoading,
     sellerControlPresetActionLoading,
@@ -3231,6 +3880,9 @@ export function useCardFlipOpsPage() {
     executionResultOptions,
     executionRetryActionOptions,
     autotradeStatus,
+    autotradeCockpit,
+    autotradeAuditFeed,
+    autotradeAlertTimeline,
     executionStatus,
     automationStatus,
     healthStatus,
@@ -3301,6 +3953,28 @@ export function useCardFlipOpsPage() {
     loadAutotradeTuningDailyReport,
     loadAutomationStatus,
     loadAutotradeStatus,
+    loadAutotradeCockpit,
+    loadAutotradeAuditFeed,
+    refreshAutotradeOperatorConsole,
+    dispatchAutotradeAlertEmail,
+    dispatchAutotradeAlertSlack,
+    dispatchAutotradeAlertTelegram,
+    dispatchAutotradeAlertWebhook,
+    toggleAutotradeAlertAutoEmail,
+    toggleAutotradeAlertAutoSlack,
+    toggleAutotradeAlertAutoTelegram,
+    toggleAutotradeAlertAutoWebhook,
+    adjustAutotradeAlertPolicyNumber,
+    setAutotradeAlertPolicySeverity,
+    acknowledgeAutotradeAlert,
+    snoozeAutotradeAlert,
+    resumeAutotradeAlert,
+    assignAutotradeAlertIncident,
+    noteAutotradeAlertIncident,
+    handoffAutotradeAlertIncident,
+    resolveAutotradeAlertIncident,
+    prioritizeAutotradeAlertIncident,
+    loadAutotradeAlertTimeline,
     loadExecutionRetryServiceStatus,
     loadLists,
     loadExecutionLogs,
@@ -3321,6 +3995,8 @@ export function useCardFlipOpsPage() {
     startAutotrade,
     stopAutotrade,
     runAutotradeOnce,
+    applySourceControlAction,
+    applyClusterControlAction,
     applySellerControlAction,
     applySellerControlBatchAction,
     applySellerControlPreset,

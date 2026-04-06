@@ -5,6 +5,8 @@ import re
 
 
 NORMALIZATION_VERSION = "listing_normalizer_v1"
+TRADABLE_ITEM_TYPES = frozenset({"manual_fragment", "manual_page", "manual_card"})
+BLOCKED_ITEM_TYPES = frozenset({"account_service", "catalog_bundle"})
 
 _ACCOUNT_SERVICE_TOKENS = (
     "\u626b\u7801",
@@ -159,7 +161,7 @@ def normalize_listing(*, title: str, description: str = "") -> ListingNormalizat
     normalized_title = _normalized_title_from_type(item_type, sanitized_title)
     normalized_key = f"{item_type}:{normalized_title}" if normalized_title else item_type
 
-    blocked = item_type in {"account_service", "catalog_bundle"}
+    blocked = item_type in BLOCKED_ITEM_TYPES
     blocked_reason = ""
     if blocked:
         blocked_reason = item_type

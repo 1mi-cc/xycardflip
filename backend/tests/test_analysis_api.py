@@ -12,6 +12,10 @@ from app.main import create_app
 from app.schemas import ListingIn, SaleIn, ValuationOut
 
 
+def _bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _seed_data() -> None:
     sold_base = datetime(2026, 3, 10, tzinfo=timezone.utc)
     repo.insert_sales(
@@ -142,14 +146,35 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
 
             snapshot = client.get("/analysis/data/market-snapshot")
             assert snapshot.status_code == 200
-            assert "open_listing_count" in snapshot.json()
-            assert "normalized_market_preview" in snapshot.json()
+            snapshot_payload = snapshot.json()
+            assert "open_listing_count" in snapshot_payload
+            assert "normalized_market_preview" in snapshot_payload
+            assert "normalized_market_count" in snapshot_payload
+            assert "tradable_market_preview" in snapshot_payload
+            assert "tradable_market_count" in snapshot_payload
+            assert "strategy_market_count" in snapshot_payload
 
             normalized_market = client.get("/analysis/data/normalized-market", params={"limit": 10})
             assert normalized_market.status_code == 200
             normalized_payload = normalized_market.json()
             assert "items" in normalized_payload
             assert "count" in normalized_payload
+            assert normalized_payload["scope"] == "full"
+
+            tradable_market_alias = client.get("/analysis/data/tradable-market", params={"limit": 10})
+            assert tradable_market_alias.status_code == 200
+            tradable_alias_payload = tradable_market_alias.json()
+            assert tradable_alias_payload["scope"] == "tradable"
+
+            tradable_market = client.get(
+                "/analysis/data/normalized-market",
+                params={"limit": 10, "scope": "tradable"},
+            )
+            assert tradable_market.status_code == 200
+            tradable_payload = tradable_market.json()
+            assert tradable_payload["scope"] == "tradable"
+            assert all(item["is_tradable"] is True for item in tradable_payload["items"])
+            assert tradable_payload == tradable_alias_payload
 
             calc = client.get("/analysis/calculation/overview")
             assert calc.status_code == 200
@@ -176,11 +201,12 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
 
             market_docs = client.get(
                 "/analysis/decision/market-docs",
-                params={"limit": 5, "listing_hours": 24 * 30, "sales_days": 30},
+                params={"limit": 5, "listing_hours": 24 * 30, "sales_days": 30, "scope": "full"},
             )
             assert market_docs.status_code == 200
             market_docs_payload = market_docs.json()
             assert market_docs_payload["count"] >= 1
+            assert market_docs_payload["scope"] == "full"
             assert "filename" in market_docs_payload["items"][0]
             assert "content" in market_docs_payload["items"][0]
 
@@ -193,6 +219,7 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
             assert "available" in strategy_payload
             assert "snapshots" in strategy_payload
             assert "prompt" in strategy_payload
+            assert all(item["is_tradable"] is True for item in strategy_payload["snapshots"])
 
             auto_reco = client.get("/analysis/automation/recommendation")
             assert auto_reco.status_code == 200
@@ -230,3 +257,97 @@ def test_analysis_endpoints(tmp_path: Path) -> None:
             assert "data:" in stream.text
     finally:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+
+
+def test_admin_overview_requires_admin_auth(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    old_username = settings.ui_auth_username
+    old_password = settings.ui_auth_password
+    old_nickname = settings.ui_auth_nickname
+    old_allow_registration = settings.ui_auth_allow_registration
+    object.__setattr__(settings, "sqlite_path", str(tmp_path / "analysis_admin.db"))
+    object.__setattr__(settings, "ui_auth_username", "admin")
+    object.__setattr__(settings, "ui_auth_password", "admin123456")
+    object.__setattr__(settings, "ui_auth_nickname", "Analysis Admin")
+    object.__setattr__(settings, "ui_auth_allow_registration", True)
+    try:
+        init_db()
+        _seed_data()
+        with TestClient(create_app()) as client:
+            anonymous = client.get("/analysis/admin-overview")
+            assert anonymous.status_code == 401
+
+            user_register = client.post(
+                "/auth/register",
+                json={
+                    "username": "viewer_user",
+                    "email": "viewer@example.com",
+                    "password": "secret123",
+                    "nickname": "Viewer User",
+                },
+            )
+            assert user_register.status_code == 200
+
+            user_login = client.post(
+                "/auth/login",
+                json={"username": "viewer_user", "password": "secret123"},
+            )
+            assert user_login.status_code == 200
+            user_token = user_login.json()["data"]["token"]
+
+            forbidden = client.get(
+                "/analysis/admin-overview",
+                headers=_bearer(user_token),
+            )
+            assert forbidden.status_code == 403
+
+            admin_login = client.post(
+                "/auth/login",
+                json={"username": "admin", "password": "admin123456"},
+            )
+            assert admin_login.status_code == 200
+            admin_token = admin_login.json()["data"]["token"]
+
+            overview = client.get(
+                "/analysis/admin-overview",
+                headers=_bearer(admin_token),
+            )
+            assert overview.status_code == 200
+            payload = overview.json()
+            assert payload["viewer"]["isAdmin"] is True
+            assert "profitability" in payload
+            assert "runtime" in payload
+            assert "alerts" in payload
+            assert payload["runtime"]["services"]["autotrade"]["enabled"] in {True, False}
+            assert "profit_cockpit" in payload["profitability"]
+            assert payload["runtime"]["operating_profile"]["mode"] in {
+                "single-account-local",
+                "standard",
+            }
+            assert "operating_profile" in payload["deployment_readiness"]
+            assert "validation_baseline" in payload["runtime"]["services"]["autotrade"]
+            assert "validation_baseline" in payload["deployment_readiness"]
+            assert payload["deployment_readiness"]["validation_baseline"]["ready_for_scale"] in {
+                True,
+                False,
+            }
+            assert "snapshot_history" in payload["deployment_readiness"]["validation_baseline"]
+
+            stream = client.get(
+                "/analysis/admin-overview/stream",
+                params={"interval_seconds": 0, "max_events": 1},
+                headers={
+                    **_bearer(admin_token),
+                    "accept": "text/event-stream",
+                },
+            )
+            assert stream.status_code == 200
+            assert "text/event-stream" in stream.headers.get("content-type", "")
+            assert "event: overview" in stream.text
+            assert '"profitability"' in stream.text
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+        object.__setattr__(settings, "ui_auth_username", old_username)
+        object.__setattr__(settings, "ui_auth_password", old_password)
+        object.__setattr__(settings, "ui_auth_nickname", old_nickname)
+        object.__setattr__(settings, "ui_auth_allow_registration", old_allow_registration)

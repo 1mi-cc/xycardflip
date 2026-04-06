@@ -184,7 +184,14 @@ class ExecutionService:
             "requested_listing_url": str(listing_url or "").strip(),
         }
         guard_error = None
-        if not dry_run:
+        action_guard_error = self._source_action_guard_reason(
+            action="list",
+            trade=trade,
+            force=force,
+        )
+        if action_guard_error:
+            guard_error = action_guard_error
+        elif not dry_run:
             guard_error = self._validate_live_action_guard(
                 action="list",
                 trade=trade,
@@ -252,7 +259,14 @@ class ExecutionService:
             "requested_sold_price": float(sold_price) if sold_price is not None else None,
         }
         guard_error = None
-        if not dry_run:
+        action_guard_error = self._source_action_guard_reason(
+            action="sell",
+            trade=trade,
+            force=force,
+        )
+        if action_guard_error:
+            guard_error = action_guard_error
+        elif not dry_run:
             guard_error = self._validate_live_action_guard(
                 action="sell",
                 trade=trade,
@@ -314,7 +328,14 @@ class ExecutionService:
             "status": str(trade["status"]),
         }
         guard_error = None
-        if not dry_run:
+        action_guard_error = self._source_action_guard_reason(
+            action="buy",
+            trade=trade,
+            force=force,
+        )
+        if action_guard_error:
+            guard_error = action_guard_error
+        elif not dry_run:
             guard_error = self._validate_live_action_guard(
                 action="buy",
                 trade=trade,
@@ -361,15 +382,46 @@ class ExecutionService:
                 action=normalized_action,
                 limit=max(1, min(200, int(limit))),
             )
+            cockpit = (repo.get_dashboard_metrics() or {}).get("profit_cockpit") or {}
+            source_strategy_map = {
+                str(item.get("source") or "").strip(): item
+                for item in list(cockpit.get("source_leaderboard_7d") or [])
+                if str(item.get("source") or "").strip()
+            }
             results: list[dict[str, Any]] = []
             retried = 0
             succeeded = 0
             failed = 0
+            blocked = 0
+            skipped_source_action_cap = 0
+            source_action_counts: dict[tuple[str, str], int] = {}
 
             for row in rows:
                 current_action = str(row["action"]).strip().lower()
                 trade_id = int(row["trade_id"])
                 retried += 1
+                source = str(row["listing_source"] or "").strip()
+                strategy = source_strategy_map.get(source, {})
+                lane = self._source_action_lane(current_action, strategy)
+                if lane in {"observe", "reduced"}:
+                    cap = self._source_action_exec_cap(action=current_action, lane=lane, batch_limit=limit)
+                    action_key = (source, current_action)
+                    if int(source_action_counts.get(action_key) or 0) >= int(cap):
+                        skipped_source_action_cap += 1
+                        results.append(
+                            {
+                                "trade_id": trade_id,
+                                "action": current_action,
+                                "previous_log_id": int(row["id"]),
+                                "success": False,
+                                "blocked": False,
+                                "skipped": True,
+                                "new_log_id": 0,
+                                "business_ban_code": "",
+                                "error": f"source_action_cap_reached:{source}:{current_action}:{lane}",
+                            }
+                        )
+                        continue
                 try:
                     request_payload = self._parse_request_payload(row["request_json"])
                     if current_action == "buy":
@@ -409,8 +461,14 @@ class ExecutionService:
                         raise RuntimeError(f"unsupported action: {current_action}")
 
                     ok = bool(res.get("success"))
+                    was_blocked = bool(res.get("blocked"))
                     if ok:
                         succeeded += 1
+                        source_action_counts[(source, current_action)] = int(
+                            source_action_counts.get((source, current_action)) or 0
+                        ) + 1
+                    elif was_blocked:
+                        blocked += 1
                     else:
                         failed += 1
                     results.append(
@@ -419,6 +477,8 @@ class ExecutionService:
                             "action": current_action,
                             "previous_log_id": int(row["id"]),
                             "success": ok,
+                            "blocked": was_blocked,
+                            "skipped": False,
                             "new_log_id": int(res.get("log_id") or 0),
                             "business_ban_code": str(res.get("business_ban_code") or ""),
                             "error": str(res.get("error") or ""),
@@ -432,6 +492,8 @@ class ExecutionService:
                             "action": current_action,
                             "previous_log_id": int(row["id"]),
                             "success": False,
+                            "blocked": False,
+                            "skipped": False,
                             "new_log_id": 0,
                             "business_ban_code": "",
                             "error": str(exc),
@@ -445,6 +507,8 @@ class ExecutionService:
                 "retried": retried,
                 "succeeded": succeeded,
                 "failed": failed,
+                "blocked": blocked,
+                "skipped_source_action_cap": skipped_source_action_cap,
                 "items": results,
             }
         finally:
@@ -948,6 +1012,63 @@ class ExecutionService:
                     )
 
         return None
+
+    def _source_action_guard_reason(
+        self,
+        *,
+        action: str,
+        trade: Any,
+        force: bool,
+    ) -> str | None:
+        if force:
+            return None
+        source = str(trade["source"] or "").strip()
+        if not source:
+            return None
+        cockpit = (repo.get_dashboard_metrics() or {}).get("profit_cockpit") or {}
+        strategies = list(cockpit.get("source_leaderboard_7d") or [])
+        strategy = next(
+            (item for item in strategies if str(item.get("source") or "").strip() == source),
+            None,
+        )
+        if not strategy:
+            return None
+        normalized_action = str(action or "").strip().lower()
+        if normalized_action == "buy":
+            lane = str(strategy.get("source_lane") or "open")
+            blocked = bool(strategy.get("block_new_approvals")) or lane == "blocked"
+        elif normalized_action == "list":
+            lane = str(strategy.get("list_action_lane") or "open")
+            blocked = not bool(strategy.get("allow_auto_list", True)) or lane == "blocked"
+        elif normalized_action == "sell":
+            lane = str(strategy.get("sell_action_lane") or "open")
+            blocked = not bool(strategy.get("allow_auto_sell", True)) or lane == "blocked"
+        else:
+            return None
+        if not blocked:
+            return None
+        return f"source_action_blocked:{source}:{normalized_action}:{lane}"
+
+    @staticmethod
+    def _source_action_lane(action: str, strategy: dict[str, Any] | None) -> str:
+        strategy = strategy or {}
+        normalized_action = str(action or "").strip().lower()
+        if normalized_action == "buy":
+            return str(strategy.get("source_lane") or "open")
+        if normalized_action == "list":
+            return str(strategy.get("list_action_lane") or "open")
+        if normalized_action == "sell":
+            return str(strategy.get("sell_action_lane") or "open")
+        return "open"
+
+    @staticmethod
+    def _source_action_exec_cap(*, action: str, lane: str, batch_limit: int) -> int:
+        normalized_lane = str(lane or "open").strip().lower()
+        if normalized_lane == "blocked":
+            return 0
+        if normalized_lane in {"observe", "reduced"}:
+            return 1
+        return max(1, int(batch_limit or 1))
 
     @staticmethod
     def _require_trade(trade_id: int) -> Any:

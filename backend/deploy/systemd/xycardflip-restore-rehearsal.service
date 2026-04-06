@@ -1,0 +1,12 @@
+[Unit]
+Description=XY Card Flip Backup Restore Rehearsal
+After=network-online.target xycardflip-backend.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/srv/xycardflip/bin/server_rehearse_backup_restore.sh
+Nice=10
+

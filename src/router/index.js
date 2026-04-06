@@ -72,6 +72,7 @@ const myRoutes = [
         meta: {
           title: "控制台",
           permission: "dashboard:view",
+          adminOnly: true,
         },
       },
       {
@@ -243,6 +244,11 @@ router.beforeEach(async (to, _from, next) => {
 
   const requiredPermission = to.meta.permission;
   if (requiredPermission && authStore.isAuthenticated && !authStore.hasPermission(requiredPermission)) {
+    next(authStore.getDefaultHomeRoute());
+    return;
+  }
+
+  if (to.meta.adminOnly && authStore.isAuthenticated && !authStore.userInfo?.isAdmin) {
     next(authStore.getDefaultHomeRoute());
     return;
   }

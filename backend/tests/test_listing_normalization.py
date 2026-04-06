@@ -190,5 +190,66 @@ def test_normalized_market_snapshots_group_same_like_titles(
     assert fragment["recent_sales_count_7d"] == 2
     assert fragment["noise_listing_count"] == 0
     assert fragment["seller_count"] == 2
+    assert fragment["is_tradable"] is True
     assert fragment["regime_tag"] in {"tradable", "wide", "overpriced"}
     assert "功法残卷" in fragment["summary_text"]
+
+
+def test_normalized_market_snapshots_support_full_vs_tradable_scope(
+    isolated_normalization_sqlite: Path,
+) -> None:
+    repo.insert_sales(
+        [
+            SaleIn(
+                source="pytest",
+                item_id="sale-scope-1",
+                title="咸鱼之王功法卡",
+                description="单出",
+                sold_price=8.0,
+                sold_at=datetime(2026, 3, 29, 11, 0, tzinfo=timezone.utc),
+                raw={},
+            ),
+        ]
+    )
+    repo.insert_listings(
+        [
+            ListingIn(
+                source="pytest",
+                listing_id="scope-manual-card",
+                seller_id="seller-scope-a",
+                title="咸鱼之王功法卡 现货",
+                description="现货秒发",
+                list_price=8.5,
+                listed_at=datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc),
+                raw={},
+            ),
+            ListingIn(
+                source="pytest",
+                listing_id="scope-bundle",
+                seller_id="seller-scope-b",
+                title="咸鱼之王金图鉴礼包",
+                description="图鉴礼包",
+                list_price=18.0,
+                listed_at=datetime(2026, 3, 29, 12, 5, tzinfo=timezone.utc),
+                raw={},
+            ),
+        ]
+    )
+
+    full_snapshots = repo.get_normalized_market_snapshots(
+        limit=10,
+        listing_hours=24 * 30,
+        sales_days=30,
+        scope="full",
+    )
+    tradable_snapshots = repo.get_normalized_market_snapshots(
+        limit=10,
+        listing_hours=24 * 30,
+        sales_days=30,
+        scope="tradable",
+    )
+
+    assert any(item["item_type"] == "catalog_bundle" for item in full_snapshots)
+    assert any(item["item_type"] == "manual_card" for item in tradable_snapshots)
+    assert all(item["is_tradable"] is True for item in tradable_snapshots)
+    assert all(item["item_type"] != "catalog_bundle" for item in tradable_snapshots)

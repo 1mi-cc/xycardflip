@@ -554,6 +554,78 @@
   justify-items: end;
 }
 
+.override-direct-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.3fr) 120px auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.override-row-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 110px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ops-table-wrap {
+  overflow-x: auto;
+}
+
+.audit-feed {
+  display: grid;
+  gap: 10px;
+}
+
+.operator-alert-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.operator-alert-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.audit-feed-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+}
+
+.audit-feed-main,
+.audit-feed-side {
+  display: grid;
+  gap: 4px;
+}
+
+.alert-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.policy-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.audit-feed-side {
+  text-align: right;
+  justify-items: end;
+}
+
 .ops-table th {
   color: var(--text-secondary);
   font-weight: 700;
@@ -657,6 +729,10 @@
     grid-column: span 2;
   }
 
+  .alert-policy-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .validation-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -709,7 +785,8 @@
 
   .stats,
   .profit-cockpit-grid,
-  .service-summary-grid {
+  .service-summary-grid,
+  .alert-policy-grid {
     grid-template-columns: 1fr;
   }
 
@@ -737,7 +814,17 @@
     grid-template-columns: 1fr;
   }
 
+  .override-direct-form,
+  .override-row-form {
+    grid-template-columns: 1fr;
+  }
+
   .seller-detail-side {
+    text-align: left;
+    justify-items: start;
+  }
+
+  .audit-feed-side {
     text-align: left;
     justify-items: start;
   }

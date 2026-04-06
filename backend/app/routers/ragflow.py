@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 from typing import Any
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from ..route_guard import require_cardflip_operate
+from ..route_guard import require_cardflip_view
 from ..services.market_sentiment import market_sentiment_service
 from ..services.ragflow_client import ragflow_client
 from ..services.strategy_advisor import write_market_snapshot_docs
 
-router = APIRouter(prefix="/ragflow", tags=["ragflow"])
+router = APIRouter(
+    prefix="/ragflow",
+    tags=["ragflow"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 
 class RagflowChatIn(BaseModel):
@@ -48,6 +55,7 @@ class RagflowMarketSnapshotUploadIn(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
     listing_hours: int = Field(default=24, ge=1, le=24 * 30)
     sales_days: int = Field(default=7, ge=1, le=90)
+    scope: Literal["full", "tradable"] = "tradable"
     auto_parse: bool = True
 
 
@@ -85,7 +93,7 @@ def ragflow_list_datasets(
     return {"items": items, "count": len(items)}
 
 
-@router.post("/datasets/ensure")
+@router.post("/datasets/ensure", dependencies=[Depends(require_cardflip_operate)])
 def ragflow_ensure_market_dataset(payload: RagflowMarketDatasetIn) -> dict[str, Any]:
     try:
         dataset = ragflow_client.ensure_market_dataset(
@@ -99,7 +107,7 @@ def ragflow_ensure_market_dataset(payload: RagflowMarketDatasetIn) -> dict[str, 
     return {"dataset": dataset}
 
 
-@router.post("/datasets/upload-docs")
+@router.post("/datasets/upload-docs", dependencies=[Depends(require_cardflip_operate)])
 def ragflow_upload_documents(payload: RagflowUploadDocumentsIn) -> dict[str, Any]:
     try:
         dataset_id = (payload.dataset_id or "").strip()
@@ -153,7 +161,7 @@ def ragflow_upload_documents(payload: RagflowUploadDocumentsIn) -> dict[str, Any
         raise HTTPException(status_code=502, detail=f"RAGFlow request failed: {exc}") from exc
 
 
-@router.post("/datasets/upload-market-snapshots")
+@router.post("/datasets/upload-market-snapshots", dependencies=[Depends(require_cardflip_operate)])
 def ragflow_upload_market_snapshots(payload: RagflowMarketSnapshotUploadIn) -> dict[str, Any]:
     temp_dir = None
     try:
@@ -171,6 +179,7 @@ def ragflow_upload_market_snapshots(payload: RagflowMarketSnapshotUploadIn) -> d
             limit=payload.limit,
             listing_hours=payload.listing_hours,
             sales_days=payload.sales_days,
+            scope=payload.scope,
         )
         uploaded = ragflow_client.upload_documents(
             dataset_id=dataset_id,
@@ -188,6 +197,7 @@ def ragflow_upload_market_snapshots(payload: RagflowMarketSnapshotUploadIn) -> d
             "generated": len(docs),
             "uploaded": len(uploaded),
             "parsed": len(doc_ids) if payload.auto_parse else 0,
+            "scope": payload.scope,
             "items": docs,
         }
     except RuntimeError as exc:
@@ -199,7 +209,7 @@ def ragflow_upload_market_snapshots(payload: RagflowMarketSnapshotUploadIn) -> d
             temp_dir.cleanup()
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[Depends(require_cardflip_operate)])
 def ragflow_chat(payload: RagflowChatIn) -> dict[str, Any]:
     try:
         return ragflow_client.create_chat_completion(
@@ -214,7 +224,7 @@ def ragflow_chat(payload: RagflowChatIn) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=f"RAGFlow request failed: {exc}") from exc
 
 
-@router.post("/market-sentiment")
+@router.post("/market-sentiment", dependencies=[Depends(require_cardflip_operate)])
 def ragflow_market_sentiment(payload: RagflowMarketSentimentIn) -> dict[str, Any]:
     try:
         return market_sentiment_service.assess_pricing_adjustment(

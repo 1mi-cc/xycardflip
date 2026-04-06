@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from .. import repositories as repo
+from ..route_guard import require_cardflip_operate
 from ..schemas import FeatureData
 from ..services.feature_extractor import FeatureExtractor
 from ..services.risk_control import assess_opportunity_risk, format_risk_note
 from ..services.valuation import estimate_valuation
 
-router = APIRouter(prefix="/valuation", tags=["valuation"])
+router = APIRouter(
+    prefix="/valuation",
+    tags=["valuation"],
+    dependencies=[Depends(require_cardflip_operate)],
+)
 extractor = FeatureExtractor()
 
 
