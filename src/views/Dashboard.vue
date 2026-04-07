@@ -3,13 +3,37 @@
     <section class="page-intro">
       <div>
         <div class="section-label">总览</div>
-        <h2>先看结果</h2>
-        <p>这里看利润、告警和后台状态。参数调整已经放到后台处理，不放在这个页面里。</p>
+        <h2>今天先看什么</h2>
+        <p>别先埋头看表。先用一句话判断今天的状态，再决定往下看利润、告警还是服务。</p>
       </div>
       <n-button type="primary" :loading="loading" @click="loadOverview">刷新数据</n-button>
     </section>
 
     <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
+
+    <section class="story-card">
+      <div class="story-head">
+        <div>
+          <div class="section-label">一句判断</div>
+          <h3>{{ spotlight.title }}</h3>
+          <p>{{ spotlight.description }}</p>
+        </div>
+        <div class="story-switch">
+          <n-button
+            v-for="item in focusOptions"
+            :key="item.value"
+            size="small"
+            :type="focusMode === item.value ? 'primary' : 'default'"
+            @click="focusMode = item.value"
+          >
+            {{ item.label }}
+          </n-button>
+        </div>
+      </div>
+      <div class="story-pills">
+        <span v-for="item in spotlight.pills" :key="item" class="pill">{{ item }}</span>
+      </div>
+    </section>
 
     <section class="summary-grid">
       <article v-for="card in summaryCards" :key="card.label" class="summary-card">
@@ -68,7 +92,7 @@
           <span class="panel-meta">{{ alertCount }} 条</span>
         </div>
         <div v-if="alertItems.length" class="alert-list">
-          <div v-for="item in alertItems" :key="item.alert_key || item.title" class="alert-row">
+          <div v-for="item in alertItems.slice(0, 6)" :key="item.alert_key || item.title" class="alert-row">
             <div class="alert-top">
               <strong>{{ item.title }}</strong>
               <n-tag size="small" :type="severityType(item.effective_severity || item.severity)">
@@ -85,7 +109,7 @@
         <div class="panel-header">
           <div>
             <div class="section-label">基线</div>
-            <h3>验证就绪度</h3>
+            <h3>验证进度</h3>
           </div>
         </div>
         <div class="metric-list">
@@ -94,8 +118,12 @@
             <strong>{{ item.value }}</strong>
           </div>
         </div>
-        <div v-if="blockingCodes.length" class="pill-list">
-          <span v-for="code in blockingCodes" :key="code" class="pill">{{ code }}</span>
+        <div class="recommendation-card">
+          <div class="recommendation-label">最近建议</div>
+          <p>{{ baselineRecommendation }}</p>
+        </div>
+        <div v-if="baselineSignals.length" class="story-pills">
+          <span v-for="item in baselineSignals" :key="item.code" class="pill">{{ item.label }}</span>
         </div>
       </article>
     </section>
@@ -103,12 +131,14 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 import useExecutiveOverview from "@/composables/useExecutiveOverview";
 
 const {
-  alerts,
+  alertItems,
+  baselineRecommendation,
+  baselineSignals,
   deploymentReadiness,
   error,
   loadOverview,
@@ -121,40 +151,90 @@ const {
   formatTime,
 } = useExecutiveOverview();
 
+const focusMode = ref("profit");
+
+const focusOptions = [
+  { label: "利润", value: "profit" },
+  { label: "告警", value: "alerts" },
+  { label: "服务", value: "service" },
+];
+
 const today = computed(() => profitCockpit.value?.today || {});
 const last7d = computed(() => profitCockpit.value?.last_7d || {});
 const inventory = computed(() => profitCockpit.value?.inventory || {});
 const generatedAt = computed(() => formatTime(overview.value?.generated_at));
-const alertItems = computed(() =>
-  Array.isArray(alerts.value?.items) ? alerts.value.items.slice(0, 6) : [],
-);
-const alertCount = computed(() => Number(alerts.value?.summary?.count || 0));
+const alertCount = computed(() => Number(overview.value?.alerts?.summary?.count || 0));
+
+const spotlight = computed(() => {
+  if (focusMode.value === "alerts") {
+    return {
+      title: alertCount.value > 0 ? `先处理这 ${alertCount.value} 条告警` : "今天没有新的告警压力",
+      description: alertCount.value > 0
+        ? "先看告警，再决定要不要调整节奏。别一上来就去翻每个指标。"
+        : "告警面比较平静，可以把注意力放在利润和成交样本上。",
+      pills: [
+        `${alertCount.value} 条活动告警`,
+        runtime.value?.server_ready ? "服务正常" : "服务需要关注",
+        validationBaseline.value?.status || "观察中",
+      ],
+    };
+  }
+
+  if (focusMode.value === "service") {
+    const runningCount = (runtime.value?.services
+      ? Object.values(runtime.value.services).filter(item => item?.running || item?.is_running).length
+      : 0);
+    return {
+      title: runtime.value?.server_ready ? "服务面基本稳住了" : "先看服务，再谈结果",
+      description: runtime.value?.server_ready
+        ? "后台服务现在能接任务，接下来重点看成交和利润有没有跟上。"
+        : "只要服务状态不稳，利润数字就没法解释，先把运行面看清楚。",
+      pills: [
+        `运行服务 ${runningCount} 个`,
+        runtime.value?.automation?.busy ? "后台正在处理任务" : "当前没有排队任务",
+        validationBaseline.value?.ready_for_tune ? "可以调优" : "先继续观察",
+      ],
+    };
+  }
+
+  return {
+    title: Number(last7d.value?.realized_net_profit || 0) > 0 ? "利润还在往上走" : "这周利润还没起来",
+    description: Number(last7d.value?.realized_net_profit || 0) > 0
+      ? "先看近 7 天利润和在途资金，确认这波收益是不是可持续。"
+      : "今天先别急着解读大盘，先看样本够不够、监听和审批有没有跑起来。",
+    pills: [
+      `近 7 天利润 ${formatMoney(last7d.value?.realized_net_profit || 0)}`,
+      `在途资金 ${formatMoney(inventory.value?.deployed_capital || 0)}`,
+      `平均 ROI ${formatPercent(last7d.value?.avg_realized_roi || 0)}`,
+    ],
+  };
+});
 
 const summaryCards = computed(() => [
-    {
-      label: "今日净利润",
-      value: formatMoney(today.value?.realized_net_profit || 0),
-      note: `今天成交 ${formatInteger(today.value?.sold_count || 0)} 笔`,
-      tone: toneByNumber(today.value?.realized_net_profit || 0),
-    },
   {
-    label: "近 7 天净利润",
+    label: "今日利润",
+    value: formatMoney(today.value?.realized_net_profit || 0),
+    note: `今天成交 ${formatInteger(today.value?.sold_count || 0)} 笔`,
+    tone: toneByNumber(today.value?.realized_net_profit || 0),
+  },
+  {
+    label: "近 7 天利润",
     value: formatMoney(last7d.value?.realized_net_profit || 0),
     note: `平均 ROI ${formatPercent(last7d.value?.avg_realized_roi || 0)}`,
     tone: toneByNumber(last7d.value?.realized_net_profit || 0),
   },
-    {
-      label: "在途资金",
-      value: formatMoney(inventory.value?.deployed_capital || 0),
-      note: `还有 ${formatInteger(inventory.value?.active_trade_count || 0)} 笔在处理`,
-      tone: "neutral",
-    },
   {
-      label: "活跃告警",
-      value: formatInteger(alertCount.value),
-      note: runtime.value?.server_ready ? "服务正常" : "服务需要关注",
-      tone: alertCount.value > 0 ? "warning" : "positive",
-    },
+    label: "在途资金",
+    value: formatMoney(inventory.value?.deployed_capital || 0),
+    note: `还有 ${formatInteger(inventory.value?.active_trade_count || 0)} 笔在处理`,
+    tone: "neutral",
+  },
+  {
+    label: "告警数量",
+    value: formatInteger(alertCount.value),
+    note: runtime.value?.server_ready ? "服务正常" : "服务需要关注",
+    tone: alertCount.value > 0 ? "warning" : "positive",
+  },
 ]);
 
 const profitabilityRows = computed(() => [
@@ -203,21 +283,11 @@ const runtimeRows = computed(() => {
 
 const baselineRows = computed(() => [
   { label: "当前状态", value: String(validationBaseline.value?.status || "观察中") },
-  { label: "可调优", value: validationBaseline.value?.ready_for_tune ? "是" : "否" },
-  { label: "可扩量", value: validationBaseline.value?.ready_for_scale ? "是" : "否" },
+  { label: "可以调优", value: validationBaseline.value?.ready_for_tune ? "是" : "否" },
+  { label: "可以放量", value: validationBaseline.value?.ready_for_scale ? "是" : "否" },
   { label: "运行模式", value: String(deploymentReadiness.value?.operating_profile?.mode_label || "标准") },
   { label: "方向", value: String(validationBaseline.value?.direction || "暂无") },
-  { label: "最近建议", value: String(validationBaseline.value?.recommendation || "继续观察") },
 ]);
-
-const blockingCodes = computed(() => {
-  const codes = [];
-  if (Array.isArray(validationBaseline.value?.blocking_codes))
-    codes.push(...validationBaseline.value.blocking_codes);
-  if (Array.isArray(validationBaseline.value?.tune_blocking_codes))
-    codes.push(...validationBaseline.value.tune_blocking_codes);
-  return [...new Set(codes.filter(Boolean))].slice(0, 10);
-});
 
 const severityText = (severity) => {
   const value = String(severity || "").toLowerCase();
@@ -255,29 +325,42 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .page-intro,
+.story-card,
 .summary-card,
-.panel {
+.panel,
+.sub-panel {
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
 }
 
-.page-intro {
+.page-intro,
+.story-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.page-intro {
   padding: 20px 24px;
 }
 
-.page-intro h2 {
+.story-card {
+  padding: 20px 24px;
+  border-left: 4px solid #409eff;
+}
+
+.page-intro h2,
+.story-card h3 {
   margin: 8px 0;
   color: #303133;
   font-size: 22px;
   font-weight: 600;
 }
 
-.page-intro p {
+.page-intro p,
+.story-card p {
   margin: 0;
   color: #606266;
   line-height: 1.7;
@@ -291,19 +374,37 @@ const formatNumber = (value, digits = 2) =>
   text-transform: uppercase;
 }
 
-.summary-grid,
-.panel-grid {
+.story-switch,
+.story-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.story-pills {
+  margin-top: 16px;
+}
+
+.summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 16px;
 }
 
 .panel-grid {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .summary-card {
   padding: 18px 20px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 21, 41, 0.12);
 }
 
 .summary-label {
@@ -314,7 +415,7 @@ const formatNumber = (value, digits = 2) =>
 .summary-value {
   margin: 10px 0 8px;
   color: #303133;
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 600;
   line-height: 1;
 }
@@ -354,7 +455,9 @@ const formatNumber = (value, digits = 2) =>
 .panel-meta,
 .service-note,
 .service-time,
-.alert-row p {
+.alert-row p,
+.alert-meta,
+.recommendation-label {
   color: #909399;
   font-size: 13px;
 }
@@ -368,7 +471,8 @@ const formatNumber = (value, digits = 2) =>
 
 .metric-row,
 .service-row,
-.alert-row {
+.alert-row,
+.recommendation-card {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -378,15 +482,16 @@ const formatNumber = (value, digits = 2) =>
   background: #fafafa;
 }
 
+.service-row,
+.alert-row,
+.recommendation-card {
+  display: grid;
+}
+
 .metric-row strong,
 .service-row strong,
 .alert-row strong {
   color: #303133;
-}
-
-.service-row,
-.alert-row {
-  display: grid;
 }
 
 .service-side {
@@ -396,23 +501,40 @@ const formatNumber = (value, digits = 2) =>
   gap: 12px;
 }
 
-.alert-top {
+.sub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.sub-panel {
+  padding: 16px;
+}
+
+.sub-title {
+  margin-bottom: 12px;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.compact-list .metric-row {
+  padding: 12px 14px;
+}
+
+.alert-top,
+.alert-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.alert-row p {
+.alert-row p,
+.recommendation-card p {
   margin: 8px 0 0;
   line-height: 1.6;
-}
-
-.pill-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
 }
 
 .pill {
@@ -424,19 +546,22 @@ const formatNumber = (value, digits = 2) =>
   font-weight: 600;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
   .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 900px) {
   .page-intro,
-  .panel-grid {
+  .story-head,
+  .panel-grid,
+  .sub-grid {
     grid-template-columns: 1fr;
   }
 
-  .page-intro {
+  .page-intro,
+  .story-head {
     flex-direction: column;
     align-items: stretch;
   }
@@ -448,8 +573,10 @@ const formatNumber = (value, digits = 2) =>
   }
 
   .page-intro,
+  .story-card,
   .panel,
-  .summary-card {
+  .summary-card,
+  .sub-panel {
     padding: 16px;
   }
 }
