@@ -10,8 +10,6 @@ declare module 'vue' {
   export interface GlobalComponents {
     NAlert: typeof import('naive-ui')['NAlert']
     NAvatar: typeof import('naive-ui')['NAvatar']
-    NBreadcrumb: typeof import('naive-ui')['NBreadcrumb']
-    NBreadcrumbItem: typeof import('naive-ui')['NBreadcrumbItem']
     NButton: typeof import('naive-ui')['NButton']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']

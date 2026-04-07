@@ -2,11 +2,11 @@
   <div class="page-shell">
     <section class="page-intro">
       <div>
-        <div class="section-label">管理员视图</div>
-        <h2>管理总览</h2>
-        <p>首页只看经营结果、告警、服务状态和验证基线，不再暴露调参入口。</p>
+        <div class="section-label">总览</div>
+        <h2>先看结果</h2>
+        <p>这里看利润、告警和后台状态。参数调整已经放到后台处理，不放在这个页面里。</p>
       </div>
-      <n-button type="primary" :loading="loading" @click="loadOverview">刷新总览</n-button>
+      <n-button type="primary" :loading="loading" @click="loadOverview">刷新数据</n-button>
     </section>
 
     <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
@@ -23,7 +23,7 @@
       <article class="panel">
         <div class="panel-header">
           <div>
-            <div class="section-label">经营结果</div>
+            <div class="section-label">收益</div>
             <h3>收益与库存</h3>
           </div>
           <span class="panel-meta">{{ generatedAt }}</span>
@@ -39,7 +39,7 @@
       <article class="panel">
         <div class="panel-header">
           <div>
-            <div class="section-label">服务状态</div>
+            <div class="section-label">服务</div>
             <h3>后台服务</h3>
           </div>
         </div>
@@ -62,7 +62,7 @@
       <article class="panel">
         <div class="panel-header">
           <div>
-            <div class="section-label">风险与告警</div>
+            <div class="section-label">告警</div>
             <h3>当前告警</h3>
           </div>
           <span class="panel-meta">{{ alertCount }} 条</span>
@@ -84,7 +84,7 @@
       <article class="panel">
         <div class="panel-header">
           <div>
-            <div class="section-label">运行基线</div>
+            <div class="section-label">基线</div>
             <h3>验证就绪度</h3>
           </div>
         </div>
@@ -131,30 +131,30 @@ const alertItems = computed(() =>
 const alertCount = computed(() => Number(alerts.value?.summary?.count || 0));
 
 const summaryCards = computed(() => [
-  {
-    label: "今日净利润",
-    value: formatMoney(today.value?.realized_net_profit || 0),
-    note: `${formatInteger(today.value?.sold_count || 0)} 笔成交`,
-    tone: toneByNumber(today.value?.realized_net_profit || 0),
-  },
+    {
+      label: "今日净利润",
+      value: formatMoney(today.value?.realized_net_profit || 0),
+      note: `今天成交 ${formatInteger(today.value?.sold_count || 0)} 笔`,
+      tone: toneByNumber(today.value?.realized_net_profit || 0),
+    },
   {
     label: "近 7 天净利润",
     value: formatMoney(last7d.value?.realized_net_profit || 0),
     note: `平均 ROI ${formatPercent(last7d.value?.avg_realized_roi || 0)}`,
     tone: toneByNumber(last7d.value?.realized_net_profit || 0),
   },
+    {
+      label: "在途资金",
+      value: formatMoney(inventory.value?.deployed_capital || 0),
+      note: `还有 ${formatInteger(inventory.value?.active_trade_count || 0)} 笔在处理`,
+      tone: "neutral",
+    },
   {
-    label: "在途资金",
-    value: formatMoney(inventory.value?.deployed_capital || 0),
-    note: `${formatInteger(inventory.value?.active_trade_count || 0)} 笔进行中`,
-    tone: "neutral",
-  },
-  {
-    label: "活跃告警",
-    value: formatInteger(alertCount.value),
-    note: runtime.value?.server_ready ? "服务整体可用" : "服务存在限制",
-    tone: alertCount.value > 0 ? "warning" : "positive",
-  },
+      label: "活跃告警",
+      value: formatInteger(alertCount.value),
+      note: runtime.value?.server_ready ? "服务正常" : "服务需要关注",
+      tone: alertCount.value > 0 ? "warning" : "positive",
+    },
 ]);
 
 const profitabilityRows = computed(() => [
@@ -173,21 +173,21 @@ const runtimeRows = computed(() => {
     {
       label: "自动化总控",
       value: automation.all_running ? "运行中" : "部分运行",
-      note: automation.busy ? "后台正在执行任务" : "服务可接收新任务",
+      note: automation.busy ? "后台正在处理任务" : "当前没有排队任务",
       time: formatTime(automation.last_run_at),
       type: automation.all_running ? "success" : "warning",
     },
     {
       label: "市场监听",
       value: services.monitor?.is_running ? "运行中" : "已停止",
-      note: services.monitor?.circuit_open ? "当前已熔断" : "监听服务正常",
+      note: services.monitor?.circuit_open ? "当前已熔断" : "监听状态正常",
       time: formatTime(services.monitor?.last_run_at),
       type: services.monitor?.is_running ? "success" : "default",
     },
     {
       label: "自动交易审批",
       value: services.autotrade?.running ? "运行中" : "已停止",
-      note: `累计审批 ${formatInteger(services.autotrade?.total_approved || 0)} 笔`,
+      note: `累计通过 ${formatInteger(services.autotrade?.total_approved || 0)} 笔`,
       time: formatTime(services.autotrade?.last_run_at),
       type: services.autotrade?.running ? "success" : "default",
     },

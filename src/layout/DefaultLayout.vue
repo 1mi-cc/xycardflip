@@ -5,7 +5,7 @@
         <img alt="XYZW" class="logo-image" src="/icons/xiaoyugan.png">
         <div v-if="!isCollapsed" class="logo-copy">
           <strong>XYZW 后台</strong>
-          <span>卡片倒卖数据看板</span>
+          <span>卡片交易后台</span>
         </div>
       </div>
 
@@ -33,15 +33,10 @@
           </button>
           <div class="header-meta">
             <div class="header-title">{{ currentTitle }}</div>
-            <n-breadcrumb class="header-breadcrumb">
-              <n-breadcrumb-item>后台</n-breadcrumb-item>
-              <n-breadcrumb-item>{{ currentTitle }}</n-breadcrumb-item>
-            </n-breadcrumb>
           </div>
         </div>
 
         <div class="header-right">
-          <n-tag size="small" type="info">{{ currentRoleLabel }}</n-tag>
           <n-dropdown :options="userMenuOptions" @select="handleUserAction">
             <button class="user-button" type="button">
               <n-avatar round size="small">{{ displayName.slice(0, 1) }}</n-avatar>
@@ -98,14 +93,14 @@ const showMobileMenu = ref(false);
 
 const navItems = [
   {
-    label: "管理总览",
+    label: "总览",
     path: "/admin/dashboard",
     icon: BarChartOutline,
     permission: "dashboard:view",
     adminOnly: true,
   },
   {
-    label: "卡片倒卖",
+    label: "卡片交易",
     path: "/admin/card-flip-ops",
     icon: PieChartOutline,
     permission: "cardflip:view",
@@ -124,17 +119,32 @@ const visibleNavItems = computed(() =>
   }),
 );
 
-const currentTitle = computed(() => String(route.meta?.title || "卡片倒卖"));
-const displayName = computed(() =>
-  String(authStore.userInfo?.nickname || authStore.userInfo?.username || "管理员"),
-);
+const currentTitle = computed(() => String(route.meta?.title || "卡片交易"));
+const displayName = computed(() => {
+  const username = String(authStore.userInfo?.username || "").trim();
+  const nickname = String(authStore.userInfo?.nickname || "").trim();
+  const genericNames = new Set([
+    "服务器操作员",
+    "本地操作员",
+    "Local Admin",
+    "System Admin",
+    "operator",
+    "admin",
+  ]);
+
+  if (nickname && !genericNames.has(nickname))
+    return nickname;
+  if (username && !genericNames.has(username))
+    return username;
+  return currentRoleLabel.value;
+});
 const currentRoleLabel = computed(() => {
   const role = String(authStore.userInfo?.roleKeys?.[0] || "viewer").toLowerCase();
   if (role === "admin")
     return "管理员";
   if (role === "ops")
     return "运营";
-  return "只读";
+  return "查看";
 });
 
 const toggleSidebar = () => {
@@ -287,18 +297,14 @@ const handleUserAction = async (key) => {
 }
 
 .header-meta {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
 }
 
 .header-title {
   color: #303133;
   font-size: 18px;
   font-weight: 600;
-}
-
-.header-breadcrumb {
-  color: #909399;
 }
 
 .user-button {
@@ -336,7 +342,11 @@ const handleUserAction = async (key) => {
     padding: 0 12px;
   }
 
-  .header-breadcrumb,
+  .header-meta,
+  .user-button span {
+    display: flex;
+  }
+
   .user-button span {
     display: none;
   }

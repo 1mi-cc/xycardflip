@@ -1,34 +1,32 @@
 <template>
-  <div class="ops-page">
-    <section class="hero-panel">
+  <div class="page-shell">
+    <section class="page-intro">
       <div>
-        <div class="hero-kicker">卡片数据台</div>
-        <h2>只看数据，不看参数</h2>
-        <p>
-          这里汇总卡片倒卖的经营结果、服务稳定性、风险状态和验证基线。调参、预设、执行控制和批量动作全部从前台撤下。
-        </p>
+        <div class="section-label">交易看板</div>
+        <h2>卡片交易概况</h2>
+        <p>这里看机会、成交、收益和风险。参数调整和执行入口已经放到后台，不放在这个页面里。</p>
       </div>
-      <n-button type="primary" :loading="loading" @click="loadOverview">刷新数据台</n-button>
+      <n-button type="primary" :loading="loading" @click="loadOverview">刷新</n-button>
     </section>
 
     <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
 
-    <section class="stat-grid">
-      <article v-for="card in summaryCards" :key="card.id" class="stat-card">
-        <div class="stat-label">{{ card.label }}</div>
-        <div class="stat-value">{{ card.value }}</div>
-        <div class="stat-note" :class="card.tone">{{ card.note }}</div>
+    <section class="summary-grid">
+      <article v-for="card in summaryCards" :key="card.label" class="summary-card">
+        <div class="summary-label">{{ card.label }}</div>
+        <div class="summary-value">{{ card.value }}</div>
+        <div class="summary-note" :class="card.tone">{{ card.note }}</div>
       </article>
     </section>
 
-    <section class="content-grid">
+    <section class="panel-grid">
       <article class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <div>
-            <div class="panel-kicker">交易结果</div>
+            <div class="section-label">收益</div>
             <h3>收益与库存</h3>
           </div>
-          <span>{{ generatedAt }}</span>
+          <span class="panel-meta">{{ generatedAt }}</span>
         </div>
         <div class="metric-list">
           <div v-for="item in profitabilityRows" :key="item.label" class="metric-row">
@@ -61,9 +59,9 @@
       </article>
 
       <article class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <div>
-            <div class="panel-kicker">后台状态</div>
+            <div class="section-label">服务</div>
             <h3>自动化与服务</h3>
           </div>
         </div>
@@ -82,57 +80,48 @@
       </article>
     </section>
 
-    <section class="content-grid">
+    <section class="panel-grid">
       <article class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <div>
-            <div class="panel-kicker">风险状态</div>
-            <h3>当前告警与阻塞</h3>
+            <div class="section-label">告警</div>
+            <h3>当前告警</h3>
           </div>
-          <span>{{ alertItems.length }} 条</span>
+          <span class="panel-meta">{{ alertCount }} 条</span>
         </div>
         <div v-if="alertItems.length" class="alert-list">
-          <div v-for="item in alertItems" :key="item.alert_key || item.code" class="alert-row">
-            <div class="alert-title">
-              <strong>{{ item.title || item.code || "未知告警" }}</strong>
-              <n-tag size="small" :type="severityTagType(item.effective_severity || item.severity)">
+          <div v-for="item in alertItems" :key="item.alert_key || item.title" class="alert-row">
+            <div class="alert-top">
+              <strong>{{ item.title }}</strong>
+              <n-tag size="small" :type="severityType(item.effective_severity || item.severity)">
                 {{ severityText(item.effective_severity || item.severity) }}
               </n-tag>
             </div>
-            <p>{{ item.message || item.target || "-" }}</p>
+            <p>{{ item.message }}</p>
+            <div class="alert-meta">
+              <span>负责人：{{ item.incident_owner || "-" }}</span>
+              <span>优先级：{{ item.incident_priority || "-" }}</span>
+            </div>
           </div>
         </div>
         <n-empty v-else description="当前没有活动告警"></n-empty>
       </article>
 
       <article class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <div>
-            <div class="panel-kicker">验证基线</div>
-            <h3>前向验证与 readiness</h3>
+            <div class="section-label">基线</div>
+            <h3>运行护栏</h3>
           </div>
         </div>
         <div class="metric-list">
-          <div class="metric-row">
-            <span>基线状态</span>
-            <strong>{{ baselineStatus }}</strong>
+          <div v-for="item in baselineRows" :key="item.label" class="metric-row">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
           </div>
-          <div class="metric-row">
-            <span>可调参</span>
-            <strong>{{ readyForTune }}</strong>
-          </div>
-          <div class="metric-row">
-            <span>可扩量</span>
-            <strong>{{ readyForScale }}</strong>
-          </div>
-          <div class="metric-row">
-            <span>方向</span>
-            <strong>{{ baselineDirection }}</strong>
-          </div>
-          <div class="metric-row">
-            <span>最近建议</span>
-            <strong>{{ baselineRecommendation }}</strong>
-          </div>
+        </div>
+        <div v-if="baselineCodes.length" class="pill-list">
+          <span v-for="code in baselineCodes" :key="code" class="pill">{{ code }}</span>
         </div>
       </article>
     </section>
@@ -145,269 +134,283 @@ import { computed } from "vue";
 import useExecutiveOverview from "@/composables/useExecutiveOverview";
 
 const {
-  loading,
+  alerts,
+  deploymentReadiness,
   error,
-  profitability,
+  loadOverview,
+  loading,
+  overview,
   profitCockpit,
+  profitability,
   runtime,
   validationBaseline,
-  alerts,
-  loadOverview,
   formatTime,
 } = useExecutiveOverview();
 
-const formatMoney = value => new Intl.NumberFormat("zh-CN", {
-  style: "currency",
-  currency: "CNY",
-  maximumFractionDigits: 2,
-}).format(Number(value || 0));
-const formatNumber = (value, digits = 1) => new Intl.NumberFormat("zh-CN", {
-  minimumFractionDigits: digits,
-  maximumFractionDigits: digits,
-}).format(Number(value || 0));
-const formatPercent = value => `${formatNumber(Number(value || 0) * 100, 1)}%`;
-const formatInteger = value => new Intl.NumberFormat("zh-CN", {
-  maximumFractionDigits: 0,
-}).format(Number(value || 0));
-
-const generatedAt = computed(() => formatTime(runtime.value?.generated_at || runtime.value?.updated_at));
-const alertItems = computed(() => Array.isArray(alerts.value?.items) ? alerts.value.items.slice(0, 8) : []);
+const last7d = computed(() => profitCockpit.value?.last_7d || {});
+const inventory = computed(() => profitCockpit.value?.inventory || {});
+const sourceLeaders = computed(() =>
+  (Array.isArray(profitCockpit.value?.source_leaderboard_7d) ? profitCockpit.value.source_leaderboard_7d : [])
+    .slice(0, 5)
+    .map(item => ({
+      name: String(item.source || "未知来源"),
+      value: formatMoney(item.realized_net_profit || 0),
+    })),
+);
+const sellerLeaders = computed(() =>
+  (Array.isArray(profitCockpit.value?.seller_leaderboard_7d) ? profitCockpit.value.seller_leaderboard_7d : [])
+    .slice(0, 5)
+    .map(item => ({
+      name: String(item.seller_id || "未知卖家"),
+      value: formatMoney(item.realized_net_profit || 0),
+    })),
+);
+const generatedAt = computed(() => formatTime(overview.value?.generated_at));
+const alertItems = computed(() =>
+  Array.isArray(alerts.value?.items) ? alerts.value.items.slice(0, 8) : [],
+);
+const alertCount = computed(() => Number(alerts.value?.summary?.count || 0));
 
 const summaryCards = computed(() => [
   {
-    id: "pending",
     label: "待审机会",
     value: formatInteger(profitability.value?.pending_review_count || 0),
-    note: `${profitability.value?.total_trade_count || 0} 笔累计交易`,
+    note: `累计交易 ${formatInteger(profitability.value?.total_trade_count || 0)} 笔`,
     tone: "neutral",
   },
   {
-    id: "active",
     label: "进行中交易",
     value: formatInteger(profitability.value?.active_trades_count || 0),
-    note: `${profitCockpit.value?.inventory?.listed_trade_count || 0} 笔已挂售`,
+    note: `其中挂售 ${formatInteger(inventory.value?.listed_trade_count || 0)} 笔`,
     tone: "neutral",
   },
   {
-    id: "sold",
-    label: "已卖出记录",
+    label: "已卖出",
     value: formatInteger(profitability.value?.sold_count || 0),
-    note: `利润命中率 ${formatPercent(profitability.value?.profit_hit_rate || 0)}`,
+    note: `命中率 ${formatPercent(profitability.value?.profit_hit_rate || 0)}`,
     tone: "positive",
   },
   {
-    id: "gross",
     label: "累计毛利",
     value: formatMoney(profitability.value?.gross_profit || 0),
-    note: `近 7 天净利 ${formatMoney(profitCockpit.value?.last_7d?.realized_net_profit || 0)}`,
-    tone: Number(profitability.value?.gross_profit || 0) >= 0 ? "positive" : "warning",
+    note: `近 7 天利润 ${formatMoney(last7d.value?.realized_net_profit || 0)}`,
+    tone: toneByNumber(profitability.value?.gross_profit || 0),
   },
   {
-    id: "capital",
     label: "在途资金",
-    value: formatMoney(profitCockpit.value?.inventory?.deployed_capital || 0),
-    note: `预计价差 ${formatMoney(profitCockpit.value?.inventory?.expected_exit_spread || 0)}`,
+    value: formatMoney(inventory.value?.deployed_capital || 0),
+    note: `预计价差 ${formatMoney(inventory.value?.expected_exit_spread || 0)}`,
     tone: "neutral",
   },
   {
-    id: "baseline",
     label: "验证基线",
-    value: validationBaseline.value?.ready ? "就绪" : "观察中",
-    note: validationBaseline.value?.direction || "暂无方向",
+    value: String(validationBaseline.value?.status || "观察中"),
+    note: String(validationBaseline.value?.direction || "还没有明显方向"),
     tone: validationBaseline.value?.ready ? "positive" : "warning",
   },
 ]);
 
 const profitabilityRows = computed(() => [
-  { label: "今日净利", value: formatMoney(profitCockpit.value?.today?.realized_net_profit || 0) },
-  { label: "近 7 天净利", value: formatMoney(profitCockpit.value?.last_7d?.realized_net_profit || 0) },
-  { label: "平均已实现 ROI", value: formatPercent(profitability.value?.avg_realized_roi || 0) },
+  { label: "近 7 天利润", value: formatMoney(last7d.value?.realized_net_profit || 0) },
+  { label: "累计净利润", value: formatMoney(profitability.value?.realized_net_profit || 0) },
+  { label: "平均 ROI", value: formatPercent(profitability.value?.avg_realized_roi || 0) },
   { label: "平均持有天数", value: `${formatNumber(profitability.value?.avg_holding_days || 0, 1)} 天` },
   { label: "中位持有天数", value: `${formatNumber(profitability.value?.median_holding_days || 0, 1)} 天` },
-  { label: "目标退出价值", value: formatMoney(profitCockpit.value?.inventory?.target_exit_value || 0) },
+  { label: "目标退出价值", value: formatMoney(inventory.value?.target_exit_value || 0) },
 ]);
 
-const sourceLeaders = computed(() =>
-  (Array.isArray(profitCockpit.value?.source_leaderboard_7d) ? profitCockpit.value.source_leaderboard_7d : [])
-    .slice(0, 5)
-    .map(item => ({
-      name: item?.source || "未知来源",
-      value: formatMoney(item?.realized_net_profit || 0),
-    })),
-);
+const runtimeRows = computed(() => {
+  const services = runtime.value?.services || {};
+  const automation = runtime.value?.automation || {};
+  return [
+    {
+      label: "自动化总控",
+      value: automation.all_running ? "运行中" : "部分运行",
+      note: automation.busy ? "后台正在处理任务" : "当前没有排队任务",
+      time: formatTime(automation.last_run_at),
+      type: automation.all_running ? "success" : "warning",
+    },
+    {
+      label: "市场监听",
+      value: services.monitor?.is_running ? "运行中" : "已停止",
+      note: services.monitor?.circuit_open ? "当前已熔断" : "监听状态正常",
+      time: formatTime(services.monitor?.last_run_at),
+      type: services.monitor?.is_running ? "success" : "default",
+    },
+    {
+      label: "自动交易审批",
+      value: services.autotrade?.running ? "运行中" : "已停止",
+      note: `累计通过 ${formatInteger(services.autotrade?.total_approved || 0)} 笔`,
+      time: formatTime(services.autotrade?.last_run_at),
+      type: services.autotrade?.running ? "success" : "default",
+    },
+    {
+      label: "执行重试",
+      value: services.execution_retry?.running ? "运行中" : "已停止",
+      note: `累计重试 ${formatInteger(services.execution_retry?.total_retried || 0)} 次`,
+      time: formatTime(services.execution_retry?.last_run_at),
+      type: services.execution_retry?.running ? "success" : "default",
+    },
+  ];
+});
 
-const sellerLeaders = computed(() =>
-  (Array.isArray(profitCockpit.value?.seller_leaderboard_7d) ? profitCockpit.value.seller_leaderboard_7d : [])
-    .slice(0, 5)
-    .map(item => ({
-      name: item?.seller_id || "未知卖家",
-      value: formatMoney(item?.realized_net_profit || 0),
-    })),
-);
-
-const runtimeRows = computed(() => [
-  {
-    label: "市场监听",
-    value: runtime.value?.services?.monitor?.is_running ? "运行中" : "已停止",
-    note: runtime.value?.services?.monitor?.circuit_open ? "当前熔断中" : "后台采集服务",
-    time: formatTime(runtime.value?.services?.monitor?.last_run_at),
-    type: runtime.value?.services?.monitor?.is_running ? "success" : "default",
-  },
-  {
-    label: "自动审批",
-    value: runtime.value?.services?.autotrade?.running ? "运行中" : "已停止",
-    note: `累计审批 ${runtime.value?.services?.autotrade?.total_approved || 0} 笔`,
-    time: formatTime(runtime.value?.services?.autotrade?.last_run_at),
-    type: runtime.value?.services?.autotrade?.running ? "success" : "default",
-  },
-  {
-    label: "执行重试",
-    value: runtime.value?.services?.execution_retry?.running ? "运行中" : "已停止",
-    note: `累计重试 ${runtime.value?.services?.execution_retry?.total_retried || 0} 次`,
-    time: formatTime(runtime.value?.services?.execution_retry?.last_run_at),
-    type: runtime.value?.services?.execution_retry?.running ? "success" : "default",
-  },
-  {
-    label: "服务总状态",
-    value: runtime.value?.server_ready ? "就绪" : "受限",
-    note: "由健康检查与阻塞原因共同决定",
-    time: formatTime(runtime.value?.generated_at),
-    type: runtime.value?.server_ready ? "success" : "warning",
-  },
+const baselineRows = computed(() => [
+  { label: "当前状态", value: String(validationBaseline.value?.status || "观察中") },
+  { label: "可以调优", value: validationBaseline.value?.ready_for_tune ? "是" : "否" },
+  { label: "可以放量", value: validationBaseline.value?.ready_for_scale ? "是" : "否" },
+  { label: "运行模式", value: String(deploymentReadiness.value?.operating_profile?.mode_label || "标准") },
+  { label: "方向", value: String(validationBaseline.value?.direction || "暂无") },
+  { label: "最近建议", value: String(validationBaseline.value?.recommendation || "继续观察") },
 ]);
 
-const baselineStatus = computed(() => validationBaseline.value?.status || "观察中");
-const readyForTune = computed(() => (validationBaseline.value?.ready_for_tune ? "是" : "否"));
-const readyForScale = computed(() => (validationBaseline.value?.ready_for_scale ? "是" : "否"));
-const baselineDirection = computed(() => validationBaseline.value?.direction || "暂无方向");
-const baselineRecommendation = computed(() => validationBaseline.value?.recommendation || "继续观察");
+const baselineCodes = computed(() => {
+  const codes = [];
+  if (Array.isArray(validationBaseline.value?.blocking_codes))
+    codes.push(...validationBaseline.value.blocking_codes);
+  if (Array.isArray(validationBaseline.value?.tune_blocking_codes))
+    codes.push(...validationBaseline.value.tune_blocking_codes);
+  return [...new Set(codes.filter(Boolean))].slice(0, 10);
+});
 
 const severityText = (severity) => {
-  const text = String(severity || "").toLowerCase();
-  if (text === "error")
+  const value = String(severity || "").toLowerCase();
+  if (value === "error")
     return "严重";
-  if (text === "warning")
+  if (value === "warning")
     return "预警";
   return "提示";
 };
 
-const severityTagType = (severity) => {
-  const text = String(severity || "").toLowerCase();
-  if (text === "error")
+const severityType = (severity) => {
+  const value = String(severity || "").toLowerCase();
+  if (value === "error")
     return "error";
-  if (text === "warning")
+  if (value === "warning")
     return "warning";
   return "info";
 };
+
+const toneByNumber = value =>
+  Number(value || 0) > 0 ? "positive" : Number(value || 0) < 0 ? "warning" : "neutral";
+const formatMoney = value =>
+  new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: 2 }).format(Number(value || 0));
+const formatPercent = value => `${formatNumber(Number(value || 0) * 100, 1)}%`;
+const formatInteger = value =>
+  new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(Number(value || 0));
+const formatNumber = (value, digits = 2) =>
+  new Intl.NumberFormat("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value || 0));
 </script>
 
 <style scoped lang="scss">
-.ops-page {
+.page-shell {
   display: grid;
   gap: 16px;
 }
 
-.hero-panel,
+.page-intro,
+.summary-card,
 .panel,
-.stat-card {
+.sub-panel {
+  border-radius: 8px;
   background: #fff;
-  border-radius: 4px;
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
 }
 
-.hero-panel {
+.page-intro {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 24px;
+  padding: 20px 24px;
 }
 
-.hero-kicker,
-.section-label,
-.panel-kicker {
-  display: inline-block;
-  color: #409eff;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.hero-panel h2,
-.panel h3 {
-  margin: 10px 0 0;
+.page-intro h2 {
+  margin: 8px 0;
   color: #303133;
   font-size: 22px;
   font-weight: 600;
 }
 
-.hero-panel p {
-  margin: 12px 0 0;
+.page-intro p {
+  margin: 0;
   color: #606266;
   line-height: 1.7;
 }
 
-.stat-grid,
-.content-grid,
-.sub-grid {
+.section-label {
+  color: #409eff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summary-grid {
   display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 16px;
 }
 
-.stat-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.content-grid {
+.panel-grid {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.sub-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 16px;
+.summary-card {
+  padding: 18px 20px;
 }
 
-.stat-card {
-  padding: 20px;
-}
-
-.stat-label {
+.summary-label {
   color: #909399;
   font-size: 13px;
 }
 
-.stat-value {
-  margin-top: 10px;
+.summary-value {
+  margin: 10px 0 8px;
   color: #303133;
-  font-size: 30px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 600;
   line-height: 1;
 }
 
-.stat-note {
-  margin-top: 10px;
+.summary-note {
   color: #606266;
   font-size: 13px;
 }
 
-.stat-note.positive {
+.summary-note.positive {
   color: #67c23a;
 }
 
-.stat-note.warning {
+.summary-note.warning {
   color: #e6a23c;
 }
 
 .panel {
-  padding: 20px;
+  padding: 20px 24px;
 }
 
-.panel-head {
+.panel-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+}
+
+.panel-header h3 {
+  margin: 8px 0 0;
+  color: #303133;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.panel-meta,
+.service-note,
+.service-time,
+.alert-row p,
+.alert-meta {
   color: #909399;
   font-size: 13px;
 }
@@ -425,10 +428,15 @@ const severityTagType = (severity) => {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: 4px;
-  background: #f5f7fa;
-  color: #606266;
+  padding: 14px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.service-row,
+.alert-row {
+  display: grid;
 }
 
 .metric-row strong,
@@ -437,28 +445,22 @@ const severityTagType = (severity) => {
   color: #303133;
 }
 
-.service-row,
-.alert-row {
-  display: grid;
-}
-
-.service-note,
-.service-time {
-  color: #909399;
-  font-size: 13px;
-}
-
 .service-side {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+}
+
+.sub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
 }
 
 .sub-panel {
   padding: 16px;
-  border-radius: 4px;
-  background: #f5f7fa;
 }
 
 .sub-title {
@@ -469,11 +471,11 @@ const severityTagType = (severity) => {
 }
 
 .compact-list .metric-row {
-  padding-left: 0;
-  padding-right: 0;
+  padding: 12px 14px;
 }
 
-.alert-title {
+.alert-top,
+.alert-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -481,31 +483,55 @@ const severityTagType = (severity) => {
 }
 
 .alert-row p {
-  margin: 10px 0 0;
-  color: #606266;
+  margin: 8px 0 0;
   line-height: 1.6;
 }
 
-@media (max-width: 1200px) {
-  .stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 1400px) {
+  .summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 900px) {
-  .hero-panel {
-    flex-direction: column;
-  }
-
-  .content-grid,
+  .page-intro,
+  .panel-grid,
   .sub-grid {
     grid-template-columns: 1fr;
+  }
+
+  .page-intro {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
 @media (max-width: 640px) {
-  .stat-grid {
+  .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .page-intro,
+  .panel,
+  .summary-card,
+  .sub-panel {
+    padding: 16px;
   }
 }
 </style>

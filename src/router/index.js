@@ -29,7 +29,7 @@ const routes = [
         name: "Dashboard",
         component: () => import("@/views/Dashboard.vue"),
         meta: {
-          title: "管理总览",
+          title: "总览",
           permission: "dashboard:view",
           adminOnly: true,
         },
@@ -39,7 +39,7 @@ const routes = [
         name: "CardFlipOps",
         component: () => import("@/views/card-flip-ops/CardFlipOpsPage.vue"),
         meta: {
-          title: "卡片倒卖",
+          title: "卡片交易",
           permission: "cardflip:view",
         },
       },
