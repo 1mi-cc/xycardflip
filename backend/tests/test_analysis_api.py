@@ -6,7 +6,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import repositories as repo
+from app.auth_utils import hash_password
 from app.config import settings
+from app.database import get_conn
 from app.database import init_db
 from app.main import create_app
 from app.schemas import ListingIn, SaleIn, ValuationOut
@@ -14,6 +16,33 @@ from app.schemas import ListingIn, SaleIn, ValuationOut
 
 def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _create_user(username: str, password: str, role: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                username,
+                email,
+                password_hash,
+                nickname,
+                role,
+                is_active,
+                is_seeded_admin,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (
+                username,
+                f"{username}@example.com",
+                hash_password(password),
+                username,
+                role,
+            ),
+        )
 
 
 def _seed_data() -> None:
@@ -264,29 +293,17 @@ def test_admin_overview_requires_admin_auth(tmp_path: Path) -> None:
     old_username = settings.ui_auth_username
     old_password = settings.ui_auth_password
     old_nickname = settings.ui_auth_nickname
-    old_allow_registration = settings.ui_auth_allow_registration
     object.__setattr__(settings, "sqlite_path", str(tmp_path / "analysis_admin.db"))
     object.__setattr__(settings, "ui_auth_username", "admin")
     object.__setattr__(settings, "ui_auth_password", "admin123456")
     object.__setattr__(settings, "ui_auth_nickname", "Analysis Admin")
-    object.__setattr__(settings, "ui_auth_allow_registration", True)
     try:
         init_db()
         _seed_data()
+        _create_user("viewer_user", "secret123", "viewer")
         with TestClient(create_app()) as client:
             anonymous = client.get("/analysis/admin-overview")
             assert anonymous.status_code == 401
-
-            user_register = client.post(
-                "/auth/register",
-                json={
-                    "username": "viewer_user",
-                    "email": "viewer@example.com",
-                    "password": "secret123",
-                    "nickname": "Viewer User",
-                },
-            )
-            assert user_register.status_code == 200
 
             user_login = client.post(
                 "/auth/login",
@@ -350,4 +367,3 @@ def test_admin_overview_requires_admin_auth(tmp_path: Path) -> None:
         object.__setattr__(settings, "ui_auth_username", old_username)
         object.__setattr__(settings, "ui_auth_password", old_password)
         object.__setattr__(settings, "ui_auth_nickname", old_nickname)
-        object.__setattr__(settings, "ui_auth_allow_registration", old_allow_registration)

@@ -164,30 +164,15 @@ def _normalize_execution_action(value: str | None, default: str = "all") -> str:
 
 DEFAULT_UI_MENU_PERMISSIONS: tuple[str, ...] = (
     "dashboard:view",
-    "game:feature:view",
     "cardflip:view",
-    "task:view",
-    "task:batch",
-    "message:test",
-    "token:view",
-    "profile:view",
-    "system:settings",
 )
 
 DEFAULT_UI_ROLE_PERMISSIONS_ADMIN: tuple[str, ...] = DEFAULT_UI_MENU_PERMISSIONS
 DEFAULT_UI_ROLE_PERMISSIONS_OPS: tuple[str, ...] = (
-    "dashboard:view",
     "cardflip:view",
-    "task:view",
-    "task:batch",
-    "message:test",
-    "token:view",
 )
 DEFAULT_UI_ROLE_PERMISSIONS_VIEWER: tuple[str, ...] = (
-    "dashboard:view",
     "cardflip:view",
-    "token:view",
-    "profile:view",
 )
 
 
@@ -307,7 +292,6 @@ class Settings:
     ui_auth_nickname: str = os.getenv("UI_AUTH_NICKNAME", "本地操作员")
     ui_auth_default_role: str = os.getenv("UI_AUTH_DEFAULT_ROLE", "admin").strip().lower() or "admin"
     ui_auth_session_hours: int = _get_int("UI_AUTH_SESSION_HOURS", 72)
-    ui_auth_allow_registration: bool = _get_bool("UI_AUTH_ALLOW_REGISTRATION", True)
     ui_auth_enforce_permissions: bool = _get_bool("UI_AUTH_ENFORCE_PERMISSIONS", True)
     ui_user_roles: str = os.getenv("UI_USER_ROLES", "")
     ui_menu_roles: tuple[str, ...] = _parse_csv_tokens(

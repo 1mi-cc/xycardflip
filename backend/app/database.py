@@ -930,35 +930,6 @@ def init_db() -> None:
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS support_tickets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_no TEXT NOT NULL UNIQUE,
-        user_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        category TEXT NOT NULL DEFAULT 'general',
-        priority TEXT NOT NULL DEFAULT 'normal',
-        status TEXT NOT NULL DEFAULT 'open',
-        description TEXT NOT NULL DEFAULT '',
-        admin_assignee TEXT NOT NULL DEFAULT '',
-        last_reply_by TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        closed_at TEXT,
-        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS support_ticket_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_id INTEGER NOT NULL,
-        author_user_id INTEGER NOT NULL,
-        author_role TEXT NOT NULL DEFAULT 'user',
-        is_internal INTEGER NOT NULL DEFAULT 0,
-        message TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE,
-        FOREIGN KEY(author_user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
     CREATE INDEX IF NOT EXISTS idx_sales_title ON sales_raw(title);
     DROP INDEX IF EXISTS idx_listings_status;
     CREATE INDEX IF NOT EXISTS idx_listings_status_listed_at
@@ -1024,9 +995,6 @@ def init_db() -> None:
         ON seller_control_preset_runs(preset_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
-    CREATE INDEX IF NOT EXISTS idx_support_tickets_status_updated ON support_tickets(status, updated_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket_id ON support_ticket_messages(ticket_id, created_at ASC);
     """
     with get_conn() as conn:
         conn.executescript(ddl)

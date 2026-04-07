@@ -2,26 +2,38 @@ import axios from "axios";
 
 import { useAuthStore } from "@/stores/auth";
 
-const cardFlipRequest = axios.create({
+const request = axios.create({
   baseURL: import.meta.env.VITE_CARD_FLIP_API_BASE || "/card-api",
   timeout: 60000,
-  proxy: false,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-const resolveCardFlipUrl = (pathWithQuery = "") => {
-  const base = String(import.meta.env.VITE_CARD_FLIP_API_BASE || "/card-api").replace(/\/$/, "");
-  const suffix = String(pathWithQuery || "").startsWith("/")
-    ? String(pathWithQuery || "")
-    : `/${String(pathWithQuery || "")}`;
-  if (/^https?:\/\//i.test(base))
-    return `${base}${suffix}`;
-  return `${base}${suffix}`;
+const stringifyError = (value) => {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text && text !== "[object Object]" ? text : "";
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => stringifyError(item)).filter(Boolean).join("; ");
+  }
+  if (!value || typeof value !== "object")
+    return "";
+
+  for (const key of ["detail", "message", "reason", "error", "msg"]) {
+    const text = stringifyError(value[key]);
+    if (text)
+      return text;
+  }
+
+  return Object.values(value)
+    .map(item => stringifyError(item))
+    .filter(Boolean)
+    .join("; ");
 };
 
-cardFlipRequest.interceptors.request.use((config) => {
+request.interceptors.request.use((config) => {
   const authStore = useAuthStore();
   if (authStore.token) {
     config.headers = config.headers || {};
@@ -30,48 +42,11 @@ cardFlipRequest.interceptors.request.use((config) => {
   return config;
 });
 
-const clampListLimit = (value, fallback = 100) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed))
-    return fallback;
-  return Math.min(500, Math.max(1, Math.trunc(parsed)));
-};
-
-const stringifyCardFlipError = (value) => {
-  if (typeof value === "string") {
-    const text = value.trim();
-    return text && text !== "[object Object]" ? text : "";
-  }
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => stringifyCardFlipError(item))
-      .filter(Boolean)
-      .join("; ");
-  }
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  for (const key of ["detail", "message", "reason", "error", "msg"]) {
-    const text = stringifyCardFlipError(value[key]);
-    if (text)
-      return text;
-  }
-
-  return Object.entries(value)
-    .map(([key, fieldValue]) => {
-      const text = stringifyCardFlipError(fieldValue);
-      return text ? `${key}: ${text}` : "";
-    })
-    .filter(Boolean)
-    .join("; ");
-};
-
-cardFlipRequest.interceptors.response.use(
-  (response) => response.data,
+request.interceptors.response.use(
+  response => response.data,
   (error) => {
-    const message = stringifyCardFlipError(error?.response?.data)
-      || stringifyCardFlipError(error?.message)
+    const message = stringifyError(error?.response?.data)
+      || stringifyError(error?.message)
       || "请求失败，请稍后重试";
     const wrapped = new Error(message);
     wrapped.status = error?.response?.status || 0;
@@ -81,464 +56,24 @@ cardFlipRequest.interceptors.response.use(
 );
 
 const cardFlipApi = {
-  refreshMonitorCookie(killBrowsers = true) {
-    return cardFlipRequest.post("/monitor/refresh-cookie", null, {
-      params: {
-        kill_browsers: killBrowsers,
-      },
-    });
-  },
-  getMonitorStatus() {
-    return cardFlipRequest.get("/monitor/status");
-  },
-  startMonitor() {
-    return cardFlipRequest.post("/monitor/start");
-  },
-  resetMonitorCircuit(reason = "manual reset") {
-    return cardFlipRequest.post("/monitor/reset-circuit", null, {
-      params: { reason },
-    });
-  },
-  scanOpportunities(limit = 100) {
-    return cardFlipRequest.post("/opportunities/scan", null, {
-      params: { limit },
-    });
-  },
-  listOpportunities(status = "pending_review", limit = 200) {
-    return cardFlipRequest.get("/opportunities", {
-      params: { status, limit },
-    });
-  },
-  approveTrade(payload) {
-    return cardFlipRequest.post("/trades/approve", payload);
-  },
-  listTrades(status = null, limit = 200) {
-    const params = { limit };
-    if (status)
-      params.status = status;
-    return cardFlipRequest.get("/trades", {
-      params,
-    });
-  },
-  markTradeListed(tradeId, payload) {
-    return cardFlipRequest.post(`/trades/${tradeId}/mark-listed`, payload);
-  },
-  markTradeSold(tradeId, payload) {
-    return cardFlipRequest.post(`/trades/${tradeId}/mark-sold`, payload);
-  },
-  getTradePricingPlan(tradeId, mode = "balanced") {
-    return cardFlipRequest.get(`/trades/${tradeId}/pricing-plan`, {
-      params: { mode },
-    });
-  },
-  applyTradePricingPlan(tradeId, mode = "balanced", note = "auto pricing plan") {
-    return cardFlipRequest.post(`/trades/${tradeId}/apply-pricing-plan`, null, {
-      params: { mode, note },
-    });
-  },
-  repriceOpenTrades(
-    mode = "balanced",
-    limit = 100,
-    apply = false,
-    note = "batch auto pricing plan",
-  ) {
-    return cardFlipRequest.post("/trades/reprice-open", null, {
-      params: { mode, limit, apply, note },
-    });
-  },
-  rejectOpportunity(opportunityId, note = "manual reject from ui") {
-    return cardFlipRequest.post(`/opportunities/${opportunityId}/reject`, null, {
-      params: { note },
-    });
-  },
-  sendOpportunityToReview(opportunityId, note = "manual review override from ui") {
-    return cardFlipRequest.post(`/opportunities/${opportunityId}/send-to-review`, null, {
-      params: { note },
-    });
-  },
-  sendBlockedToReviewBatch(
-    maxRiskScore = 45,
-    limit = 200,
-    note = "manual batch review override from ui",
-  ) {
-    return cardFlipRequest.post("/opportunities/send-to-review/batch", null, {
-      params: {
-        max_risk_score: maxRiskScore,
-        limit,
-        note,
-      },
-    });
-  },
-  rejectBlockedBatch(limit = 200, note = "manual batch reject from blocked list ui") {
-    return cardFlipRequest.post("/opportunities/reject/batch", null, {
-      params: { limit, note },
-    });
+  getAdminTransparencyOverview() {
+    return request.get("/analysis/admin-overview");
   },
   getMetrics() {
-    return cardFlipRequest.get("/trades/metrics-summary");
-  },
-  getHealth() {
-    return cardFlipRequest.get("/health");
-  },
-  getAdminTransparencyOverview() {
-    return cardFlipRequest.get("/analysis/admin-overview");
-  },
-  openAdminTransparencyOverviewStream({
-    signal,
-    intervalSeconds = 5,
-  } = {}) {
-    const authStore = useAuthStore();
-    const headers = {
-      Accept: "text/event-stream",
-    };
-    if (authStore.token)
-      headers.Authorization = `Bearer ${authStore.token}`;
-    return fetch(
-      resolveCardFlipUrl(`/analysis/admin-overview/stream?interval_seconds=${encodeURIComponent(intervalSeconds)}`),
-      {
-        method: "GET",
-        headers,
-        credentials: "same-origin",
-        signal,
-      },
-    );
-  },
-  getListing(listingRowId) {
-    return cardFlipRequest.get(`/listings/${listingRowId}`);
-  },
-  getAutomationStatus() {
-    return cardFlipRequest.get("/automation/status");
-  },
-  startAutomation(
-    includeMonitor = true,
-    includeAutotrade = true,
-    includeExecutionRetry = true,
-  ) {
-    return cardFlipRequest.post("/automation/start", null, {
-      params: {
-        include_monitor: includeMonitor,
-        include_autotrade: includeAutotrade,
-        include_execution_retry: includeExecutionRetry,
-      },
-    });
-  },
-  stopAutomation(
-    includeMonitor = true,
-    includeAutotrade = true,
-    includeExecutionRetry = true,
-  ) {
-    return cardFlipRequest.post("/automation/stop", null, {
-      params: {
-        include_monitor: includeMonitor,
-        include_autotrade: includeAutotrade,
-        include_execution_retry: includeExecutionRetry,
-      },
-    });
-  },
-  runAutomationOnce(
-    {
-      includeMonitor = true,
-      includeScan = true,
-      includeAutotrade = true,
-      includeExecutionRetry = true,
-      scanLimit = 0,
-      autotradeLimit = 0,
-      executionRetryLimit = 0,
-      force = false,
-      confirmToken = "",
-    } = {},
-  ) {
-    const params = {
-      include_monitor: includeMonitor,
-      include_scan: includeScan,
-      include_autotrade: includeAutotrade,
-      include_execution_retry: includeExecutionRetry,
-      scan_limit: scanLimit,
-      autotrade_limit: autotradeLimit,
-      execution_retry_limit: executionRetryLimit,
-      force,
-    };
-    if (confirmToken)
-      params.confirm_token = confirmToken;
-    return cardFlipRequest.post("/automation/run-once", null, { params });
-  },
-  bootstrapSimulationData(count = 6) {
-    return cardFlipRequest.post("/automation/simulation-bootstrap", null, {
-      params: { count },
-    });
+    return request.get("/trades/metrics-summary");
   },
   getAutotradeStatus() {
-    return cardFlipRequest.get("/autotrade/status");
-  },
-  getAutotradeCockpit() {
-    return cardFlipRequest.get("/autotrade/cockpit");
-  },
-  sendAutotradeAlertEmail(force = false) {
-    return cardFlipRequest.post("/autotrade/alerts/email", null, {
-      params: { force },
-    });
-  },
-  sendAutotradeAlertWebhook(force = false) {
-    return cardFlipRequest.post("/autotrade/alerts/webhook", null, {
-      params: { force },
-    });
-  },
-  sendAutotradeAlertSlack(force = false) {
-    return cardFlipRequest.post("/autotrade/alerts/slack", null, {
-      params: { force },
-    });
-  },
-  sendAutotradeAlertTelegram(force = false) {
-    return cardFlipRequest.post("/autotrade/alerts/telegram", null, {
-      params: { force },
-    });
-  },
-  acknowledgeAutotradeAlert(alertKey, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/ack`, payload);
-  },
-  snoozeAutotradeAlert(alertKey, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/snooze`, payload);
-  },
-  resumeAutotradeAlert(alertKey, actor = "operator") {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/resume`, null, {
-      params: { actor },
-    });
-  },
-  assignAutotradeAlertIncident(alertKey, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/assign`, payload);
-  },
-  noteAutotradeAlertIncident(alertKey, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/note`, payload);
-  },
-  handoffAutotradeAlertIncident(alertKey, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/handoff`, payload);
-  },
-  resolveAutotradeAlertIncident(alertKey, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/resolve`, payload);
-  },
-  prioritizeAutotradeAlertIncident(alertKey, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/alerts/${encodeURIComponent(alertKey)}/priority`, payload);
-  },
-  listAutotradeAlertEvents(limit = 50, alertKey = "") {
-    return cardFlipRequest.get("/autotrade/alerts/events", {
-      params: {
-        limit,
-        alert_key: alertKey,
-      },
-    });
-  },
-  startAutotrade() {
-    return cardFlipRequest.post("/autotrade/start");
-  },
-  stopAutotrade() {
-    return cardFlipRequest.post("/autotrade/stop");
-  },
-  runAutotradeOnce(limit = 0, force = false) {
-    return cardFlipRequest.post("/autotrade/run-once", null, {
-      params: { limit, force },
-    });
-  },
-  updateAutotradeConfig(payload = {}) {
-    return cardFlipRequest.post("/autotrade/config", payload);
-  },
-  applySourceControlManualAction(payload = {}) {
-    return cardFlipRequest.post("/autotrade/source-controls/manual-action", payload);
-  },
-  applyClusterControlManualAction(payload = {}) {
-    return cardFlipRequest.post("/autotrade/cluster-controls/manual-action", payload);
-  },
-  listSourceControlEvents(limit = 50) {
-    return cardFlipRequest.get("/autotrade/source-controls/events", {
-      params: { limit },
-    });
-  },
-  listClusterControlEvents(limit = 50) {
-    return cardFlipRequest.get("/autotrade/cluster-controls/events", {
-      params: { limit },
-    });
-  },
-  applySellerControlManualAction(payload = {}) {
-    return cardFlipRequest.post("/autotrade/seller-controls/manual-action", payload);
-  },
-  applySellerControlBatchAction(payload = {}) {
-    return cardFlipRequest.post("/autotrade/seller-controls/batch-manual-action", payload);
-  },
-  listSellerControlPresets(limit = 50) {
-    return cardFlipRequest.get("/autotrade/seller-controls/presets", {
-      params: { limit },
-    });
-  },
-  listSellerControlPresetRuns(presetId, limit = 20) {
-    return cardFlipRequest.get(`/autotrade/seller-controls/presets/${presetId}/runs`, {
-      params: { limit },
-    });
-  },
-  upsertSellerControlPreset(payload = {}) {
-    return cardFlipRequest.post("/autotrade/seller-controls/presets", payload);
-  },
-  deleteSellerControlPreset(presetId) {
-    return cardFlipRequest.delete(`/autotrade/seller-controls/presets/${presetId}`);
-  },
-  recordSellerControlPresetRun(presetId, payload = {}) {
-    return cardFlipRequest.post(`/autotrade/seller-controls/presets/${presetId}/record-run`, payload);
-  },
-  getExecutionRetryStatus() {
-    return cardFlipRequest.get("/execution-retry/status");
-  },
-  startExecutionRetry() {
-    return cardFlipRequest.post("/execution-retry/start");
-  },
-  stopExecutionRetry() {
-    return cardFlipRequest.post("/execution-retry/stop");
-  },
-  runExecutionRetryOnce(
-    limit = 0,
-    force = false,
-    action = null,
-    dryRun = null,
-    executionForce = null,
-    confirmToken = "",
-  ) {
-    const params = { limit, force };
-    if (action)
-      params.action = action;
-    if (typeof dryRun === "boolean")
-      params.dry_run = dryRun;
-    if (typeof executionForce === "boolean")
-      params.execution_force = executionForce;
-    if (confirmToken)
-      params.confirm_token = confirmToken;
-    return cardFlipRequest.post("/execution-retry/run-once", null, { params });
-  },
-  updateExecutionRetryConfig(payload = {}) {
-    return cardFlipRequest.post("/execution-retry/config", payload);
-  },
-  getExecutionStatus() {
-    return cardFlipRequest.get("/execution/status");
-  },
-  getExecutionReadiness() {
-    return cardFlipRequest.get("/execution/readiness");
-  },
-  updateExecutionConfig(payload = {}) {
-    return cardFlipRequest.post("/execution/config", payload);
-  },
-  executeBuy(tradeId, dryRun = true, force = false, confirmToken = "") {
-    const params = { dry_run: dryRun, force };
-    if (confirmToken)
-      params.confirm_token = confirmToken;
-    return cardFlipRequest.post(`/execution/buy/${tradeId}`, null, {
-      params,
-    });
-  },
-  executeList(
-    tradeId,
-    dryRun = true,
-    force = false,
-    confirmToken = "",
-    listingUrl = "",
-    updateTradeState = true,
-    note = "",
-  ) {
-    const params = {
-      dry_run: dryRun,
-      force,
-      update_trade_state: updateTradeState,
-    };
-    if (confirmToken)
-      params.confirm_token = confirmToken;
-    if (listingUrl)
-      params.listing_url = listingUrl;
-    if (note)
-      params.note = note;
-    return cardFlipRequest.post(`/execution/list/${tradeId}`, null, {
-      params,
-    });
-  },
-  executeSell(
-    tradeId,
-    dryRun = true,
-    force = false,
-    confirmToken = "",
-    soldPrice = null,
-    updateTradeState = true,
-    note = "",
-  ) {
-    const params = {
-      dry_run: dryRun,
-      force,
-      update_trade_state: updateTradeState,
-    };
-    if (confirmToken)
-      params.confirm_token = confirmToken;
-    if (typeof soldPrice === "number")
-      params.sold_price = soldPrice;
-    if (note)
-      params.note = note;
-    return cardFlipRequest.post(`/execution/sell/${tradeId}`, null, {
-      params,
-    });
-  },
-  retryFailedExecution(
-    action = null,
-    limit = 20,
-    dryRun = true,
-    force = false,
-    confirmToken = "",
-  ) {
-    const params = { limit, dry_run: dryRun, force };
-    if (action)
-      params.action = action;
-    if (confirmToken)
-      params.confirm_token = confirmToken;
-    return cardFlipRequest.post("/execution/retry-failed", null, { params });
+    return request.get("/autotrade/status");
   },
   listExecutionLogs(params = {}) {
-    return cardFlipRequest.get("/execution/logs", {
+    return request.get("/execution/logs", {
       params: {
         ...params,
-        limit: clampListLimit(params.limit, 100),
+        limit: Number.isFinite(Number(params.limit))
+          ? Math.min(500, Math.max(1, Math.trunc(Number(params.limit))))
+          : 100,
       },
     });
-  },
-  createForwardValidationBatch(payload) {
-    return cardFlipRequest.post("/trades/forward-validation/batches", payload);
-  },
-  listForwardValidationBatches(limit = 20) {
-    return cardFlipRequest.get("/trades/forward-validation/batches", {
-      params: { limit },
-    });
-  },
-  closeForwardValidationBatch(batchId) {
-    return cardFlipRequest.post(`/trades/forward-validation/batches/${batchId}/close`);
-  },
-  getStrategyProfile() {
-    return cardFlipRequest.get("/vnpy/strategy-profile");
-  },
-  setStrategyProfile(profile) {
-    return cardFlipRequest.post("/vnpy/strategy-profile", null, {
-      params: { profile },
-    });
-  },
-  listAutotradeTuningHistory(limit = 30) {
-    return cardFlipRequest.get("/autotrade/tuning-history", {
-      params: { limit },
-    });
-  },
-  listAutotradeTuningActivity(limit = 50) {
-    return cardFlipRequest.get("/autotrade/tuning-activity", {
-      params: { limit },
-    });
-  },
-  getAutotradeTuningDailyReport(hours = 24) {
-    return cardFlipRequest.get("/autotrade/tuning-daily-report", {
-      params: { hours },
-    });
-  },
-  applyAutotradeTuning(payload) {
-    return cardFlipRequest.post("/autotrade/tuning/apply", payload);
-  },
-  rollbackAutotradeTuning(eventId, payload) {
-    return cardFlipRequest.post(`/autotrade/tuning-history/${eventId}/rollback`, payload);
   },
 };
 

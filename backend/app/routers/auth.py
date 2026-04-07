@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from fastapi import APIRouter
@@ -10,20 +9,15 @@ from ..auth_utils import auth_failed
 from ..auth_utils import build_user_profile
 from ..auth_utils import extract_bearer_token
 from ..auth_utils import fetch_user_by_session_token
-from ..auth_utils import hash_password
 from ..auth_utils import issue_session_token
-from ..auth_utils import normalize_role
 from ..auth_utils import require_current_user
 from ..auth_utils import session_expires_at
 from ..auth_utils import success_response
 from ..auth_utils import utcnow_iso
 from ..auth_utils import verify_password
-from ..config import settings
 from ..database import get_conn
 
 router = APIRouter(tags=["auth"])
-
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{3,32}$")
 
 
 def _normalize_body(payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -108,74 +102,12 @@ def login(request: Request, body: dict[str, Any] | None = None) -> dict[str, Any
             (int(user_row["id"]), token, session_expires_at(), now, now),
         )
 
-        refreshed = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_row["id"]),)).fetchone()
-        payload = _serialize_auth_payload(refreshed, token)
-    return success_response(payload, message="login_success")
-
-
-@router.post("/auth/register")
-def register(body: dict[str, Any] | None = None) -> dict[str, Any]:
-    if not settings.ui_auth_allow_registration:
-        auth_failed("当前软件未开放自助注册", status_code=403)
-
-    payload = _normalize_body(body)
-    username = str(payload.get("username") or "").strip()
-    email = str(payload.get("email") or "").strip()
-    password = str(payload.get("password") or "").strip()
-    nickname = str(payload.get("nickname") or payload.get("displayName") or username).strip()
-
-    if not USERNAME_RE.match(username):
-        auth_failed("用户名需为 3-32 位字母、数字或 ._@-", status_code=400)
-    if len(password) < 6:
-        auth_failed("密码长度不能少于 6 位", status_code=400)
-    if email and "@" not in email:
-        auth_failed("邮箱格式不正确", status_code=400)
-
-    role = normalize_role(payload.get("role"))
-    if role != "user":
-        role = "user"
-
-    with get_conn() as conn:
-        duplicate = conn.execute(
-            """
-            SELECT id
-            FROM users
-            WHERE lower(username) = lower(?)
-               OR (? <> '' AND lower(email) = lower(?))
-            LIMIT 1
-            """,
-            (username, email, email),
+        refreshed = conn.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (int(user_row["id"]),),
         ).fetchone()
-        if duplicate is not None:
-            auth_failed("用户名或邮箱已存在", status_code=409)
-
-        now = utcnow_iso()
-        conn.execute(
-            """
-            INSERT INTO users (
-                username,
-                email,
-                password_hash,
-                nickname,
-                role,
-                is_active,
-                is_seeded_admin,
-                created_at,
-                updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)
-            """,
-            (username, email or None, hash_password(password), nickname or username, role, now, now),
-        )
-
-    return success_response(
-        {
-            "username": username,
-            "registered": True,
-            "roleKeys": [role],
-        },
-        message="register_success",
-    )
+        response_payload = _serialize_auth_payload(refreshed, token)
+    return success_response(response_payload, message="login_success")
 
 
 @router.post("/auth/logout")

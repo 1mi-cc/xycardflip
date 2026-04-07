@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth_utils import hash_password
 from app.config import settings
 from app.database import get_conn
 from app.database import init_db
@@ -17,14 +18,12 @@ def secured_cardflip_auth_sqlite(tmp_path: Path):
     old_username = settings.ui_auth_username
     old_password = settings.ui_auth_password
     old_nickname = settings.ui_auth_nickname
-    old_allow_registration = settings.ui_auth_allow_registration
     old_enforce = settings.ui_auth_enforce_permissions
 
     object.__setattr__(settings, "sqlite_path", str(tmp_path / "cardflip_rbac.db"))
     object.__setattr__(settings, "ui_auth_username", "admin")
     object.__setattr__(settings, "ui_auth_password", "admin123456")
     object.__setattr__(settings, "ui_auth_nickname", "System Admin")
-    object.__setattr__(settings, "ui_auth_allow_registration", True)
     object.__setattr__(settings, "ui_auth_enforce_permissions", True)
     init_db()
 
@@ -35,7 +34,6 @@ def secured_cardflip_auth_sqlite(tmp_path: Path):
         object.__setattr__(settings, "ui_auth_username", old_username)
         object.__setattr__(settings, "ui_auth_password", old_password)
         object.__setattr__(settings, "ui_auth_nickname", old_nickname)
-        object.__setattr__(settings, "ui_auth_allow_registration", old_allow_registration)
         object.__setattr__(settings, "ui_auth_enforce_permissions", old_enforce)
 
 
@@ -43,11 +41,30 @@ def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _set_user_role(username: str, role: str) -> None:
+def _create_user(username: str, password: str, role: str) -> None:
     with get_conn() as conn:
         conn.execute(
-            "UPDATE users SET role = ? WHERE lower(username) = lower(?)",
-            (role, username),
+            """
+            INSERT INTO users (
+                username,
+                email,
+                password_hash,
+                nickname,
+                role,
+                is_active,
+                is_seeded_admin,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (
+                username,
+                f"{username}@example.com",
+                hash_password(password),
+                username,
+                role,
+            ),
         )
 
 
@@ -63,21 +80,11 @@ def _login(client: TestClient, username: str, password: str) -> str:
 def test_cardflip_management_requires_auth_and_allows_viewer_read_only(
     secured_cardflip_auth_sqlite: Path,
 ) -> None:
+    _create_user("viewer_user", "secret123", "viewer")
+
     with TestClient(create_app()) as client:
         anonymous = client.get("/autotrade/status")
         assert anonymous.status_code == 401
-
-        register = client.post(
-            "/auth/register",
-            json={
-                "username": "viewer_user",
-                "email": "viewer@example.com",
-                "password": "secret123",
-                "nickname": "Viewer User",
-            },
-        )
-        assert register.status_code == 200
-        _set_user_role("viewer_user", "viewer")
 
         viewer_token = _login(client, "viewer_user", "secret123")
 
@@ -105,19 +112,9 @@ def test_cardflip_management_requires_auth_and_allows_viewer_read_only(
 def test_cardflip_management_allows_ops_mutation(
     secured_cardflip_auth_sqlite: Path,
 ) -> None:
-    with TestClient(create_app()) as client:
-        register = client.post(
-            "/auth/register",
-            json={
-                "username": "ops_user",
-                "email": "ops@example.com",
-                "password": "secret123",
-                "nickname": "Ops User",
-            },
-        )
-        assert register.status_code == 200
-        _set_user_role("ops_user", "ops")
+    _create_user("ops_user", "secret123", "ops")
 
+    with TestClient(create_app()) as client:
         ops_token = _login(client, "ops_user", "secret123")
 
         automation_start = client.post("/automation/start", headers=_bearer(ops_token))

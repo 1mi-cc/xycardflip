@@ -1,15 +1,11 @@
 import { createRouter, createWebHistory } from "vue-router";
-import * as autoRoutes from "vue-router/auto-routes";
 
 import { useAuthStore } from "@/stores/auth";
-import { useTokenStore } from "@/stores/tokenStore";
 
-const generatedRoutes = autoRoutes.routes ?? [];
-
-const myRoutes = [
+const routes = [
   {
     path: "/",
-    redirect: "/login",
+    redirect: "/admin/dashboard",
   },
   {
     path: "/login",
@@ -21,45 +17,8 @@ const myRoutes = [
     },
   },
   {
-    path: "/register",
-    name: "Register",
-    component: () => import("@/views/Register.vue"),
-    meta: {
-      title: "注册",
-      guestOnly: true,
-    },
-  },
-  {
-    path: "/support/tickets",
-    name: "SupportTicketsPortal",
-    component: () => import("@/views/SupportTickets.vue"),
-    meta: {
-      title: "工单中心",
-      requiresAuth: true,
-      permission: "support:ticket:view",
-    },
-  },
-  {
-    path: "/tokens",
-    name: "TokenImport",
-    component: () => import("@/views/TokenImport/index.vue"),
-    meta: {
-      title: "Token 管理",
-      requiresAuth: true,
-      permission: "token:view",
-    },
-    props: (route) => ({
-      importToken: route.query.token,
-      name: route.query.name,
-      server: route.query.server,
-      wsUrl: route.query.wsUrl,
-      api: route.query.api,
-      auto: route.query.auto === "true",
-    }),
-  },
-  {
-    name: "DefaultLayout",
     path: "/admin",
+    name: "AdminLayout",
     component: () => import("@/layout/DefaultLayout.vue"),
     meta: {
       requiresAuth: true,
@@ -70,19 +29,9 @@ const myRoutes = [
         name: "Dashboard",
         component: () => import("@/views/Dashboard.vue"),
         meta: {
-          title: "控制台",
+          title: "管理总览",
           permission: "dashboard:view",
           adminOnly: true,
-        },
-      },
-      {
-        path: "game-features",
-        name: "GameFeatures",
-        component: () => import("@/views/GameFeatures.vue"),
-        meta: {
-          title: "游戏功能",
-          permission: "game:feature:view",
-          requiresToken: true,
         },
       },
       {
@@ -90,113 +39,12 @@ const myRoutes = [
         name: "CardFlipOps",
         component: () => import("@/views/card-flip-ops/CardFlipOpsPage.vue"),
         meta: {
-          title: "卡片倒卖 · 操作台",
+          title: "卡片倒卖",
           permission: "cardflip:view",
-        },
-      },
-      {
-        path: "card-flip",
-        redirect: "/admin/card-flip/sim",
-      },
-      {
-        path: "card-flip/sim",
-        name: "CardFlipSimulation",
-        component: () => import("@/views/CardFlipModeDashboard.vue"),
-        props: { mode: "simulation" },
-        meta: {
-          title: "卡片倒卖 · 模拟盘",
-          permission: "cardflip:view",
-        },
-      },
-      {
-        path: "card-flip/live",
-        name: "CardFlipLive",
-        component: () => import("@/views/CardFlipModeDashboard.vue"),
-        props: { mode: "live" },
-        meta: {
-          title: "卡片倒卖 · 实战盘",
-          permission: "cardflip:view",
-        },
-      },
-      {
-        path: "card-flip/docs",
-        name: "CardFlipDocs",
-        component: () => import("@/views/card-flip-ops/CardFlipDocsPage.vue"),
-        meta: {
-          title: "卡片倒卖 · 使用文档",
-          permission: "cardflip:view",
-        },
-      },
-      {
-        path: "support-tickets",
-        name: "SupportTicketsAdmin",
-        component: () => import("@/views/SupportTickets.vue"),
-        meta: {
-          title: "工单处理台",
-          permission: "support:ticket:manage",
-        },
-      },
-      {
-        path: "message-test",
-        name: "MessageTest",
-        component: () => import("@/components/Test/MessageTester.vue"),
-        meta: {
-          title: "消息测试",
-          permission: "message:test",
-        },
-      },
-      {
-        path: "profile",
-        name: "Profile",
-        component: () => import("@/views/Profile.vue"),
-        meta: {
-          title: "个人设置",
-          permission: "profile:view",
-        },
-      },
-      {
-        path: "system-settings",
-        name: "SystemSettings",
-        component: () => import("@/views/SystemSettings.vue"),
-        meta: {
-          title: "绯荤粺璁剧疆",
-          permission: "system:settings",
-        },
-      },
-      {
-        path: "daily-tasks",
-        name: "DailyTasks",
-        component: () => import("@/views/DailyTasks.vue"),
-        meta: {
-          title: "日常任务",
-          permission: "task:view",
-          requiresToken: true,
-        },
-      },
-      {
-        path: "batch-daily-tasks",
-        name: "BatchDailyTasks",
-        component: () => import("@/views/BatchDailyTasks.vue"),
-        meta: {
-          title: "批量日常",
-          permission: "task:batch",
-          requiresToken: true,
         },
       },
     ],
   },
-  {
-    path: "/websocket-test",
-    name: "WebSocketTest",
-    component: () => import("@/components/Test/WebSocketTester.vue"),
-    meta: {
-      title: "WebSocket 测试",
-      requiresAuth: true,
-      permission: "message:test",
-      requiresToken: true,
-    },
-  },
-  ...generatedRoutes,
   {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
@@ -209,8 +57,8 @@ const myRoutes = [
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: myRoutes,
-  scrollBehavior(to, _from, savedPosition) {
+  routes,
+  scrollBehavior(_to, _from, savedPosition) {
     if (savedPosition)
       return savedPosition;
     return { top: 0 };
@@ -219,15 +67,13 @@ const router = createRouter({
 
 router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
-  const tokenStore = useTokenStore();
 
-  document.title = to.meta.title
-    ? `${to.meta.title} - XYZW 游戏管理系统`
-    : "XYZW 游戏管理系统";
+  document.title = to.meta?.title
+    ? `${to.meta.title} - XYZW 卡片倒卖后台`
+    : "XYZW 卡片倒卖后台";
 
-  if (!authStore.initialized) {
+  if (!authStore.initialized)
     await authStore.initAuth();
-  }
 
   if (to.meta.guestOnly && authStore.isAuthenticated) {
     next(authStore.getDefaultHomeRoute());
@@ -237,24 +83,19 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({
       path: "/login",
-      query: to.fullPath && to.fullPath !== "/login" ? { redirect: to.fullPath } : undefined,
+      query: to.fullPath !== "/login" ? { redirect: to.fullPath } : undefined,
     });
     return;
   }
 
-  const requiredPermission = to.meta.permission;
+  const requiredPermission = to.meta?.permission;
   if (requiredPermission && authStore.isAuthenticated && !authStore.hasPermission(requiredPermission)) {
     next(authStore.getDefaultHomeRoute());
     return;
   }
 
-  if (to.meta.adminOnly && authStore.isAuthenticated && !authStore.userInfo?.isAdmin) {
+  if (to.meta?.adminOnly && authStore.isAuthenticated && !authStore.userInfo?.isAdmin) {
     next(authStore.getDefaultHomeRoute());
-    return;
-  }
-
-  if (to.meta.requiresToken && !tokenStore.hasTokens) {
-    next("/tokens");
     return;
   }
 
