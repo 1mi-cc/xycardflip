@@ -1520,12 +1520,12 @@ class AutoTradeService:
                 "Baseline is thick enough for the next controlled scale step."
                 if ready_for_scale
                 else (
-                    "Threshold tuning can be reviewed, but keep the account in local observation mode."
+                    "可以先评估调优，但账户还应该继续观察，不要急着放量。"
                     if ready_for_tune
                     else (
-                        "Stop automatic approvals and inspect live risk signals."
+                        "先停掉自动审批，回头检查实盘风险信号。"
                         if status == "blocked"
-                        else "Keep the account in observation mode until more sold evidence accumulates."
+                        else "先继续观察，等成交样本再多一点，再决定要不要放量。"
                     )
                 )
             ),

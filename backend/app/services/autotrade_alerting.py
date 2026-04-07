@@ -462,10 +462,10 @@ def _delivery_stage_for_channel(channel: str, alerts: list[dict[str, Any]]) -> s
 
 def build_blocking_alert(reason: str) -> dict[str, Any]:
     mapping = {
-        "AUTO_APPROVE_ENABLED=false": ("warning", "AutoTrade disabled", "Automatic approvals are turned off."),
-        "operating_state_recovery": ("warning", "Operating state in recovery", "The system is running in recovery mode and expects operator attention."),
-        "execution_webhook_not_ready": ("error", "Execution webhook not ready", "Live execution is configured but the webhook provider is not ready."),
-        "portfolio_capital_exhausted": ("warning", "Portfolio capital exhausted", "No remaining capital is available for new approvals."),
+        "AUTO_APPROVE_ENABLED=false": ("warning", "自动审批已关闭", "当前没有开启自动审批。"),
+        "operating_state_recovery": ("warning", "系统处在恢复期", "当前处在恢复模式，建议先盯紧风险和执行情况。"),
+        "execution_webhook_not_ready": ("error", "执行通道还没准备好", "已经配置实盘执行，但执行通道当前不可用。"),
+        "portfolio_capital_exhausted": ("warning", "可用资金已经打满", "当前没有多余资金给新的审批机会。"),
     }
     severity, title, message = mapping.get(
         reason,

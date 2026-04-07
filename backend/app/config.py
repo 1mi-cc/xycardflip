@@ -1023,7 +1023,7 @@ def single_account_guardrail_status(current: Settings | None = None) -> dict[str
     return {
         "enabled": bool(cfg.single_account_mode),
         "mode": "single-account-local" if bool(cfg.single_account_mode) else "standard",
-        "mode_label": "Single Account Local" if bool(cfg.single_account_mode) else "Standard",
+        "mode_label": "单账号观察" if bool(cfg.single_account_mode) else "标准模式",
         "strategy_profile": cfg.strategy_profile,
         "aligned": not failing,
         "failing_count": len(failing),
