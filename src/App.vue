@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme="naiveTheme">
+  <n-config-provider>
     <n-message-provider :max="3">
       <n-loading-bar-provider>
         <n-notification-provider>
@@ -12,52 +12,56 @@
   </n-config-provider>
 </template>
 
-<script setup>
-import { darkTheme } from "naive-ui";
-import { computed, onMounted, onUnmounted } from "vue";
-
-import { useTheme } from "@/composables/useTheme";
-
-const { isDark, initTheme, setupSystemThemeListener, updateReactiveState } = useTheme();
-
-const naiveTheme = computed(() => (isDark.value ? darkTheme : null));
-
-const handleThemeChange = () => {
-  updateReactiveState();
-  window.setTimeout(() => {
-    updateReactiveState();
-  }, 50);
-};
-
-onMounted(() => {
-  initTheme();
-  setupSystemThemeListener();
-  window.addEventListener("theme-change", handleThemeChange);
-  updateReactiveState();
-});
-
-onUnmounted(() => {
-  window.removeEventListener("theme-change", handleThemeChange);
-});
-</script>
-
 <style>
-html.dark,
-html[data-theme="dark"] {
-  color-scheme: dark;
+html,
+body,
+#app {
+  min-height: 100%;
 }
 
-html.dark .n-input__input-el,
-html.dark .n-input__textarea-el,
-html[data-theme="dark"] .n-input__input-el,
-html[data-theme="dark"] .n-input__textarea-el {
-  color: var(--text-primary) !important;
+html,
+body {
+  margin: 0;
+  background: #f0f2f5;
+  color: #303133;
 }
 
-html.dark .n-input__placeholder,
-html.dark ::placeholder,
-html[data-theme="dark"] .n-input__placeholder,
-html[data-theme="dark"] ::placeholder {
-  color: var(--text-tertiary) !important;
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family:
+    "Helvetica Neue",
+    Helvetica,
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f0f2f5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #909399;
 }
 </style>
