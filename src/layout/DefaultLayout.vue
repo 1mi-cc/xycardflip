@@ -1,31 +1,65 @@
 <template>
-  <div class="shell">
-    <aside class="sidebar desktop-sidebar">
-      <div class="brand-block">
+  <div class="admin-shell" :class="{ collapsed: isSidebarCollapsed }">
+    <aside class="sidebar">
+      <div class="logo-wrap">
         <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
-        <div class="brand-copy">
+        <div v-if="!isSidebarCollapsed" class="brand-copy">
           <div class="brand-title">XYZW 数据台</div>
-          <div class="brand-subtitle">只读前台视图</div>
+          <div class="brand-subtitle">只看结果，不看参数</div>
         </div>
       </div>
 
-      <nav class="nav-stack">
-        <section v-for="section in navSections" :key="section.key" class="nav-section">
-          <div class="section-title">{{ section.label }}</div>
+      <n-scrollbar class="menu-scroll">
+        <template v-if="isSidebarCollapsed">
           <router-link
-            v-for="item in section.items"
+            v-for="item in flatNavItems"
             :key="item.path"
             active-class="active"
-            class="nav-link"
+            class="nav-link nav-link-collapsed"
             :to="item.path"
           >
-            <n-icon class="nav-icon">
-              <component :is="item.icon"></component>
-            </n-icon>
-            <span>{{ item.label }}</span>
+            <n-tooltip placement="right" trigger="hover">
+              <template #trigger>
+                <n-icon class="nav-icon">
+                  <component :is="item.icon"></component>
+                </n-icon>
+              </template>
+              {{ item.label }}
+            </n-tooltip>
           </router-link>
-        </section>
-      </nav>
+        </template>
+
+        <template v-else>
+          <section v-for="group in navGroups" :key="group.key" class="nav-group">
+            <button class="group-header" @click="toggleGroup(group.key)">
+              <div class="group-label">
+                <n-icon class="nav-icon">
+                  <component :is="group.icon"></component>
+                </n-icon>
+                <span>{{ group.label }}</span>
+              </div>
+              <n-icon class="group-arrow" :class="{ open: isGroupExpanded(group.key) }">
+                <ChevronDown></ChevronDown>
+              </n-icon>
+            </button>
+
+            <div v-show="isGroupExpanded(group.key)" class="group-body">
+              <router-link
+                v-for="item in group.children"
+                :key="item.path"
+                active-class="active"
+                class="nav-link"
+                :to="item.path"
+              >
+                <n-icon class="nav-icon">
+                  <component :is="item.icon"></component>
+                </n-icon>
+                <span>{{ item.label }}</span>
+              </router-link>
+            </div>
+          </section>
+        </template>
+      </n-scrollbar>
     </aside>
 
     <div class="main-shell">
@@ -34,7 +68,10 @@
           <button class="icon-btn mobile-only" type="button" @click="isMobileMenuOpen = true">
             <n-icon><Menu></Menu></n-icon>
           </button>
-          <div class="page-meta">
+          <button class="icon-btn desktop-only" type="button" @click="toggleSidebar">
+            <n-icon><Menu></Menu></n-icon>
+          </button>
+          <div class="page-heading">
             <div class="page-title">{{ currentPageTitle }}</div>
             <div class="page-subtitle">{{ currentPageSubtitle }}</div>
           </div>
@@ -53,8 +90,16 @@
         </div>
       </header>
 
+      <div class="breadcrumb-bar">
+        <n-breadcrumb>
+          <n-breadcrumb-item v-for="crumb in breadcrumbItems" :key="crumb.path">
+            <span class="crumb-link" @click="goTo(crumb.path)">{{ crumb.title }}</span>
+          </n-breadcrumb-item>
+        </n-breadcrumb>
+      </div>
+
       <main class="page-container">
-        <router-view></router-view>
+        <router-view :key="route.fullPath"></router-view>
       </main>
     </div>
 
@@ -65,32 +110,22 @@
       :width="280"
     >
       <div class="drawer-shell">
-        <div class="brand-block mobile-brand">
-          <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
-          <div class="brand-copy">
-            <div class="brand-title">XYZW 数据台</div>
-            <div class="brand-subtitle">只读前台视图</div>
-          </div>
+        <div v-for="group in navGroups" :key="`drawer-${group.key}`" class="drawer-group">
+          <div class="drawer-group-title">{{ group.label }}</div>
+          <router-link
+            v-for="item in group.children"
+            :key="item.path"
+            active-class="active"
+            class="drawer-link"
+            :to="item.path"
+            @click="isMobileMenuOpen = false"
+          >
+            <n-icon class="nav-icon">
+              <component :is="item.icon"></component>
+            </n-icon>
+            <span>{{ item.label }}</span>
+          </router-link>
         </div>
-
-        <nav class="nav-stack">
-          <section v-for="section in navSections" :key="`drawer-${section.key}`" class="nav-section">
-            <div class="section-title">{{ section.label }}</div>
-            <router-link
-              v-for="item in section.items"
-              :key="item.path"
-              active-class="active"
-              class="nav-link"
-              :to="item.path"
-              @click="isMobileMenuOpen = false"
-            >
-              <n-icon class="nav-icon">
-                <component :is="item.icon"></component>
-              </n-icon>
-              <span>{{ item.label }}</span>
-            </router-link>
-          </section>
-        </nav>
       </div>
     </n-drawer>
   </div>
@@ -106,32 +141,61 @@ import {
   PersonCircle,
   TrendingUp,
 } from "@vicons/ionicons5";
-import { computed, ref } from "vue";
+import { useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import ThemeToggle from "@/components/Common/ThemeToggle.vue";
 import { useAuthStore } from "@/stores/auth";
+import { selectedToken } from "@/stores/tokenStore";
+
+const SIDEBAR_COLLAPSE_KEY = "xyzw_layout_sidebar_collapsed_apple_v1";
+const SIDEBAR_GROUPS_KEY = "xyzw_layout_sidebar_groups_apple_v1";
+const LAYOUT_PERMISSION_KEY = "xyzw_layout_permissions_apple_v1";
+const REMOTE_PERMISSION_ENDPOINTS = [
+  "/card-api/auth/user",
+  "/card-api/auth/userinfo",
+  "/card-api/user/profile",
+  "/auth/user",
+  "/auth/userinfo",
+  "/user/profile",
+];
 
 const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
+const message = useMessage();
+
 const isMobileMenuOpen = ref(false);
+const isSidebarCollapsed = ref(false);
+const expandedGroupKeys = ref([]);
+const userPermissions = ref([]);
+const permissionFetchInFlight = ref(false);
 
 const navDefinitions = [
   {
     key: "overview",
     label: "总览",
+    icon: Home,
     items: [
-      { label: "管理总览", path: "/admin/dashboard", icon: Home, permission: "dashboard:view", adminOnly: true },
-      { label: "卡片总览", path: "/admin/card-flip-ops", icon: Cube, permission: "cardflip:view" },
+      { label: "控制台", path: "/admin/dashboard", icon: Home, permission: "dashboard:view", adminOnly: true },
+      { label: "数据台", path: "/admin/card-flip-ops", icon: Cube, permission: "cardflip:view" },
+    ],
+  },
+  {
+    key: "cardflip",
+    label: "卡片倒卖",
+    icon: TrendingUp,
+    items: [
       { label: "模拟盘", path: "/admin/card-flip/sim", icon: TrendingUp, permission: "cardflip:view" },
       { label: "实战盘", path: "/admin/card-flip/live", icon: TrendingUp, permission: "cardflip:view" },
-      { label: "运行文档", path: "/admin/card-flip/docs", icon: ChatbubbleEllipsesSharp, permission: "cardflip:view" },
+      { label: "使用文档", path: "/admin/card-flip/docs", icon: ChatbubbleEllipsesSharp, permission: "cardflip:view" },
     ],
   },
   {
     key: "account",
     label: "账户",
+    icon: PersonCircle,
     items: [
       { label: "账号管理", path: "/tokens", icon: PersonCircle, permission: "token:view" },
       { label: "个人设置", path: "/admin/profile", icon: PersonCircle, permission: "profile:view" },
@@ -139,27 +203,189 @@ const navDefinitions = [
   },
 ];
 
-const navSections = computed(() =>
+const userMenuOptions = [
+  { label: "个人设置", key: "profile" },
+  { label: "系统设置", key: "settings" },
+  { type: "divider" },
+  { label: "退出登录", key: "logout" },
+];
+
+const toStringArray = (value) => {
+  if (!Array.isArray(value))
+    return [];
+  return value
+    .filter(item => typeof item === "string")
+    .map(item => item.trim())
+    .filter(Boolean);
+};
+
+const normalizeRemotePayload = (payload) => {
+  if (!payload || typeof payload !== "object")
+    return {};
+  if (payload.success !== undefined && payload.data && typeof payload.data === "object")
+    return payload.data;
+  if (payload.data && typeof payload.data === "object")
+    return payload.data;
+  return payload;
+};
+
+const extractPermissionsFromPayload = (payload) => {
+  const normalized = normalizeRemotePayload(payload);
+  const direct = [
+    ...toStringArray(normalized.permissions),
+    ...toStringArray(normalized.perms),
+  ];
+  if (direct.length)
+    return [...new Set(direct)];
+
+  if (Array.isArray(normalized.roles)) {
+    const rolePerms = normalized.roles.flatMap((role) => {
+      if (!role || typeof role !== "object")
+        return [];
+      return [
+        ...toStringArray(role.permissions),
+        ...toStringArray(role.perms),
+      ];
+    });
+    if (rolePerms.length)
+      return [...new Set(rolePerms)];
+  }
+
+  if (normalized.user && typeof normalized.user === "object") {
+    const userDirect = [
+      ...toStringArray(normalized.user.permissions),
+      ...toStringArray(normalized.user.perms),
+    ];
+    if (userDirect.length)
+      return [...new Set(userDirect)];
+  }
+
+  return [];
+};
+
+const fetchRemotePermissions = async () => {
+  if (permissionFetchInFlight.value || !authStore.token)
+    return [];
+  permissionFetchInFlight.value = true;
+  try {
+    for (const endpoint of REMOTE_PERMISSION_ENDPOINTS) {
+      try {
+        const response = await fetch(endpoint, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${authStore.token}`,
+          },
+          credentials: "same-origin",
+        });
+        if (!response.ok)
+          continue;
+        const payload = await response.json().catch(() => null);
+        const perms = extractPermissionsFromPayload(payload);
+        if (perms.length)
+          return perms;
+      } catch {
+        // ignore
+      }
+    }
+  } finally {
+    permissionFetchInFlight.value = false;
+  }
+  return [];
+};
+
+const syncLayoutPermissions = async () => {
+  const fromAuth = extractPermissionsFromPayload(authStore.userInfo || {});
+  if (fromAuth.length) {
+    userPermissions.value = fromAuth;
+    localStorage.setItem(LAYOUT_PERMISSION_KEY, JSON.stringify(fromAuth));
+    return;
+  }
+
+  const fromRemote = await fetchRemotePermissions();
+  if (fromRemote.length) {
+    userPermissions.value = fromRemote;
+    localStorage.setItem(LAYOUT_PERMISSION_KEY, JSON.stringify(fromRemote));
+    return;
+  }
+
+  try {
+    const saved = localStorage.getItem(LAYOUT_PERMISSION_KEY);
+    userPermissions.value = saved ? JSON.parse(saved) : [];
+  } catch {
+    userPermissions.value = [];
+  }
+};
+
+const hasPermission = (permission) => {
+  if (!permission)
+    return true;
+  if (!Array.isArray(userPermissions.value) || userPermissions.value.length === 0)
+    return true;
+  return userPermissions.value.includes(permission);
+};
+
+const navGroups = computed(() =>
   navDefinitions
-    .map(section => ({
-      ...section,
-      items: section.items.filter((item) => {
+    .map(group => ({
+      ...group,
+      children: group.items.filter((item) => {
         if (item.adminOnly && !authStore.userInfo?.isAdmin)
           return false;
-        return authStore.hasPermission ? authStore.hasPermission(item.permission) : true;
+        return hasPermission(item.permission);
       }),
     }))
-    .filter(section => section.items.length > 0),
+    .filter(group => group.children.length > 0),
 );
 
+const flatNavItems = computed(() => navGroups.value.flatMap(group => group.children));
+
+const normalizePath = path => (path || "").split("?")[0];
+
 const currentNavItem = computed(() => {
-  for (const section of navSections.value) {
-    for (const item of section.items) {
-      if (route.path === item.path)
-        return item;
-    }
+  const normalizedPath = normalizePath(route.path);
+  for (const group of navGroups.value) {
+    const hit = group.children.find(item => item.path === normalizedPath);
+    if (hit)
+      return hit;
   }
   return null;
+});
+
+const currentPageTitle = computed(() =>
+  String(route.meta?.title || currentNavItem.value?.label || "数据台"),
+);
+
+const currentPageSubtitle = computed(() => {
+  const path = normalizePath(route.path);
+  if (path === "/admin/dashboard")
+    return "CEO 只读总览";
+  if (path === "/admin/card-flip-ops")
+    return "卡片倒卖只读数据台";
+  if (path.startsWith("/admin/card-flip"))
+    return "只保留结果数据";
+  if (path === "/tokens")
+    return "账号与令牌状态";
+  return "精简后台入口";
+});
+
+const breadcrumbItems = computed(() => {
+  const path = normalizePath(route.path);
+  if (path === "/admin/dashboard")
+    return [{ title: "首页", path: "/admin/dashboard" }];
+  if (path.startsWith("/admin")) {
+    return [
+      { title: "首页", path: "/admin/dashboard" },
+      { title: currentPageTitle.value, path },
+    ];
+  }
+  if (path === "/tokens") {
+    return [
+      { title: "首页", path: "/admin/dashboard" },
+      { title: "账号管理", path: "/tokens" },
+    ];
+  }
+  return [{ title: currentPageTitle.value, path }];
 });
 
 const currentRoleLabel = computed(() => {
@@ -169,87 +395,138 @@ const currentRoleLabel = computed(() => {
     return "管理员";
   if (role === "ops")
     return "运营";
-  if (role === "viewer")
-    return "只读";
-  return role;
-});
-
-const currentPageTitle = computed(() =>
-  String(route.meta?.title || currentNavItem.value?.label || "数据页面"),
-);
-
-const currentPageSubtitle = computed(() => {
-  const path = route.path || "";
-  if (path.startsWith("/admin/card-flip"))
-    return "只看数据，不在前台暴露操作参数";
-  if (path === "/admin/dashboard")
-    return "结果、风险与服务状态的一屏总览";
-  if (path === "/tokens")
-    return "账号与令牌状态";
-  return "简化后的管理后台";
+  return "只读";
 });
 
 const authDisplayName = computed(() => {
   const info = authStore.userInfo || {};
-  return info.nickname || info.username || "未登录";
+  return info.nickname || info.username || selectedToken?.value?.name || "未登录";
 });
 
-const userMenuOptions = [
-  { label: "个人资料", key: "profile" },
-  { type: "divider" },
-  { label: "退出登录", key: "logout" },
-];
-
-const handleUserAction = async (key) => {
-  if (key === "profile") {
-    router.push("/admin/profile");
-    return;
-  }
-  if (key === "logout") {
-    await authStore.logout();
-    router.push("/login");
+const ensureExpandedGroupForPath = (path) => {
+  const normalizedPath = normalizePath(path);
+  const owner = navGroups.value.find(group => group.children.some(item => item.path === normalizedPath));
+  if (owner && !expandedGroupKeys.value.includes(owner.key)) {
+    expandedGroupKeys.value = [...expandedGroupKeys.value, owner.key];
+    localStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify(expandedGroupKeys.value));
   }
 };
+
+const toggleSidebar = () => {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value;
+  localStorage.setItem(SIDEBAR_COLLAPSE_KEY, String(isSidebarCollapsed.value));
+};
+
+const isGroupExpanded = key => expandedGroupKeys.value.includes(key);
+
+const toggleGroup = (key) => {
+  if (isGroupExpanded(key))
+    expandedGroupKeys.value = expandedGroupKeys.value.filter(item => item !== key);
+  else
+    expandedGroupKeys.value = [...expandedGroupKeys.value, key];
+  localStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify(expandedGroupKeys.value));
+};
+
+const goTo = (path) => {
+  const normalizedPath = normalizePath(path);
+  if (!normalizedPath || normalizePath(route.path) === normalizedPath)
+    return;
+  router.push(normalizedPath);
+};
+
+const handleUserAction = (key) => {
+  switch (key) {
+    case "profile":
+      router.push("/admin/profile");
+      break;
+    case "settings":
+      router.push("/admin/system-settings");
+      break;
+    case "logout":
+      authStore.logout();
+      message.success("已退出登录");
+      router.push("/login");
+      break;
+  }
+};
+
+onMounted(async () => {
+  await syncLayoutPermissions();
+
+  const savedCollapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY);
+  if (savedCollapsed !== null)
+    isSidebarCollapsed.value = savedCollapsed === "true";
+
+  try {
+    const savedGroupsRaw = localStorage.getItem(SIDEBAR_GROUPS_KEY);
+    if (savedGroupsRaw) {
+      const savedGroups = JSON.parse(savedGroupsRaw);
+      if (Array.isArray(savedGroups))
+        expandedGroupKeys.value = savedGroups;
+    }
+  } catch {
+    expandedGroupKeys.value = [];
+  }
+
+  if (!expandedGroupKeys.value.length)
+    expandedGroupKeys.value = navGroups.value.map(group => group.key);
+
+  ensureExpandedGroupForPath(route.path);
+});
+
+watch(() => route.fullPath, () => {
+  ensureExpandedGroupForPath(route.path);
+});
+
+watch(() => authStore.userInfo, async () => {
+  await syncLayoutPermissions();
+}, { deep: true });
+
+watch(() => authStore.token, async () => {
+  await syncLayoutPermissions();
+});
+
+watch(navGroups, (groups) => {
+  const allowedKeys = new Set(groups.map(group => group.key));
+  const filtered = expandedGroupKeys.value.filter(key => allowedKeys.has(key));
+  expandedGroupKeys.value = filtered.length ? filtered : groups.map(group => group.key);
+  localStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify(expandedGroupKeys.value));
+}, { deep: true });
 </script>
 
 <style scoped lang="scss">
-.shell {
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+.admin-shell {
+  display: flex;
   min-height: 100vh;
-  background: #f5f5f7;
-  font-family:
-    "SF Pro Display",
-    "SF Pro Text",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Helvetica Neue",
-    "PingFang SC",
-    "Microsoft YaHei",
-    sans-serif;
+  background: #000;
 }
 
 .sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  padding: 20px 16px;
-  background: rgba(0, 0, 0, 0.82);
+  width: 248px;
+  background: rgba(0, 0, 0, 0.88);
   backdrop-filter: saturate(180%) blur(20px);
-  color: #fff;
+  color: rgba(255, 255, 255, 0.82);
+  transition: width 0.2s ease;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.brand-block {
+.admin-shell.collapsed .sidebar {
+  width: 84px;
+}
+
+.logo-wrap {
+  height: 52px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 8px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .brand-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   flex: 0 0 auto;
 }
 
@@ -260,80 +537,125 @@ const handleUserAction = async (key) => {
 
 .brand-title {
   color: #fff;
+  font-family: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 20px;
   font-weight: 600;
   line-height: 1.1;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.28px;
 }
 
 .brand-subtitle {
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(255, 255, 255, 0.55);
+  font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 12px;
+  line-height: 1.33;
+  letter-spacing: -0.12px;
 }
 
-.nav-stack {
-  display: grid;
-  gap: 18px;
+.menu-scroll {
+  height: calc(100vh - 52px);
+  padding: 14px 0 20px;
 }
 
-.nav-section {
-  display: grid;
-  gap: 8px;
+.nav-group {
+  margin: 0 12px 14px;
 }
 
-.section-title {
-  padding: 0 10px;
-  color: rgba(255, 255, 255, 0.52);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.group-header {
+  width: 100%;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  cursor: pointer;
+  font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+}
+
+.group-header:hover {
+  color: #fff;
+}
+
+.group-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-arrow {
+  font-size: 14px;
+  opacity: 0.68;
+  transition: transform 0.15s ease;
+}
+
+.group-arrow.open {
+  transform: rotate(180deg);
+}
+
+.group-body {
+  padding-top: 4px;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
+  min-height: 36px;
+  margin: 4px 0;
   padding: 0 12px;
   border-radius: 12px;
-  color: rgba(255, 255, 255, 0.84);
+  color: rgba(255, 255, 255, 0.72);
   text-decoration: none;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  letter-spacing: -0.224px;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.nav-link:hover {
+.nav-link:hover,
+.nav-link.active {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
-.nav-link.active {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+.nav-link-collapsed {
+  justify-content: center;
+  padding: 0;
+  margin: 4px 10px;
 }
 
 .nav-icon {
   font-size: 18px;
+  flex: 0 0 auto;
 }
 
 .main-shell {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  background: #f5f5f7;
+}
+
+.topbar,
+.breadcrumb-bar {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: saturate(180%) blur(20px);
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  height: 48px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 56px;
-  padding: 0 24px;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: saturate(180%) blur(20px);
-  color: #fff;
+  padding: 0 18px;
 }
 
 .topbar-left,
@@ -343,70 +665,118 @@ const handleUserAction = async (key) => {
   gap: 12px;
 }
 
-.page-meta {
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(210, 210, 215, 0.16);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.page-heading {
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
 .page-title {
   color: #fff;
+  font-family: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 21px;
   font-weight: 600;
-  letter-spacing: 0.231px;
   line-height: 1.19;
+  letter-spacing: 0.231px;
 }
 
 .page-subtitle {
-  color: rgba(255, 255, 255, 0.64);
+  color: rgba(255, 255, 255, 0.55);
+  font-family: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 12px;
+  line-height: 1.33;
+  letter-spacing: -0.12px;
 }
 
-.icon-btn,
 .user-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
   cursor: pointer;
+  padding: 4px 0 4px 8px;
 }
 
-.icon-btn {
-  width: 36px;
-  padding: 0;
+.breadcrumb-bar {
+  padding: 8px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.user-chip {
-  font-size: 14px;
+.crumb-link {
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .page-container {
-  padding: 28px;
+  padding: 24px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.drawer-shell {
+  padding: 10px 6px;
+}
+
+.drawer-group + .drawer-group {
+  margin-top: 14px;
+}
+
+.drawer-group-title {
+  font-size: 12px;
+  color: #6e6e73;
+  margin: 0 8px 8px;
+  letter-spacing: -0.12px;
+}
+
+.drawer-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  text-decoration: none;
+  border-radius: 12px;
+  color: #1d1d1f;
+  font-size: 14px;
+}
+
+.drawer-link:hover,
+.drawer-link.active {
+  background: rgba(0, 113, 227, 0.08);
+  color: #0066cc;
+}
+
+.desktop-only {
+  display: inline-flex;
 }
 
 .mobile-only {
   display: none;
 }
 
-.drawer-shell {
-  padding: 10px 4px;
-}
-
-.mobile-brand {
-  padding-top: 0;
-}
-
-@media (max-width: 980px) {
-  .shell {
-    grid-template-columns: 1fr;
+@media (max-width: 992px) {
+  .sidebar {
+    display: none;
   }
 
-  .desktop-sidebar {
+  .desktop-only {
     display: none;
   }
 
@@ -414,22 +784,24 @@ const handleUserAction = async (key) => {
     display: inline-flex;
   }
 
-  .topbar {
-    padding: 0 16px;
-  }
-
   .page-container {
-    padding: 18px 16px 24px;
+    padding: 16px;
   }
 }
 
 @media (max-width: 640px) {
-  .topbar-right :deep(.n-tag) {
+  .topbar {
+    padding: 0 12px;
+  }
+
+  .page-subtitle,
+  .role-pill,
+  .user-chip span {
     display: none;
   }
 
-  .user-chip span {
-    display: none;
+  .page-title {
+    font-size: 18px;
   }
 }
 </style>
