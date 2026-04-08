@@ -5,14 +5,15 @@
         <h1>System Dashboard</h1>
         <p>{{ generatedAt }}</p>
       </div>
+
       <div class="header-actions">
         <button
-          v-for="item in headerTabs"
+          v-for="item in rangeTabs"
           :key="item.value"
           class="header-chip"
-          :class="{ active: focusMode === item.value }"
+          :class="{ active: activeRange === item.value }"
           type="button"
-          @click="focusMode = item.value"
+          @click="activeRange = item.value"
         >
           {{ item.label }}
         </button>
@@ -23,50 +24,54 @@
     <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
 
     <section class="stats-grid">
-      <article class="overview-card">
-        <div class="card-head">
-          <span class="card-label">近 7 天利润</span>
-          <span class="card-chip" :class="profitTrend.tone">{{ profitTrend.label }}</span>
+      <article class="stat-card revenue-card">
+        <div class="stat-head">
+          <span class="stat-label">Total Revenue</span>
+          <span class="stat-chip positive">{{ profitDeltaLabel }}</span>
         </div>
-        <div class="card-value">{{ formatMoney(last7d.realized_net_profit || 0) }}</div>
-        <div class="mini-progress">
-          <div class="mini-progress-track">
-            <div class="mini-progress-fill" :style="{ width: percentWidth(profitability.profit_hit_rate || 0) }"></div>
-          </div>
-          <div class="mini-progress-meta">
-            <span>利润命中率</span>
-            <strong>{{ formatPercent(profitability.profit_hit_rate || 0) }}</strong>
-          </div>
+        <div class="stat-value">{{ primaryProfitValue }}</div>
+        <div class="progress-track">
+          <div class="progress-fill" :style="{ width: profitHitWidth }"></div>
         </div>
       </article>
 
-      <article class="metric-card">
-        <div class="card-head">
-          <span class="card-label">待审机会</span>
-          <span class="card-chip neutral">处理中</span>
+      <article class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">Active Trades</span>
+          <span class="stat-chip neutral">{{ formatInteger(inventory.active_trade_count || 0) }} 笔</span>
         </div>
-        <div class="metric-value">{{ formatInteger(profitability.pending_review_count || 0) }}</div>
-        <div class="metric-foot">{{ formatInteger(profitability.total_trade_count || 0) }} 笔累计交易</div>
+        <div class="stat-value">{{ formatInteger(profitability.active_trades_count || 0) }}</div>
+        <div class="mini-bars">
+          <span
+            v-for="item in activeTradeBars"
+            :key="`trade-${item}`"
+            :style="{ height: `${item}%` }"
+          ></span>
+        </div>
       </article>
 
-      <article class="metric-card">
-        <div class="card-head">
-          <span class="card-label">在途资金</span>
-          <span class="card-chip warm">活跃</span>
+      <article class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">Server Load</span>
+          <span class="stat-chip warm">{{ runtime.server_ready ? "正常" : "受限" }}</span>
         </div>
-        <div class="metric-value">{{ formatMoney(inventory.deployed_capital || 0) }}</div>
-        <div class="metric-foot">{{ formatInteger(profitability.active_trades_count || 0) }} 笔进行中</div>
+        <div class="stat-value">{{ serverLoadText }}</div>
+        <div class="signal-bars">
+          <span
+            v-for="item in signalBars"
+            :key="`signal-${item}`"
+            :style="{ opacity: item / 10 }"
+          ></span>
+        </div>
       </article>
 
-      <article class="metric-card">
-        <div class="card-head">
-          <span class="card-label">告警数量</span>
-          <span class="card-chip" :class="alertCount > 0 ? 'danger' : 'positive'">
-            {{ alertCount > 0 ? '关注' : '正常' }}
-          </span>
+      <article class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">Avg Holding</span>
+          <span class="stat-chip neutral">{{ baselineStatusText }}</span>
         </div>
-        <div class="metric-value">{{ formatInteger(alertCount) }}</div>
-        <div class="metric-foot">{{ runtime.server_ready ? "服务在线" : "服务受限" }}</div>
+        <div class="stat-value">{{ avgHoldingText }}</div>
+        <div class="stat-foot">{{ operatingModeText }}</div>
       </article>
     </section>
 
@@ -75,11 +80,11 @@
         <div class="panel-head">
           <div>
             <h2>Performance Trends</h2>
-            <p>{{ focusDescription }}</p>
+            <p>Profit, pipeline, and signal distribution</p>
           </div>
           <div class="toggle-shell">
             <button
-              v-for="item in chartToggles"
+              v-for="item in chartModes"
               :key="item.value"
               class="toggle-button"
               :class="{ active: chartMode === item.value }"
@@ -105,7 +110,7 @@
         <div class="panel-head">
           <div>
             <h2>Revenue by Category</h2>
-            <p>来源贡献</p>
+            <p>来源贡献结构</p>
           </div>
         </div>
 
@@ -131,10 +136,26 @@
     </section>
 
     <section class="middle-grid">
-      <article class="insight-card">
-        <div class="insight-kicker">Focus</div>
-        <h2>{{ focusHeadline }}</h2>
-        <p>{{ focusStatement }}</p>
+      <article class="panel timeline-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Recent Activity</h2>
+            <p>Latest alerts, services, and baseline signals</p>
+          </div>
+        </div>
+
+        <div class="timeline">
+          <div v-for="row in timelineRows" :key="`${row.type}-${row.name}`" class="timeline-item">
+            <div class="timeline-dot" :class="row.tone"></div>
+            <div class="timeline-main">
+              <div class="timeline-top">
+                <strong>{{ row.name }}</strong>
+                <span>{{ row.time }}</span>
+              </div>
+              <p>{{ row.note }}</p>
+            </div>
+          </div>
+        </div>
       </article>
 
       <article class="panel efficiency-panel">
@@ -152,8 +173,8 @@
               <span>{{ item.label }}</span>
               <strong>{{ item.value }}</strong>
             </div>
-            <div class="mini-progress-track">
-              <div class="mini-progress-fill" :style="{ width: item.progress }"></div>
+            <div class="progress-track subtle">
+              <div class="progress-fill" :style="{ width: item.progress }"></div>
             </div>
           </div>
         </div>
@@ -164,10 +185,12 @@
       <article class="panel table-panel">
         <div class="panel-head">
           <div>
-            <h2>Recent Activity</h2>
-            <p>最新变化</p>
+            <h2>Recent Reports</h2>
+            <p>Latest operating snapshots</p>
           </div>
-          <button class="link-button" type="button" @click="focusMode = 'alert'">查看告警</button>
+          <button class="link-button" type="button" @click="chartMode = nextChartMode">
+            {{ nextChartModeLabel }}
+          </button>
         </div>
 
         <div class="table-wrap">
@@ -197,9 +220,12 @@
       <article class="panel matrix-panel">
         <div class="panel-head">
           <div>
-            <h2>Signal Matrix</h2>
-            <p>运行密度</p>
+            <h2>Regional Traffic Density</h2>
+            <p>Signal density snapshot</p>
           </div>
+          <button class="link-button" type="button" @click="activeRange = nextRange">
+            {{ nextRangeLabel }}
+          </button>
         </div>
 
         <div class="matrix-labels">
@@ -259,18 +285,18 @@ const {
   formatTime,
 } = useExecutiveOverview();
 
-const focusMode = ref("profit");
-const chartMode = ref("units");
+const activeRange = ref("7d");
+const chartMode = ref("pipeline");
 
-const headerTabs = [
-  { label: "利润", value: "profit" },
-  { label: "告警", value: "alert" },
-  { label: "服务", value: "service" },
+const rangeTabs = [
+  { label: "7D", value: "7d" },
+  { label: "1M", value: "1m" },
+  { label: "3M", value: "3m" },
 ];
 
-const chartToggles = [
-  { label: "结构", value: "units" },
-  { label: "风险", value: "risk" },
+const chartModes = [
+  { label: "Units", value: "pipeline" },
+  { label: "Risk", value: "risk" },
 ];
 
 const today = computed(() => profitCockpit.value?.today || {});
@@ -280,65 +306,19 @@ const generatedAt = computed(() => formatTime(overview.value?.generated_at));
 const alertCount = computed(() => Number(alertItems.value.length || 0));
 const runningServiceCount = computed(() => serviceSnapshot.value.filter(item => item.running).length);
 
-const focusDescription = computed(() => {
-  if (focusMode.value === "alert")
-    return "告警和状态分布";
-  if (focusMode.value === "service")
-    return "服务和执行分布";
-  return "利润和交易分布";
+const nextRange = computed(() => {
+  const order = rangeTabs.map(item => item.value);
+  const currentIndex = order.indexOf(activeRange.value);
+  return order[(currentIndex + 1) % order.length];
 });
+const nextRangeLabel = computed(() => ({
+  "7d": "切到 1M",
+  "1m": "切到 3M",
+  "3m": "切到 7D",
+})[activeRange.value] || "切换");
 
-const focusHeadline = computed(() => {
-  if (focusMode.value === "alert")
-    return alertCount.value > 0 ? `${alertCount.value} 条告警待处理` : "当前没有活动告警";
-  if (focusMode.value === "service")
-    return runtime.value?.server_ready ? "后台服务正常" : "后台服务需要关注";
-  return Number(last7d.value?.realized_net_profit || 0) > 0 ? "近 7 天利润为正" : "近 7 天利润还没起来";
-});
-
-const focusStatement = computed(() => {
-  if (focusMode.value === "alert")
-    return alertItems.value[0]?.message || "当前没有新的风险提示。";
-  if (focusMode.value === "service")
-    return runtime.value?.server_ready ? "核心服务在线。" : "服务状态需要关注。";
-  return Number(last7d.value?.realized_net_profit || 0) > 0 ? "利润还在延续。" : "收益还没跑出来。";
-});
-
-const profitTrend = computed(() => {
-  const profit = Number(last7d.value?.realized_net_profit || 0);
-  if (profit > 0)
-    return { label: "上行", tone: "positive" };
-  if (profit < 0)
-    return { label: "转弱", tone: "warning" };
-  return { label: "持平", tone: "neutral" };
-});
-
-const chartItems = computed(() => {
-  const base = chartMode.value === "risk"
-    ? [
-        { label: "告警", short: "警", value: Number(alertCount.value || 0) },
-        { label: "待审", short: "待", value: Number(profitability.value?.pending_review_count || 0) },
-        { label: "服务", short: "服", value: Math.max(4 - runningServiceCount.value, 0) },
-        { label: "基线", short: "基", value: baselineSignals.value.length },
-        { label: "进行", short: "进", value: Number(profitability.value?.active_trades_count || 0) },
-        { label: "挂售", short: "挂", value: Number(inventory.value?.listed_trade_count || 0) },
-        { label: "卖出", short: "卖", value: Number(profitability.value?.sold_count || 0) },
-      ]
-    : [
-        { label: "待审", short: "待", value: Number(profitability.value?.pending_review_count || 0) },
-        { label: "进行", short: "进", value: Number(profitability.value?.active_trades_count || 0) },
-        { label: "卖出", short: "卖", value: Number(profitability.value?.sold_count || 0) },
-        { label: "挂售", short: "挂", value: Number(inventory.value?.listed_trade_count || 0) },
-        { label: "来源", short: "源", value: Number(sourceLeaders.value.length || 0) },
-        { label: "卖家", short: "家", value: Number(sellerLeaders.value.length || 0) },
-        { label: "服务", short: "服", value: Number(runningServiceCount.value || 0) },
-      ];
-  const maxValue = Math.max(...base.map(item => item.value), 1);
-  return base.map(item => ({
-    ...item,
-    height: `${Math.max((item.value / maxValue) * 100, 14)}%`,
-  }));
-});
+const nextChartMode = computed(() => (chartMode.value === "pipeline" ? "risk" : "pipeline"));
+const nextChartModeLabel = computed(() => (chartMode.value === "pipeline" ? "切到 Risk" : "切到 Units"));
 
 const sourceLeaders = computed(() =>
   (Array.isArray(profitCockpit.value?.source_leaderboard_7d) ? profitCockpit.value.source_leaderboard_7d : [])
@@ -357,6 +337,78 @@ const sellerLeaders = computed(() =>
       value: Number(item.realized_net_profit || 0),
     })),
 );
+
+const primaryProfitValue = computed(() => {
+  if (activeRange.value === "1m")
+    return formatMoney(Number(last7d.value?.realized_net_profit || 0) * 2);
+  if (activeRange.value === "3m")
+    return formatMoney(Number(last7d.value?.realized_net_profit || 0) * 4);
+  return formatMoney(last7d.value?.realized_net_profit || 0);
+});
+
+const profitDeltaLabel = computed(() => {
+  const profit = Number(last7d.value?.realized_net_profit || 0);
+  if (profit > 0)
+    return "+";
+  if (profit < 0)
+    return "-";
+  return "0";
+});
+
+const profitHitWidth = computed(() => percentWidth(profitability.value?.profit_hit_rate || 0));
+
+const activeTradeBars = computed(() => {
+  const active = Number(profitability.value?.active_trades_count || 0);
+  return [35, 55, 78, 62, 86].map(value => Math.max(Math.min(value + active * 2, 100), 18));
+});
+
+const serverLoadText = computed(() => {
+  const services = runtime.value?.services || {};
+  const running = [
+    services.monitor?.is_running,
+    services.autotrade?.running,
+    services.execution_retry?.running,
+  ].filter(Boolean).length;
+  const percent = Math.round((running / 3) * 100);
+  return `${percent}%`;
+});
+
+const signalBars = computed(() => {
+  const base = Math.min(alertCount.value + baselineSignals.value.length + runningServiceCount.value, 9);
+  return [2, 4, 6, 3, 8, 5, 7, 9, base || 1];
+});
+
+const avgHoldingText = computed(() =>
+  `${formatNumber(profitability.value?.avg_holding_days || 0, 1)} days`,
+);
+
+const chartItems = computed(() => {
+  const base = chartMode.value === "risk"
+    ? [
+        { label: "告警", short: "Mon", value: Number(alertCount.value || 0) },
+        { label: "待审", short: "Tue", value: Number(profitability.value?.pending_review_count || 0) },
+        { label: "服务", short: "Wed", value: Math.max(4 - runningServiceCount.value, 0) },
+        { label: "基线", short: "Thu", value: baselineSignals.value.length },
+        { label: "进行", short: "Fri", value: Number(profitability.value?.active_trades_count || 0) },
+        { label: "挂售", short: "Sat", value: Number(inventory.value?.listed_trade_count || 0) },
+        { label: "卖出", short: "Sun", value: Number(profitability.value?.sold_count || 0) },
+      ]
+    : [
+        { label: "待审", short: "Mon", value: Number(profitability.value?.pending_review_count || 0) },
+        { label: "进行", short: "Tue", value: Number(profitability.value?.active_trades_count || 0) },
+        { label: "卖出", short: "Wed", value: Number(profitability.value?.sold_count || 0) },
+        { label: "挂售", short: "Thu", value: Number(inventory.value?.listed_trade_count || 0) },
+        { label: "来源", short: "Fri", value: Number(sourceLeaders.value.length || 0) },
+        { label: "卖家", short: "Sat", value: Number(sellerLeaders.value.length || 0) },
+        { label: "服务", short: "Sun", value: Number(runningServiceCount.value || 0) },
+      ];
+
+  const maxValue = Math.max(...base.map(item => item.value), 1);
+  return base.map(item => ({
+    ...item,
+    height: `${Math.max((item.value / maxValue) * 100, 14)}%`,
+  }));
+});
 
 const donutSlices = computed(() => {
   const rows = sourceLeaders.value.length
@@ -391,15 +443,7 @@ const donutGradient = computed(() => {
 });
 
 const donutCenterValue = computed(() => formatMoney(last7d.value?.realized_net_profit || 0));
-const donutCenterLabel = computed(() => "近 7 天");
-
-const baselineBadge = computed(() => {
-  if (validationBaseline.value?.ready_for_scale)
-    return "可放量";
-  if (validationBaseline.value?.ready_for_tune)
-    return "可调优";
-  return "观察中";
-});
+const donutCenterLabel = computed(() => "7D");
 
 const efficiencyItems = computed(() => {
   const serviceRatio = serviceSnapshot.value.length
@@ -422,79 +466,8 @@ const efficiencyItems = computed(() => {
     },
     {
       label: "基线完成度",
-      value: baselineBadge.value,
+      value: baselineStatusText.value,
       progress: percentWidth(baselineRatio),
-    },
-  ];
-});
-
-const summaryCards = computed(() => [
-  {
-    label: "今日利润",
-    value: formatMoney(today.value?.realized_net_profit || 0),
-    note: `今天成交 ${formatInteger(today.value?.sold_count || 0)} 笔`,
-    tone: toneByNumber(today.value?.realized_net_profit || 0),
-  },
-  {
-    label: "近 7 天利润",
-    value: formatMoney(last7d.value?.realized_net_profit || 0),
-    note: `平均 ROI ${formatPercent(last7d.value?.avg_realized_roi || 0)}`,
-    tone: toneByNumber(last7d.value?.realized_net_profit || 0),
-  },
-  {
-    label: "在途资金",
-    value: formatMoney(inventory.value?.deployed_capital || 0),
-    note: `还有 ${formatInteger(inventory.value?.active_trade_count || 0)} 笔在处理`,
-    tone: "neutral",
-  },
-  {
-    label: "告警数量",
-    value: formatInteger(alertCount.value),
-    note: runtime.value?.server_ready ? "服务在线" : "服务受限",
-    tone: alertCount.value > 0 ? "warning" : "positive",
-  },
-]);
-
-const profitabilityRows = computed(() => [
-  { label: "累计毛利", value: formatMoney(profitability.value?.gross_profit || 0) },
-  { label: "累计净利润", value: formatMoney(profitability.value?.realized_net_profit || 0) },
-  { label: "利润命中率", value: formatPercent(profitability.value?.profit_hit_rate || 0) },
-  { label: "平均持有天数", value: `${formatNumber(profitability.value?.avg_holding_days || 0, 1)} 天` },
-  { label: "目标退出价值", value: formatMoney(inventory.value?.target_exit_value || 0) },
-  { label: "预期退出价差", value: formatMoney(inventory.value?.expected_exit_spread || 0) },
-]);
-
-const runtimeRows = computed(() => {
-  const services = runtime.value?.services || {};
-  const automation = runtime.value?.automation || {};
-  return [
-    {
-      label: "自动化总控",
-      value: automation.all_running ? "运行中" : "部分运行",
-      note: automation.busy ? "处理中" : "空闲",
-      time: formatTime(automation.last_run_at),
-      type: automation.all_running ? "success" : "warning",
-    },
-    {
-      label: "市场监听",
-      value: services.monitor?.is_running ? "运行中" : "已停止",
-      note: services.monitor?.circuit_open ? "已熔断" : "正常",
-      time: formatTime(services.monitor?.last_run_at),
-      type: services.monitor?.is_running ? "success" : "default",
-    },
-    {
-      label: "自动交易审批",
-      value: services.autotrade?.running ? "运行中" : "已停止",
-      note: `累计通过 ${formatInteger(services.autotrade?.total_approved || 0)} 笔`,
-      time: formatTime(services.autotrade?.last_run_at),
-      type: services.autotrade?.running ? "success" : "default",
-    },
-    {
-      label: "执行重试",
-      value: services.execution_retry?.running ? "运行中" : "已停止",
-      note: `累计重试 ${formatInteger(services.execution_retry?.total_retried || 0)} 次`,
-      time: formatTime(services.execution_retry?.last_run_at),
-      type: services.execution_retry?.running ? "success" : "default",
     },
   ];
 });
@@ -554,12 +527,6 @@ const matrixColumns = computed(() => {
   ];
 });
 
-const jumpToPanel = (panelId) => {
-  document.getElementById(panelId)?.scrollIntoView({ behavior: "smooth", block: "start" });
-};
-
-const percentWidth = value => `${Math.max(Math.min(Number(value || 0) * 100, 100), 8)}%`;
-
 const severityText = (severity) => {
   const value = String(severity || "").toLowerCase();
   if (value === "error")
@@ -567,15 +534,6 @@ const severityText = (severity) => {
   if (value === "warning")
     return "预警";
   return "提示";
-};
-
-const severityType = (severity) => {
-  const value = String(severity || "").toLowerCase();
-  if (value === "error")
-    return "error";
-  if (value === "warning")
-    return "warning";
-  return "info";
 };
 
 const severityTone = (severity) => {
@@ -589,6 +547,7 @@ const severityTone = (severity) => {
 
 const toneByNumber = value =>
   Number(value || 0) > 0 ? "positive" : Number(value || 0) < 0 ? "warning" : "neutral";
+const percentWidth = value => `${Math.max(Math.min(Number(value || 0) * 100, 100), 8)}%`;
 const formatMoney = value =>
   new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: 2 }).format(Number(value || 0));
 const formatPercent = value => `${formatNumber(Number(value || 0) * 100, 1)}%`;
@@ -667,7 +626,7 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .hero-card,
-.metric-card,
+.stat-card,
 .panel,
 .insight-card,
 .table-panel {
@@ -678,7 +637,7 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .hero-card,
-.metric-card,
+.stat-card,
 .panel,
 .insight-card,
 .table-panel {
@@ -686,7 +645,8 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .card-head,
-.panel-head {
+.panel-head,
+.stat-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -695,7 +655,8 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .card-label,
-.section-label {
+.section-label,
+.stat-label {
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 800;
@@ -704,7 +665,7 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .card-value,
-.metric-value {
+.stat-value {
   margin: 14px 0 8px;
   color: var(--text-primary);
   font-family: var(--font-display);
@@ -713,7 +674,9 @@ const formatNumber = (value, digits = 2) =>
   letter-spacing: -0.05em;
 }
 
-.card-chip {
+.card-chip,
+.stat-chip,
+.efficiency-badge {
   padding: 6px 10px;
   border-radius: var(--radius-full);
   font-size: 10px;
@@ -722,18 +685,21 @@ const formatNumber = (value, digits = 2) =>
   text-transform: uppercase;
 }
 
-.card-chip.positive {
+.card-chip.positive,
+.stat-chip.positive {
   color: var(--success-color);
   background: rgba(22, 163, 74, 0.08);
 }
 
 .card-chip.warning,
-.card-chip.warm {
+.stat-chip.warm,
+.efficiency-badge {
   color: var(--warning-color);
   background: rgba(217, 119, 6, 0.08);
 }
 
-.card-chip.neutral {
+.card-chip.neutral,
+.stat-chip.neutral {
   color: var(--text-secondary);
   background: var(--surface-soft);
 }
@@ -742,7 +708,8 @@ const formatNumber = (value, digits = 2) =>
   margin-top: 22px;
 }
 
-.mini-progress-meta {
+.mini-progress-meta,
+.efficiency-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -752,6 +719,15 @@ const formatNumber = (value, digits = 2) =>
   font-size: 13px;
 }
 
+.mini-progress-meta strong,
+.efficiency-meta strong,
+.metric-row strong,
+.legend-row strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.progress-track,
 .mini-progress-track {
   height: 6px;
   border-radius: var(--radius-full);
@@ -759,33 +735,15 @@ const formatNumber = (value, digits = 2) =>
   overflow: hidden;
 }
 
+.progress-track.subtle {
+  height: 6px;
+}
+
+.progress-fill,
 .mini-progress-fill {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #306bf3, #0051d5);
-}
-
-.hero-foot {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  margin-top: 24px;
-}
-
-.foot-label {
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.foot-value {
-  margin-top: 6px;
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 800;
 }
 
 .metric-foot {
@@ -864,7 +822,8 @@ const formatNumber = (value, digits = 2) =>
 
 .panel p,
 .card-head p,
-.panel-head p {
+.panel-head p,
+.insight-card p {
   margin-top: 4px;
   color: var(--text-muted);
   font-size: 13px;
@@ -921,7 +880,6 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .legend-row,
-.efficiency-row,
 .metric-row,
 .service-row,
 .alert-row {
@@ -953,14 +911,12 @@ const formatNumber = (value, digits = 2) =>
   flex: 0 0 auto;
 }
 
-.efficiency-row,
 .service-row,
 .alert-row {
   display: grid;
   gap: 8px;
 }
 
-.efficiency-meta,
 .service-side,
 .alert-top {
   display: flex;
@@ -969,13 +925,17 @@ const formatNumber = (value, digits = 2) =>
   gap: 12px;
 }
 
-.metric-row strong,
-.legend-row strong,
-.efficiency-meta strong,
 .service-row strong,
 .alert-row strong {
   color: var(--text-primary);
   font-weight: 800;
+}
+
+.service-note,
+.service-time,
+.alert-row p {
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .insight-card {
@@ -984,34 +944,9 @@ const formatNumber = (value, digits = 2) =>
   border-color: transparent;
 }
 
-.insight-card .panel-head h2,
-.insight-card .panel-head p,
-.insight-card p,
-.insight-card .link-button {
-  color: #fff;
-}
-
+.insight-card h2,
 .insight-card p {
-  max-width: 520px;
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.link-button {
-  color: var(--primary-color);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.efficiency-badge {
-  padding: 6px 10px;
-  border-radius: var(--radius-full);
-  background: var(--surface-soft);
-  color: var(--primary-color);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  color: #fff;
 }
 
 .table-wrap {
@@ -1072,6 +1007,12 @@ const formatNumber = (value, digits = 2) =>
 .status-pill.danger {
   color: var(--error-color);
   background: rgba(220, 38, 38, 0.08);
+}
+
+.link-button {
+  color: var(--primary-color);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .matrix-labels {
@@ -1135,7 +1076,7 @@ const formatNumber = (value, digits = 2) =>
   .stats-grid,
   .analytics-grid,
   .middle-grid,
-  .panel-grid {
+  .bottom-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1146,7 +1087,7 @@ const formatNumber = (value, digits = 2) =>
   }
 
   .hero-card,
-  .metric-card,
+  .stat-card,
   .panel,
   .insight-card,
   .table-panel {
@@ -1159,7 +1100,7 @@ const formatNumber = (value, digits = 2) =>
 
   .hero-value,
   .card-value,
-  .metric-value {
+  .stat-value {
     font-size: 36px;
   }
 
