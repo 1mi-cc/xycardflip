@@ -1,237 +1,130 @@
 <template>
   <div class="ops-page">
-    <section class="top-section">
-      <article class="hero-card">
-        <div class="section-kicker">待审机会</div>
-        <div class="hero-value">{{ formatInteger(profitability.pending_review_count || 0) }}</div>
-        <div class="hero-trend" :class="pipelineTrend.tone">
-          <span>{{ pipelineTrend.label }}</span>
+    <section class="stats-grid">
+      <article v-for="card in summaryCards" :key="card.label" class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">{{ card.label }}</span>
+          <span class="stat-badge" :class="card.tone">{{ card.badge }}</span>
         </div>
-
-        <div class="hero-progress">
-          <div class="hero-progress-meta">
-            <span>已卖出占比</span>
-            <strong>{{ soldRatioText }}</strong>
-          </div>
-          <div class="progress-track">
-            <div class="progress-fill" :style="{ width: soldRatioWidth }"></div>
-          </div>
-        </div>
-
-        <div class="hero-foot">
-          <div>
-            <div class="foot-label">进行中</div>
-            <div class="foot-value">{{ formatInteger(profitability.active_trades_count || 0) }}</div>
-          </div>
-          <div>
-            <div class="foot-label">已卖出</div>
-            <div class="foot-value">{{ formatInteger(profitability.sold_count || 0) }}</div>
-          </div>
-        </div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <h3>交易结构</h3>
-            <p>当前业务分布</p>
-          </div>
-          <button class="ghost-chip" type="button" @click="activeFocus = nextFocus">
-            {{ nextFocusLabel }}
-          </button>
-        </div>
-
-        <div class="bar-chart">
-          <div v-for="item in chartItems" :key="item.label" class="bar-group">
-            <div class="bar-track">
-              <div class="bar-fill" :style="{ height: item.height }"></div>
-            </div>
-            <div class="bar-label">{{ item.short }}</div>
-          </div>
-        </div>
+        <div class="stat-value">{{ card.value }}</div>
+        <div class="stat-note">{{ card.note }}</div>
       </article>
     </section>
 
-    <section class="middle-section">
-      <article class="insight-card">
-        <div class="card-head card-head-light">
-          <div class="title-with-icon">
-            <span class="panel-icon">✦</span>
-            <h3>关键变化</h3>
-          </div>
-        </div>
-        <p>{{ insightText }}</p>
-        <button class="insight-button" type="button" @click="jumpToPanel(insightPanel)">
-          查看详情
+    <section class="toolbar-card">
+      <div class="search-shell">
+        <n-input
+          v-model:value="searchText"
+          clearable
+          placeholder="搜索标题、类别或状态"
+        ></n-input>
+      </div>
+
+      <div class="filter-row">
+        <button
+          v-for="item in filterOptions"
+          :key="item.value"
+          class="filter-chip"
+          :class="{ active: activeFilter === item.value }"
+          type="button"
+          @click="activeFilter = item.value"
+        >
+          {{ item.label }}
         </button>
-      </article>
+      </div>
+    </section>
 
-      <article class="efficiency-card">
-        <div class="card-head">
-          <div class="title-with-icon">
-            <span class="panel-icon warm">↗</span>
-            <h3>效率</h3>
+    <section class="content-grid">
+      <div class="feed-column">
+        <article
+          v-for="entry in filteredEntries"
+          :key="entry.id"
+          class="entry-card"
+        >
+          <div class="entry-icon" :class="entry.tone">
+            {{ entry.icon }}
           </div>
-          <span class="status-chip">{{ activeFocusLabel }}</span>
-        </div>
 
-        <div class="efficiency-list">
-          <div v-for="item in efficiencyItems" :key="item.label" class="efficiency-row">
-            <div class="efficiency-meta">
+          <div class="entry-main">
+            <div class="entry-top">
+              <span class="entry-id">{{ entry.id }}</span>
+              <span class="entry-time">{{ entry.time }}</span>
+            </div>
+            <h3>{{ entry.title }}</h3>
+            <div class="entry-meta">
+              <span class="status-pill" :class="entry.tone">{{ entry.status }}</span>
+              <span>{{ entry.meta }}</span>
+            </div>
+          </div>
+
+          <div class="entry-side">
+            <div class="entry-side-value">{{ entry.sideValue }}</div>
+            <div class="entry-side-label">{{ entry.sideLabel }}</div>
+          </div>
+        </article>
+
+        <div v-if="!filteredEntries.length" class="empty-card">
+          当前筛选条件下没有内容
+        </div>
+      </div>
+
+      <aside class="side-column">
+        <article class="side-card">
+          <div class="card-head">
+            <h3>收益与库存</h3>
+            <span>{{ generatedAt }}</span>
+          </div>
+          <div class="mini-list">
+            <div v-for="item in profitRows" :key="item.label" class="mini-row">
               <span>{{ item.label }}</span>
               <strong>{{ item.value }}</strong>
             </div>
-            <div class="progress-track subtle">
-              <div class="progress-fill" :style="{ width: item.progress }"></div>
+          </div>
+        </article>
+
+        <article class="side-card">
+          <div class="card-head">
+            <h3>来源贡献</h3>
+            <button class="ghost-link" type="button" @click="activeFilter = 'source'">查看</button>
+          </div>
+          <div v-if="sourceLeaders.length" class="mini-list">
+            <div v-for="item in sourceLeaders" :key="item.name" class="mini-row">
+              <span>{{ item.name }}</span>
+              <strong>{{ item.value }}</strong>
             </div>
           </div>
-        </div>
-      </article>
+          <div v-else class="empty-mini">暂无来源数据</div>
+        </article>
+
+        <article class="side-card">
+          <div class="card-head">
+            <h3>基线与服务</h3>
+            <button class="ghost-link" type="button" @click="activeFilter = 'baseline'">查看</button>
+          </div>
+          <div class="mini-list">
+            <div class="mini-row">
+              <span>基线状态</span>
+              <strong>{{ baselineStatusText }}</strong>
+            </div>
+            <div class="mini-row">
+              <span>运行模式</span>
+              <strong>{{ operatingModeText }}</strong>
+            </div>
+            <div class="mini-row">
+              <span>服务在线率</span>
+              <strong>{{ serviceRatioText }}</strong>
+            </div>
+          </div>
+          <div v-if="baselineSignals.length" class="signal-cloud">
+            <span v-for="item in baselineSignals.slice(0, 6)" :key="item.code" class="signal-pill">
+              {{ item.label }}
+            </span>
+          </div>
+        </article>
+      </aside>
     </section>
 
-    <section class="summary-grid">
-      <article v-for="card in summaryCards" :key="card.label" class="summary-card">
-        <div class="summary-label">{{ card.label }}</div>
-        <div class="summary-value">{{ card.value }}</div>
-        <div class="summary-note" :class="card.tone">{{ card.note }}</div>
-      </article>
-    </section>
-
-    <section class="panel-grid">
-      <article id="pipeline-panel" class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="section-label">进度</div>
-            <h3>机会和成交</h3>
-          </div>
-          <span class="panel-meta">{{ generatedAt }}</span>
-        </div>
-        <div class="metric-list">
-          <div v-for="item in pipelineRows" :key="item.label" class="metric-row">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-          </div>
-        </div>
-      </article>
-
-      <article id="profit-panel" class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="section-label">收益</div>
-            <h3>收益与库存</h3>
-          </div>
-        </div>
-        <div class="metric-list">
-          <div v-for="item in profitabilityRows" :key="item.label" class="metric-row">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-          </div>
-        </div>
-        <div class="sub-grid">
-          <div class="sub-panel">
-            <div class="sub-title">近 7 天来源贡献</div>
-            <div v-if="sourceLeaders.length" class="metric-list compact-list">
-              <div v-for="item in sourceLeaders" :key="item.name" class="metric-row">
-                <span>{{ item.name }}</span>
-                <strong>{{ item.value }}</strong>
-              </div>
-            </div>
-            <n-empty v-else description="暂无来源贡献数据" size="small"></n-empty>
-          </div>
-          <div class="sub-panel">
-            <div class="sub-title">近 7 天卖家贡献</div>
-            <div v-if="sellerLeaders.length" class="metric-list compact-list">
-              <div v-for="item in sellerLeaders" :key="item.name" class="metric-row">
-                <span>{{ item.name }}</span>
-                <strong>{{ item.value }}</strong>
-              </div>
-            </div>
-            <n-empty v-else description="暂无卖家贡献数据" size="small"></n-empty>
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <section class="bottom-section">
-      <article id="activity-panel" class="table-card">
-        <div class="card-head">
-          <h3>最近动态</h3>
-          <button class="ghost-link" type="button" @click="jumpToPanel('alert-panel')">查看告警</button>
-        </div>
-
-        <div class="table-wrap">
-          <table class="event-table">
-            <thead>
-              <tr>
-                <th>项目</th>
-                <th>类别</th>
-                <th>状态</th>
-                <th>时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in recentRows" :key="`${row.type}-${row.name}`">
-                <td>{{ row.name }}</td>
-                <td>{{ row.type }}</td>
-                <td>
-                  <span class="table-status" :class="row.tone">{{ row.status }}</span>
-                </td>
-                <td>{{ row.time }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-    </section>
-
-    <section class="panel-grid">
-      <article id="alert-panel" class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="section-label">告警</div>
-            <h3>当前告警</h3>
-          </div>
-          <span class="panel-meta">{{ alertCount }} 条</span>
-        </div>
-        <div v-if="alertItems.length" class="alert-list">
-          <div v-for="item in alertItems" :key="item.alert_key || item.title" class="alert-row">
-            <div class="alert-top">
-              <strong>{{ item.title }}</strong>
-              <n-tag size="small" :type="severityType(item.effective_severity || item.severity)">
-                {{ severityText(item.effective_severity || item.severity) }}
-              </n-tag>
-            </div>
-            <p>{{ item.message }}</p>
-            <div class="alert-meta">
-              <span>负责人：{{ item.incident_owner || "-" }}</span>
-              <span>优先级：{{ item.incident_priority || "-" }}</span>
-            </div>
-          </div>
-        </div>
-        <n-empty v-else description="当前没有活动告警"></n-empty>
-      </article>
-
-      <article id="service-panel" class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="section-label">服务</div>
-            <h3>自动化与服务</h3>
-          </div>
-        </div>
-        <div class="service-list">
-          <div v-for="item in runtimeRows" :key="item.label" class="service-row">
-            <div>
-              <strong>{{ item.label }}</strong>
-              <div class="service-note">{{ item.note }}</div>
-            </div>
-            <div class="service-side">
-              <n-tag size="small" :type="item.type">{{ item.value }}</n-tag>
-              <span class="service-time">{{ item.time }}</span>
-            </div>
-          </div>
-        </div>
-      </article>
-    </section>
+    <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
   </div>
 </template>
 
@@ -242,13 +135,10 @@ import useExecutiveOverview from "@/composables/useExecutiveOverview";
 
 const {
   alertItems,
-  baselineDirectionText,
   baselineSignals,
   baselineStatusText,
-  deploymentReadiness,
   error,
   formatTime,
-  lastLoadedAt,
   loadOverview,
   loading,
   operatingModeText,
@@ -257,33 +147,32 @@ const {
   profitability,
   runtime,
   serviceSnapshot,
-  validationBaseline,
 } = useExecutiveOverview();
 
-const activeFocus = ref("pipeline");
-const focusTabs = [
-  { key: "pipeline", label: "进度" },
-  { key: "profit", label: "收益" },
-  { key: "alerts", label: "告警" },
-  { key: "service", label: "服务" },
-];
+const searchText = ref("");
+const activeFilter = ref("all");
 
-const focusLabels = {
-  pipeline: "交易进度",
-  profit: "收益表现",
-  alerts: "风险状态",
-  service: "后台运行",
-};
+const filterOptions = [
+  { label: "全部", value: "all" },
+  { label: "告警", value: "alert" },
+  { label: "服务", value: "service" },
+  { label: "来源", value: "source" },
+  { label: "卖家", value: "seller" },
+  { label: "基线", value: "baseline" },
+];
 
 const inventory = computed(() => profitCockpit.value?.inventory || {});
 const last7d = computed(() => profitCockpit.value?.last_7d || {});
 const generatedAt = computed(() => formatTime(overview.value?.generated_at));
-const alertCount = computed(() => Number(alertItems.value.length || 0));
 const runningServiceCount = computed(() => serviceSnapshot.value.filter(item => item.running).length);
+const serviceRatio = computed(() =>
+  serviceSnapshot.value.length ? runningServiceCount.value / serviceSnapshot.value.length : 0,
+);
+const serviceRatioText = computed(() => `${runningServiceCount.value}/${serviceSnapshot.value.length}`);
 
 const sourceLeaders = computed(() =>
   (Array.isArray(profitCockpit.value?.source_leaderboard_7d) ? profitCockpit.value.source_leaderboard_7d : [])
-    .slice(0, 5)
+    .slice(0, 6)
     .map(item => ({
       name: String(item.source || "未知来源"),
       value: formatMoney(item.realized_net_profit || 0),
@@ -292,147 +181,155 @@ const sourceLeaders = computed(() =>
 
 const sellerLeaders = computed(() =>
   (Array.isArray(profitCockpit.value?.seller_leaderboard_7d) ? profitCockpit.value.seller_leaderboard_7d : [])
-    .slice(0, 5)
+    .slice(0, 6)
     .map(item => ({
       name: String(item.seller_id || "未知卖家"),
       value: formatMoney(item.realized_net_profit || 0),
     })),
 );
 
-const nextFocus = computed(() => {
-  const order = focusTabs.map(item => item.key);
-  const currentIndex = order.indexOf(activeFocus.value);
-  return order[(currentIndex + 1) % order.length];
-});
-
-const nextFocusLabel = computed(() => `切到${focusLabels[nextFocus.value]}`);
-const activeFocusLabel = computed(() => focusLabels[activeFocus.value]);
-
-const heroHeadline = computed(() => {
-  if (activeFocus.value === "alerts")
-    return alertCount.value > 0 ? `${alertCount.value} 条告警待处理` : "当前没有活动告警";
-  if (activeFocus.value === "service")
-    return runtime.value?.server_ready ? "后台服务正常" : "后台服务需要关注";
-  if (activeFocus.value === "profit")
-    return Number(last7d.value?.realized_net_profit || 0) > 0 ? "近 7 天利润为正" : "近 7 天利润还没起来";
-  return Number(profitability.value?.pending_review_count || 0) > 0 ? "待审机会还有积压" : "交易节奏正常";
-});
-
-const pipelineTrend = computed(() => {
-  const pending = Number(profitability.value?.pending_review_count || 0);
-  if (pending > 0)
-    return { label: "机会积压", tone: "warning" };
-  return { label: "流转顺畅", tone: "positive" };
-});
-
-const soldRatio = computed(() => {
-  const total = Number(profitability.value?.total_trade_count || 0);
-  const sold = Number(profitability.value?.sold_count || 0);
-  return total > 0 ? sold / total : 0;
-});
-const soldRatioText = computed(() => formatPercent(soldRatio.value));
-const soldRatioWidth = computed(() => percentWidth(soldRatio.value));
-
-const chartItems = computed(() => {
-  const base = [
-    { label: "待审", short: "待审", value: Number(profitability.value?.pending_review_count || 0) },
-    { label: "进行中", short: "进行", value: Number(profitability.value?.active_trades_count || 0) },
-    { label: "卖出", short: "卖出", value: Number(profitability.value?.sold_count || 0) },
-    { label: "挂售", short: "挂售", value: Number(inventory.value?.listed_trade_count || 0) },
-    { label: "告警", short: "告警", value: Number(alertCount.value || 0) },
-    { label: "服务", short: "服务", value: Number(runningServiceCount.value || 0) },
-  ];
-  const maxValue = Math.max(...base.map(item => item.value), 1);
-  return base.map(item => ({
-    ...item,
-    height: `${Math.max((item.value / maxValue) * 100, 14)}%`,
-  }));
-});
-
-const insightText = computed(() => {
-  if (activeFocus.value === "alerts")
-    return alertItems.value[0]?.message || "当前没有新的风险提示。";
-  if (activeFocus.value === "service")
-    return runtime.value?.server_ready ? "核心服务在线。" : "服务状态需要关注。";
-  if (activeFocus.value === "profit")
-    return Number(last7d.value?.realized_net_profit || 0) > 0 ? "利润还在延续。" : "收益还没跑出来。";
-  return Number(profitability.value?.pending_review_count || 0) > 0 ? "待审机会仍有积压。" : "目前没有明显堆积。";
-});
-
-const insightPanel = computed(() => {
-  if (activeFocus.value === "alerts")
-    return "alert-panel";
-  if (activeFocus.value === "service")
-    return "service-panel";
-  if (activeFocus.value === "profit")
-    return "profit-panel";
-  return "pipeline-panel";
-});
-
-const efficiencyItems = computed(() => {
-  const serviceRatio = serviceSnapshot.value.length
-    ? runningServiceCount.value / serviceSnapshot.value.length
-    : 0;
-  const baselineRatio = validationBaseline.value?.ready_for_scale
-    ? 1
-    : validationBaseline.value?.ready_for_tune ? 0.65 : 0.3;
-
-  return [
-    {
-      label: "利润命中率",
-      value: formatPercent(profitability.value?.profit_hit_rate || 0),
-      progress: percentWidth(profitability.value?.profit_hit_rate || 0),
-    },
-    {
-      label: "服务在线率",
-      value: `${runningServiceCount.value}/${serviceSnapshot.value.length}`,
-      progress: percentWidth(serviceRatio),
-    },
-    {
-      label: "基线完成度",
-      value: baselineStatusText.value,
-      progress: percentWidth(baselineRatio),
-    },
-  ];
-});
-
 const summaryCards = computed(() => [
   {
     label: "待审机会",
     value: formatInteger(profitability.value?.pending_review_count || 0),
     note: `累计交易 ${formatInteger(profitability.value?.total_trade_count || 0)} 笔`,
+    badge: "当前",
     tone: "neutral",
   },
   {
     label: "进行中交易",
     value: formatInteger(profitability.value?.active_trades_count || 0),
     note: `其中挂售 ${formatInteger(inventory.value?.listed_trade_count || 0)} 笔`,
+    badge: "处理中",
     tone: "neutral",
   },
   {
-    label: "已卖出",
-    value: formatInteger(profitability.value?.sold_count || 0),
-    note: `命中率 ${formatPercent(profitability.value?.profit_hit_rate || 0)}`,
-    tone: "positive",
+    label: "近 7 天利润",
+    value: formatMoney(last7d.value?.realized_net_profit || 0),
+    note: `平均 ROI ${formatPercent(last7d.value?.avg_realized_roi || 0)}`,
+    badge: profitTone.value,
+    tone: Number(last7d.value?.realized_net_profit || 0) > 0 ? "positive" : "warning",
   },
   {
-    label: "累计毛利",
-    value: formatMoney(profitability.value?.gross_profit || 0),
-    note: `近 7 天利润 ${formatMoney(last7d.value?.realized_net_profit || 0)}`,
-    tone: toneByNumber(profitability.value?.gross_profit || 0),
+    label: "告警数量",
+    value: formatInteger(alertItems.value.length),
+    note: runtime.value?.server_ready ? "服务正常" : "服务受限",
+    badge: alertItems.value.length ? "关注" : "平稳",
+    tone: alertItems.value.length ? "warning" : "positive",
   },
-  {
-    label: "在途资金",
-    value: formatMoney(inventory.value?.deployed_capital || 0),
-    note: `预计价差 ${formatMoney(inventory.value?.expected_exit_spread || 0)}`,
-    tone: "neutral",
-  },
-  {
-    label: "基线状态",
-    value: baselineStatusText.value,
-    note: baselineDirectionText.value,
-    tone: validationBaseline.value?.ready ? "positive" : "warning",
-  },
+]);
+
+const profitTone = computed(() =>
+  Number(last7d.value?.realized_net_profit || 0) > 0 ? "向上" : "观察",
+);
+
+const entries = computed(() => {
+  const rows = [];
+
+  alertItems.value.forEach((item, index) => {
+    rows.push({
+      id: `AL-${index + 1}`,
+      type: "alert",
+      tone: severityTone(item.effective_severity || item.severity),
+      icon: "!",
+      title: item.title,
+      status: severityText(item.effective_severity || item.severity),
+      meta: item.message,
+      time: generatedAt.value,
+      sideValue: item.incident_owner || "-",
+      sideLabel: "负责人",
+    });
+  });
+
+  serviceSnapshot.value.forEach((item, index) => {
+    rows.push({
+      id: `SV-${index + 1}`,
+      type: "service",
+      tone: item.running ? "positive" : "warning",
+      icon: "•",
+      title: item.label,
+      status: item.running ? "运行中" : "已停止",
+      meta: item.note,
+      time: generatedAt.value,
+      sideValue: item.running ? "在线" : "离线",
+      sideLabel: "状态",
+    });
+  });
+
+  sourceLeaders.value.forEach((item, index) => {
+    rows.push({
+      id: `SC-${index + 1}`,
+      type: "source",
+      tone: "positive",
+      icon: "¥",
+      title: item.name,
+      status: "来源",
+      meta: "近 7 天来源贡献",
+      time: generatedAt.value,
+      sideValue: item.value,
+      sideLabel: "净利润",
+    });
+  });
+
+  sellerLeaders.value.forEach((item, index) => {
+    rows.push({
+      id: `SL-${index + 1}`,
+      type: "seller",
+      tone: "neutral",
+      icon: "人",
+      title: item.name,
+      status: "卖家",
+      meta: "近 7 天卖家贡献",
+      time: generatedAt.value,
+      sideValue: item.value,
+      sideLabel: "净利润",
+    });
+  });
+
+  baselineSignals.value.forEach((item, index) => {
+    rows.push({
+      id: `BL-${index + 1}`,
+      type: "baseline",
+      tone: "warning",
+      icon: "基",
+      title: item.label,
+      status: baselineStatusText.value,
+      meta: operatingModeText.value,
+      time: generatedAt.value,
+      sideValue: baselineStatusText.value,
+      sideLabel: "基线",
+    });
+  });
+
+  return rows;
+});
+
+const filteredEntries = computed(() => {
+  const text = searchText.value.trim().toLowerCase();
+  return entries.value.filter((entry) => {
+    if (activeFilter.value !== "all" && entry.type !== activeFilter.value)
+      return false;
+    if (!text)
+      return true;
+    return [
+      entry.id,
+      entry.title,
+      entry.status,
+      entry.meta,
+      entry.sideLabel,
+      entry.sideValue,
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(text);
+  });
+});
+
+const profitRows = computed(() => [
+  { label: "累计毛利", value: formatMoney(profitability.value?.gross_profit || 0) },
+  { label: "累计净利润", value: formatMoney(profitability.value?.realized_net_profit || 0) },
+  { label: "平均 ROI", value: formatPercent(profitability.value?.avg_realized_roi || 0) },
+  { label: "在途资金", value: formatMoney(inventory.value?.deployed_capital || 0) },
 ]);
 
 const pipelineRows = computed(() => [
@@ -440,95 +337,11 @@ const pipelineRows = computed(() => [
   { label: "进行中交易", value: formatInteger(profitability.value?.active_trades_count || 0) },
   { label: "已卖出", value: formatInteger(profitability.value?.sold_count || 0) },
   { label: "累计交易", value: formatInteger(profitability.value?.total_trade_count || 0) },
-  { label: "已挂售", value: formatInteger(inventory.value?.listed_trade_count || 0) },
-  { label: "目标退出价值", value: formatMoney(inventory.value?.target_exit_value || 0) },
 ]);
-
-const profitabilityRows = computed(() => [
-  { label: "近 7 天利润", value: formatMoney(last7d.value?.realized_net_profit || 0) },
-  { label: "累计净利润", value: formatMoney(profitability.value?.realized_net_profit || 0) },
-  { label: "平均 ROI", value: formatPercent(profitability.value?.avg_realized_roi || 0) },
-  { label: "平均持有天数", value: `${formatNumber(profitability.value?.avg_holding_days || 0, 1)} 天` },
-  { label: "中位持有天数", value: `${formatNumber(profitability.value?.median_holding_days || 0, 1)} 天` },
-  { label: "目标退出价值", value: formatMoney(inventory.value?.target_exit_value || 0) },
-]);
-
-const runtimeRows = computed(() => {
-  const services = runtime.value?.services || {};
-  const automation = runtime.value?.automation || {};
-  return [
-    {
-      label: "自动化总控",
-      value: automation.all_running ? "运行中" : "部分运行",
-      note: automation.busy ? "处理中" : "空闲",
-      time: formatTime(automation.last_run_at),
-      type: automation.all_running ? "success" : "warning",
-    },
-    {
-      label: "市场监听",
-      value: services.monitor?.is_running ? "运行中" : "已停止",
-      note: services.monitor?.circuit_open ? "已熔断" : "正常",
-      time: formatTime(services.monitor?.last_run_at),
-      type: services.monitor?.is_running ? "success" : "default",
-    },
-    {
-      label: "自动交易审批",
-      value: services.autotrade?.running ? "运行中" : "已停止",
-      note: `累计通过 ${formatInteger(services.autotrade?.total_approved || 0)} 笔`,
-      time: formatTime(services.autotrade?.last_run_at),
-      type: services.autotrade?.running ? "success" : "default",
-    },
-    {
-      label: "执行重试",
-      value: services.execution_retry?.running ? "运行中" : "已停止",
-      note: `累计重试 ${formatInteger(services.execution_retry?.total_retried || 0)} 次`,
-      time: formatTime(services.execution_retry?.last_run_at),
-      type: services.execution_retry?.running ? "success" : "default",
-    },
-  ];
-});
-
-const recentRows = computed(() => {
-  const rows = [];
-  for (const item of alertItems.value.slice(0, 3)) {
-    rows.push({
-      name: item.title,
-      type: "告警",
-      status: severityText(item.effective_severity || item.severity),
-      tone: severityTone(item.effective_severity || item.severity),
-      time: generatedAt.value,
-    });
-  }
-  for (const item of sourceLeaders.value.slice(0, 2)) {
-    rows.push({
-      name: item.name,
-      type: "来源",
-      status: item.value,
-      tone: "positive",
-      time: generatedAt.value,
-    });
-  }
-  for (const item of sellerLeaders.value.slice(0, 2)) {
-    rows.push({
-      name: item.name,
-      type: "卖家",
-      status: item.value,
-      tone: "neutral",
-      time: generatedAt.value,
-    });
-  }
-  return rows;
-});
-
-const setFocus = (key) => {
-  activeFocus.value = key;
-};
 
 const jumpToPanel = (panelId) => {
   document.getElementById(panelId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 };
-
-const percentWidth = value => `${Math.max(Math.min(Number(value || 0) * 100, 100), 8)}%`;
 
 const severityText = (severity) => {
   const value = String(severity || "").toLowerCase();
@@ -557,15 +370,12 @@ const severityTone = (severity) => {
   return "positive";
 };
 
-const toneByNumber = value =>
-  Number(value || 0) > 0 ? "positive" : Number(value || 0) < 0 ? "warning" : "neutral";
 const formatMoney = value =>
   new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: 2 }).format(Number(value || 0));
-const formatPercent = value => `${formatNumber(Number(value || 0) * 100, 1)}%`;
+const formatPercent = value =>
+  `${new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(value || 0) * 100)}%`;
 const formatInteger = value =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(Number(value || 0));
-const formatNumber = (value, digits = 2) =>
-  new Intl.NumberFormat("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value || 0));
 </script>
 
 <style scoped lang="scss">
@@ -574,301 +384,67 @@ const formatNumber = (value, digits = 2) =>
   gap: 24px;
 }
 
-.top-section,
-.middle-section,
-.panel-grid {
+.stats-grid {
   display: grid;
-  gap: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.top-section {
-  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 2fr);
-}
-
-.middle-section {
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
-}
-
-.hero-card,
-.chart-card,
-.insight-card,
-.efficiency-card,
-.summary-card,
-.panel,
-.table-card {
+.stat-card,
+.toolbar-card,
+.entry-card,
+.side-card {
   border-radius: var(--radius-lg);
   background: var(--surface-card);
   border: 1px solid var(--surface-line);
-  box-shadow: var(--shadow-medium);
+  box-shadow: var(--shadow-light);
 }
 
-.hero-card,
-.chart-card,
-.insight-card,
-.efficiency-card,
-.panel,
-.table-card {
-  padding: 28px;
+.stat-card {
+  padding: 20px;
 }
 
-.section-kicker {
+.stat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stat-label {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.hero-value {
-  margin: 18px 0 8px;
-  font-family: var(--font-display);
-  font-size: 52px;
-  font-weight: 800;
-  letter-spacing: -0.05em;
-}
-
-.hero-trend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+.stat-badge {
+  padding: 4px 8px;
   border-radius: var(--radius-full);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.hero-trend.positive {
+.stat-badge.positive {
   color: var(--success-color);
   background: rgba(22, 163, 74, 0.08);
 }
 
-.hero-trend.warning {
+.stat-badge.warning {
   color: var(--warning-color);
   background: rgba(217, 119, 6, 0.08);
 }
 
-.hero-progress {
-  margin-top: 28px;
-}
-
-.hero-progress-meta,
-.efficiency-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
+.stat-badge.neutral {
   color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.hero-progress-meta strong,
-.efficiency-meta strong {
-  color: var(--text-primary);
-  font-weight: 800;
-}
-
-.progress-track {
-  height: 8px;
-  border-radius: var(--radius-full);
   background: var(--surface-soft);
-  overflow: hidden;
 }
 
-.progress-track.subtle {
-  height: 6px;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #306bf3, #0051d5);
-}
-
-.hero-foot {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  margin-top: 28px;
-}
-
-.foot-label {
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.foot-value {
-  margin-top: 6px;
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 800;
-}
-
-.card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.card-head h3 {
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.card-head p {
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.ghost-chip {
-  padding: 8px 14px;
-  border: 1px solid var(--surface-line);
-  border-radius: 10px;
-  background: var(--surface-soft);
-  color: var(--primary-color);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.bar-chart {
-  display: flex;
-  align-items: end;
-  gap: 14px;
-  height: 220px;
-  padding: 0 6px;
-}
-
-.bar-group {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  flex: 1;
-}
-
-.bar-track {
-  display: flex;
-  align-items: end;
-  width: 100%;
-  height: 180px;
-  border-radius: 12px 12px 6px 6px;
-  background: var(--surface-soft);
-  overflow: hidden;
-}
-
-.bar-fill {
-  width: 100%;
-  border-radius: 12px 12px 0 0;
-  background: linear-gradient(180deg, #4f7df6, #0051d5);
-  box-shadow: 0 10px 22px rgba(0, 81, 213, 0.18);
-}
-
-.bar-label {
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.insight-card {
-  color: #fff;
-  background: linear-gradient(135deg, #1f5fe2, #0051d5);
-  border-color: transparent;
-}
-
-.card-head-light h3 {
-  color: #fff;
-}
-
-.title-with-icon {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.panel-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.16);
-  font-size: 14px;
-}
-
-.panel-icon.warm {
-  color: var(--tertiary-color);
-  background: rgba(198, 79, 10, 0.08);
-}
-
-.insight-card p {
-  max-width: 560px;
-  margin: 0 0 28px;
-  color: rgba(255, 255, 255, 0.84);
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.insight-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 18px;
-  border-radius: 12px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.status-chip {
-  padding: 6px 10px;
-  border-radius: 999px;
-  color: var(--primary-color);
-  background: var(--surface-soft);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.efficiency-list,
-.summary-grid,
-.metric-list,
-.service-list,
-.alert-list {
-  display: grid;
-  gap: 14px;
-}
-
-.summary-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.summary-card {
-  padding: 22px;
-}
-
-.summary-label {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.summary-value {
-  margin: 12px 0 8px;
+.stat-value {
+  margin: 14px 0 10px;
   color: var(--text-primary);
   font-family: var(--font-display);
   font-size: 36px;
@@ -876,181 +452,301 @@ const formatNumber = (value, digits = 2) =>
   letter-spacing: -0.04em;
 }
 
-.summary-note {
+.stat-note {
   color: var(--text-secondary);
   font-size: 13px;
 }
 
-.summary-note.positive {
-  color: var(--success-color);
+.toolbar-card {
+  padding: 18px;
 }
 
-.summary-note.warning {
-  color: var(--warning-color);
+.search-shell {
+  margin-bottom: 14px;
 }
 
-.panel-header {
+.filter-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
-.panel-header h3 {
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 20px;
+.filter-chip {
+  padding: 10px 16px;
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-full);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+
+.filter-chip.active,
+.filter-chip:hover {
+  color: #fff;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 24px;
+}
+
+.feed-column {
+  display: grid;
+  gap: 14px;
+}
+
+.entry-card {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.entry-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-medium);
+  border-color: rgba(48, 107, 243, 0.22);
+}
+
+.entry-icon {
+  width: 52px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  font-size: 18px;
   font-weight: 800;
 }
 
-.panel-meta {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 700;
+.entry-icon.positive {
+  color: var(--primary-color);
+  background: rgba(48, 107, 243, 0.08);
 }
 
-.metric-row,
-.service-row,
-.alert-row {
-  padding: 16px 18px;
-  border: 1px solid var(--surface-line);
-  border-radius: 12px;
+.entry-icon.warning {
+  color: var(--warning-color);
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.entry-icon.danger {
+  color: var(--error-color);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.entry-icon.neutral {
+  color: var(--text-secondary);
   background: var(--surface-soft);
 }
 
-.metric-row {
+.entry-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.entry-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  color: var(--text-secondary);
+  gap: 10px;
 }
 
-.metric-row strong,
-.service-row strong,
-.alert-row strong {
-  color: var(--text-primary);
-  font-weight: 800;
-}
-
-.service-row,
-.alert-row {
-  display: grid;
-  gap: 8px;
-}
-
-.service-side,
-.alert-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.service-note,
-.service-time,
-.alert-row p,
-.alert-meta {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.bottom-section {
-  display: grid;
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-.event-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.event-table th,
-.event-table td {
-  padding: 16px 8px;
-  text-align: left;
-}
-
-.event-table thead th {
+.entry-id,
+.entry-time {
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--surface-line);
-}
-
-.event-table tbody tr + tr td {
-  border-top: 1px solid rgba(195, 198, 215, 0.35);
-}
-
-.event-table tbody td {
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.table-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.table-status.positive {
+.entry-main h3 {
+  margin: 6px 0 8px;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.status-pill.positive {
   color: var(--success-color);
   background: rgba(22, 163, 74, 0.08);
 }
 
-.table-status.warning {
+.status-pill.warning {
   color: var(--warning-color);
   background: rgba(217, 119, 6, 0.08);
 }
 
-.table-status.danger {
+.status-pill.danger {
   color: var(--error-color);
   background: rgba(220, 38, 38, 0.08);
 }
 
+.status-pill.neutral {
+  color: var(--text-secondary);
+  background: var(--surface-soft);
+}
+
+.entry-side {
+  min-width: 96px;
+  text-align: right;
+}
+
+.entry-side-value {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.entry-side-label {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.empty-card {
+  padding: 20px;
+  border: 1px dashed var(--surface-line);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--surface-soft);
+}
+
+.side-column {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.side-card {
+  padding: 20px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.card-head h3 {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.card-head span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mini-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+}
+
+.mini-row strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.empty-mini {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.signal-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.signal-pill {
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  color: var(--primary-color);
+  background: rgba(48, 107, 243, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .ghost-link {
   color: var(--primary-color);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 @media (max-width: 1200px) {
-  .top-section,
-  .middle-section,
-  .panel-grid,
-  .summary-grid {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .content-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 768px) {
-  .hero-card,
-  .chart-card,
-  .insight-card,
-  .efficiency-card,
-  .panel,
-  .table-card {
-    padding: 20px;
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 
-  .hero-value {
-    font-size: 42px;
+  .entry-card {
+    align-items: flex-start;
   }
 
-  .bar-chart {
-    gap: 8px;
+  .entry-side {
+    min-width: 72px;
   }
 }
 </style>
