@@ -1,51 +1,48 @@
 :root {
-  --primary-color: #409eff;
-  --primary-color-hover: #66b1ff;
-  --primary-color-light: rgba(64, 158, 255, 0.12);
+  --primary-color: #0051d5;
+  --primary-color-hover: #306bf3;
+  --primary-color-light: rgba(0, 81, 213, 0.08);
 
-  --success-color: #67c23a;
-  --warning-color: #e6a23c;
-  --error-color: #f56c6c;
-  --info-color: #909399;
+  --secondary-color: #495c94;
+  --secondary-light: #dbe1ff;
+  --tertiary-color: #c64f0a;
+  --success-color: #16a34a;
+  --warning-color: #d97706;
+  --error-color: #dc2626;
+  --info-color: #737686;
 
-  --text-primary: #303133;
-  --text-secondary: #606266;
-  --text-tertiary: #909399;
-  --text-disabled: #c0c4cc;
+  --text-primary: #191b24;
+  --text-secondary: #434655;
+  --text-muted: #737686;
+  --text-disabled: #a1a4b3;
 
-  --bg-primary: #ffffff;
-  --bg-secondary: #f0f2f5;
-  --bg-tertiary: #fafafa;
+  --bg-primary: #faf8ff;
+  --bg-secondary: #f3f2ff;
+  --bg-tertiary: #ffffff;
+  --surface-card: #ffffff;
+  --surface-soft: #f3f2ff;
+  --surface-soft-2: #ededf9;
+  --surface-line: #e2e1ee;
 
-  --sidebar-bg: #304156;
-  --sidebar-text: rgba(255, 255, 255, 0.78);
-  --header-bg: #ffffff;
-  --panel-bg: #ffffff;
+  --sidebar-bg: #ffffff;
+  --sidebar-text: #5d6476;
+  --sidebar-active-bg: #edf3ff;
+  --sidebar-active-text: #0051d5;
+  --header-bg: rgba(255, 255, 255, 0.78);
 
-  --border-light: #ebeef5;
-  --border-medium: #dcdfe6;
+  --border-light: #e2e1ee;
+  --border-medium: #c3c6d7;
 
-  --shadow-light: 0 1px 4px rgba(0, 21, 41, 0.08);
-  --shadow-medium: 0 4px 12px rgba(0, 21, 41, 0.1);
+  --shadow-light: 0 12px 32px rgba(23, 28, 31, 0.04);
+  --shadow-medium: 0 12px 32px rgba(23, 28, 31, 0.06);
+  --shadow-heavy: 0 18px 40px rgba(23, 28, 31, 0.08);
 
-  --border-radius-small: 4px;
-  --border-radius-medium: 6px;
-  --border-radius-large: 8px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
 
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 20px;
-  --spacing-xl: 24px;
-
-  --font-size-xs: 12px;
-  --font-size-sm: 13px;
-  --font-size-md: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 18px;
-  --font-size-2xl: 22px;
-  --font-size-3xl: 28px;
-
-  --line-height-tight: 1.4;
-  --line-height-normal: 1.6;
+  --font-display: "Manrope", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
 }

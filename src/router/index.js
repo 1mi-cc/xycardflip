@@ -69,8 +69,8 @@ router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
 
   document.title = to.meta?.title
-    ? `${to.meta.title} - XYZW 卡片倒卖后台`
-    : "XYZW 卡片倒卖后台";
+    ? `${to.meta.title} - XYZW 卡片交易后台`
+    : "XYZW 卡片交易后台";
 
   if (!authStore.initialized)
     await authStore.initAuth();

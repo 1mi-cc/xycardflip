@@ -1,11 +1,15 @@
 <template>
   <div class="login-page">
-    <div class="login-card">
+    <section class="login-card">
       <div class="login-brand">
-        <img alt="XYZW" class="brand-logo" src="/icons/xiaoyugan.png">
+        <div class="brand-mark">
+          <n-icon size="18">
+            <BarChartOutline></BarChartOutline>
+          </n-icon>
+        </div>
         <div>
-          <p class="brand-kicker">XYZW 卡片交易后台</p>
-          <h1>登录</h1>
+          <p class="brand-kicker">Card Trading Console</p>
+          <h1>登录后台</h1>
         </div>
       </div>
 
@@ -36,11 +40,12 @@
           登录
         </n-button>
       </n-form>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup>
+import { BarChartOutline } from "@vicons/ionicons5";
 import { useMessage } from "naive-ui";
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -84,7 +89,7 @@ const handleLogin = async () => {
     const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
     router.push(redirect || authStore.getDefaultHomeRoute());
   } catch {
-    // 表单校验会直接显示字段错误
+    // validation handled in form
   }
 };
 
@@ -102,64 +107,72 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: #2d3a4b;
+  background:
+    radial-gradient(circle at top left, rgba(0, 81, 213, 0.08), transparent 24rem),
+    var(--bg-primary);
 }
 
 .login-card {
-  width: min(420px, 100%);
-  padding: 40px 36px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.18);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+  width: min(440px, 100%);
+  padding: 36px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  border: 1px solid var(--surface-line);
+  box-shadow: var(--shadow-medium);
 }
 
 .login-brand {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 28px;
 }
 
-.brand-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(180deg, #306bf3, #0051d5);
+  box-shadow: 0 10px 22px rgba(0, 81, 213, 0.2);
 }
 
 .brand-kicker {
-  margin: 0 0 6px;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  color: #fff;
-  font-size: 28px;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
 }
 
 :deep(.n-form-item-label__text) {
-  color: rgba(255, 255, 255, 0.88) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 700;
 }
 
 :deep(.n-input) {
-  --n-color: rgba(0, 0, 0, 0.2) !important;
-  --n-color-focus: rgba(0, 0, 0, 0.2) !important;
-  --n-color-disabled: rgba(0, 0, 0, 0.2) !important;
-  --n-border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  --n-border-hover: 1px solid rgba(255, 255, 255, 0.28) !important;
-  --n-border-focus: 1px solid #409eff !important;
-  --n-box-shadow-focus: 0 0 0 2px rgba(64, 158, 255, 0.15) !important;
+  --n-border: 1px solid var(--surface-line) !important;
+  --n-border-hover: 1px solid #b4c5ff !important;
+  --n-border-focus: 1px solid var(--primary-color) !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(0, 81, 213, 0.12) !important;
 }
 
-:deep(.n-input-wrapper) {
-  background: rgba(0, 0, 0, 0.18) !important;
-}
-
-:deep(.n-input__input-el),
-:deep(.n-input__textarea-el),
-:deep(.n-input__placeholder) {
-  color: #fff !important;
+@media (max-width: 640px) {
+  .login-card {
+    padding: 28px 22px;
+  }
 }
 </style>
