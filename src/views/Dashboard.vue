@@ -1,78 +1,149 @@
 <template>
   <div class="dashboard-page">
-    <section class="top-section">
-      <article class="hero-card">
-        <div class="section-kicker">本周利润</div>
-        <div class="hero-value">{{ formatMoney(last7d.realized_net_profit || 0) }}</div>
-        <div class="hero-trend" :class="profitTrend.tone">
-          <span>{{ profitTrend.label }}</span>
-        </div>
+    <section class="header-row">
+      <div>
+        <h1>System Dashboard</h1>
+        <p>{{ generatedAt }}</p>
+      </div>
+      <div class="header-actions">
+        <button
+          v-for="item in headerTabs"
+          :key="item.value"
+          class="header-chip"
+          :class="{ active: focusMode === item.value }"
+          type="button"
+          @click="focusMode = item.value"
+        >
+          {{ item.label }}
+        </button>
+        <n-button type="primary" :loading="loading" @click="loadOverview">刷新</n-button>
+      </div>
+    </section>
 
-        <div class="hero-progress">
-          <div class="hero-progress-meta">
+    <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
+
+    <section class="stats-grid">
+      <article class="overview-card">
+        <div class="card-head">
+          <span class="card-label">近 7 天利润</span>
+          <span class="card-chip" :class="profitTrend.tone">{{ profitTrend.label }}</span>
+        </div>
+        <div class="card-value">{{ formatMoney(last7d.realized_net_profit || 0) }}</div>
+        <div class="mini-progress">
+          <div class="mini-progress-track">
+            <div class="mini-progress-fill" :style="{ width: percentWidth(profitability.profit_hit_rate || 0) }"></div>
+          </div>
+          <div class="mini-progress-meta">
             <span>利润命中率</span>
             <strong>{{ formatPercent(profitability.profit_hit_rate || 0) }}</strong>
-          </div>
-          <div class="progress-track">
-            <div class="progress-fill" :style="{ width: percentWidth(profitability.profit_hit_rate || 0) }"></div>
-          </div>
-        </div>
-
-        <div class="hero-foot">
-          <div>
-            <div class="foot-label">已卖出</div>
-            <div class="foot-value">{{ formatInteger(profitability.sold_count || 0) }}</div>
-          </div>
-          <div>
-            <div class="foot-label">在途资金</div>
-            <div class="foot-value">{{ formatMoney(inventory.deployed_capital || 0) }}</div>
           </div>
         </div>
       </article>
 
-      <article class="chart-card">
+      <article class="metric-card">
         <div class="card-head">
+          <span class="card-label">待审机会</span>
+          <span class="card-chip neutral">处理中</span>
+        </div>
+        <div class="metric-value">{{ formatInteger(profitability.pending_review_count || 0) }}</div>
+        <div class="metric-foot">{{ formatInteger(profitability.total_trade_count || 0) }} 笔累计交易</div>
+      </article>
+
+      <article class="metric-card">
+        <div class="card-head">
+          <span class="card-label">在途资金</span>
+          <span class="card-chip warm">活跃</span>
+        </div>
+        <div class="metric-value">{{ formatMoney(inventory.deployed_capital || 0) }}</div>
+        <div class="metric-foot">{{ formatInteger(profitability.active_trades_count || 0) }} 笔进行中</div>
+      </article>
+
+      <article class="metric-card">
+        <div class="card-head">
+          <span class="card-label">告警数量</span>
+          <span class="card-chip" :class="alertCount > 0 ? 'danger' : 'positive'">
+            {{ alertCount > 0 ? '关注' : '正常' }}
+          </span>
+        </div>
+        <div class="metric-value">{{ formatInteger(alertCount) }}</div>
+        <div class="metric-foot">{{ runtime.server_ready ? "服务在线" : "服务受限" }}</div>
+      </article>
+    </section>
+
+    <section class="analytics-grid">
+      <article class="panel chart-panel">
+        <div class="panel-head">
           <div>
-            <h3>经营分布</h3>
-            <p>当前业务结构</p>
+            <h2>Performance Trends</h2>
+            <p>{{ focusDescription }}</p>
           </div>
-          <button class="ghost-chip" type="button" @click="focusMode = nextFocusMode">
-            {{ focusModeLabel }}
-          </button>
+          <div class="toggle-shell">
+            <button
+              v-for="item in chartToggles"
+              :key="item.value"
+              class="toggle-button"
+              :class="{ active: chartMode === item.value }"
+              type="button"
+              @click="chartMode = item.value"
+            >
+              {{ item.label }}
+            </button>
+          </div>
         </div>
 
         <div class="bar-chart">
-          <div v-for="item in chartItems" :key="item.label" class="bar-group">
-            <div class="bar-track">
+          <div v-for="item in chartItems" :key="item.label" class="bar-column">
+            <div class="bar-box">
               <div class="bar-fill" :style="{ height: item.height }"></div>
             </div>
-            <div class="bar-label">{{ item.short }}</div>
+            <span>{{ item.short }}</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel donut-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Revenue by Category</h2>
+            <p>来源贡献</p>
+          </div>
+        </div>
+
+        <div class="donut-wrap">
+          <div class="donut-chart" :style="{ background: donutGradient }">
+            <div class="donut-hole">
+              <strong>{{ donutCenterValue }}</strong>
+              <span>{{ donutCenterLabel }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="legend-list">
+          <div v-for="item in donutSlices" :key="item.label" class="legend-row">
+            <div class="legend-left">
+              <span class="legend-dot" :style="{ backgroundColor: item.color }"></span>
+              <span>{{ item.label }}</span>
+            </div>
+            <strong>{{ item.percentText }}</strong>
           </div>
         </div>
       </article>
     </section>
 
-    <section class="middle-section">
+    <section class="middle-grid">
       <article class="insight-card">
-        <div class="card-head card-head-light">
-          <div class="title-with-icon">
-            <span class="panel-icon">✦</span>
-            <h3>核心判断</h3>
-          </div>
-        </div>
-        <p>{{ insightText }}</p>
-        <button class="insight-button" type="button" @click="jumpToPanel(insightPanel)">
-          查看详情
-        </button>
+        <div class="insight-kicker">Focus</div>
+        <h2>{{ focusHeadline }}</h2>
+        <p>{{ focusStatement }}</p>
       </article>
 
-      <article class="efficiency-card">
-        <div class="card-head">
-          <div class="title-with-icon">
-            <span class="panel-icon warm">↗</span>
-            <h3>效率</h3>
+      <article class="panel efficiency-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Efficiency</h2>
+            <p>{{ baselineStatusText }}</p>
           </div>
-          <span class="status-chip">{{ baselineBadge }}</span>
+          <span class="efficiency-badge">{{ operatingModeText }}</span>
         </div>
 
         <div class="efficiency-list">
@@ -81,70 +152,26 @@
               <span>{{ item.label }}</span>
               <strong>{{ item.value }}</strong>
             </div>
-            <div class="progress-track subtle">
-              <div class="progress-fill" :style="{ width: item.progress }"></div>
+            <div class="mini-progress-track">
+              <div class="mini-progress-fill" :style="{ width: item.progress }"></div>
             </div>
           </div>
         </div>
       </article>
     </section>
 
-    <section class="summary-grid">
-      <article v-for="card in summaryCards" :key="card.label" class="summary-card">
-        <div class="summary-label">{{ card.label }}</div>
-        <div class="summary-value">{{ card.value }}</div>
-        <div class="summary-note" :class="card.tone">{{ card.note }}</div>
-      </article>
-    </section>
-
-    <section class="panel-grid">
-      <article id="profit-panel" class="panel">
-        <div class="panel-header">
+    <section class="bottom-grid">
+      <article class="panel table-panel">
+        <div class="panel-head">
           <div>
-            <div class="section-label">收益</div>
-            <h3>收益与库存</h3>
+            <h2>Recent Activity</h2>
+            <p>最新变化</p>
           </div>
-          <span class="panel-meta">{{ generatedAt }}</span>
-        </div>
-        <div class="metric-list">
-          <div v-for="item in profitabilityRows" :key="item.label" class="metric-row">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-          </div>
-        </div>
-      </article>
-
-      <article id="service-panel" class="panel">
-        <div class="panel-header">
-          <div>
-            <div class="section-label">服务</div>
-            <h3>后台服务</h3>
-          </div>
-        </div>
-        <div class="service-list">
-          <div v-for="item in runtimeRows" :key="item.label" class="service-row">
-            <div>
-              <strong>{{ item.label }}</strong>
-              <div class="service-note">{{ item.note }}</div>
-            </div>
-            <div class="service-side">
-              <n-tag size="small" :type="item.type">{{ item.value }}</n-tag>
-              <span class="service-time">{{ item.time }}</span>
-            </div>
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <section class="bottom-section">
-      <article id="activity-panel" class="table-card">
-        <div class="card-head">
-          <h3>最近动态</h3>
-          <button class="ghost-link" type="button" @click="jumpToPanel('alert-panel')">查看告警</button>
+          <button class="link-button" type="button" @click="focusMode = 'alert'">查看告警</button>
         </div>
 
         <div class="table-wrap">
-          <table class="event-table">
+          <table class="activity-table">
             <thead>
               <tr>
                 <th>项目</th>
@@ -158,7 +185,7 @@
                 <td>{{ row.name }}</td>
                 <td>{{ row.type }}</td>
                 <td>
-                  <span class="table-status" :class="row.tone">{{ row.status }}</span>
+                  <span class="status-pill" :class="row.tone">{{ row.status }}</span>
                 </td>
                 <td>{{ row.time }}</td>
               </tr>
@@ -166,9 +193,45 @@
           </table>
         </div>
       </article>
-    </section>
 
-    <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
+      <article class="panel matrix-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Signal Matrix</h2>
+            <p>运行密度</p>
+          </div>
+        </div>
+
+        <div class="matrix-labels">
+          <span v-for="item in matrixColumns" :key="item.short">{{ item.short }}</span>
+        </div>
+        <div class="matrix-grid">
+          <template v-for="level in [4, 3, 2, 1]" :key="level">
+            <div
+              v-for="item in matrixColumns"
+              :key="`${level}-${item.short}`"
+              class="matrix-cell"
+              :class="{ active: item.score >= level }"
+            ></div>
+          </template>
+        </div>
+
+        <div class="matrix-stats">
+          <div class="matrix-stat">
+            <span>活跃来源</span>
+            <strong>{{ formatInteger(sourceLeaders.length) }}</strong>
+          </div>
+          <div class="matrix-stat">
+            <span>活跃卖家</span>
+            <strong>{{ formatInteger(sellerLeaders.length) }}</strong>
+          </div>
+          <div class="matrix-stat">
+            <span>基线信号</span>
+            <strong>{{ formatInteger(baselineSignals.length) }}</strong>
+          </div>
+        </div>
+      </article>
+    </section>
   </div>
 </template>
 
@@ -196,8 +259,19 @@ const {
   formatTime,
 } = useExecutiveOverview();
 
-const focusMode = ref("pipeline");
-const focusModes = ["pipeline", "alerts", "service"];
+const focusMode = ref("profit");
+const chartMode = ref("units");
+
+const headerTabs = [
+  { label: "利润", value: "profit" },
+  { label: "告警", value: "alert" },
+  { label: "服务", value: "service" },
+];
+
+const chartToggles = [
+  { label: "结构", value: "units" },
+  { label: "风险", value: "risk" },
+];
 
 const today = computed(() => profitCockpit.value?.today || {});
 const last7d = computed(() => profitCockpit.value?.last_7d || {});
@@ -205,35 +279,60 @@ const inventory = computed(() => profitCockpit.value?.inventory || {});
 const generatedAt = computed(() => formatTime(overview.value?.generated_at));
 const alertCount = computed(() => Number(alertItems.value.length || 0));
 const runningServiceCount = computed(() => serviceSnapshot.value.filter(item => item.running).length);
-const nextFocusMode = computed(() => {
-  const currentIndex = focusModes.indexOf(focusMode.value);
-  return focusModes[(currentIndex + 1) % focusModes.length];
+
+const focusDescription = computed(() => {
+  if (focusMode.value === "alert")
+    return "告警和状态分布";
+  if (focusMode.value === "service")
+    return "服务和执行分布";
+  return "利润和交易分布";
 });
-const focusModeLabel = computed(() => ({
-  pipeline: "看告警",
-  alerts: "看服务",
-  service: "看分布",
-})[focusMode.value] || "切换");
+
+const focusHeadline = computed(() => {
+  if (focusMode.value === "alert")
+    return alertCount.value > 0 ? `${alertCount.value} 条告警待处理` : "当前没有活动告警";
+  if (focusMode.value === "service")
+    return runtime.value?.server_ready ? "后台服务正常" : "后台服务需要关注";
+  return Number(last7d.value?.realized_net_profit || 0) > 0 ? "近 7 天利润为正" : "近 7 天利润还没起来";
+});
+
+const focusStatement = computed(() => {
+  if (focusMode.value === "alert")
+    return alertItems.value[0]?.message || "当前没有新的风险提示。";
+  if (focusMode.value === "service")
+    return runtime.value?.server_ready ? "核心服务在线。" : "服务状态需要关注。";
+  return Number(last7d.value?.realized_net_profit || 0) > 0 ? "利润还在延续。" : "收益还没跑出来。";
+});
 
 const profitTrend = computed(() => {
   const profit = Number(last7d.value?.realized_net_profit || 0);
   if (profit > 0)
-    return { label: "利润为正", tone: "positive" };
+    return { label: "上行", tone: "positive" };
   if (profit < 0)
-    return { label: "利润转弱", tone: "warning" };
-  return { label: "利润持平", tone: "neutral" };
+    return { label: "转弱", tone: "warning" };
+  return { label: "持平", tone: "neutral" };
 });
 
 const chartItems = computed(() => {
-  const base = [
-    { label: "待审", short: "待审", value: Number(profitability.value?.pending_review_count || 0) },
-    { label: "进行中", short: "进行", value: Number(profitability.value?.active_trades_count || 0) },
-    { label: "卖出", short: "卖出", value: Number(profitability.value?.sold_count || 0) },
-    { label: "挂售", short: "挂售", value: Number(inventory.value?.listed_trade_count || 0) },
-    { label: "告警", short: "告警", value: Number(alertCount.value || 0) },
-    { label: "服务", short: "服务", value: Number(runningServiceCount.value || 0) },
-    { label: "基线", short: "基线", value: validationBaseline.value?.ready_for_scale ? 100 : validationBaseline.value?.ready_for_tune ? 60 : 25 },
-  ];
+  const base = chartMode.value === "risk"
+    ? [
+        { label: "告警", short: "警", value: Number(alertCount.value || 0) },
+        { label: "待审", short: "待", value: Number(profitability.value?.pending_review_count || 0) },
+        { label: "服务", short: "服", value: Math.max(4 - runningServiceCount.value, 0) },
+        { label: "基线", short: "基", value: baselineSignals.value.length },
+        { label: "进行", short: "进", value: Number(profitability.value?.active_trades_count || 0) },
+        { label: "挂售", short: "挂", value: Number(inventory.value?.listed_trade_count || 0) },
+        { label: "卖出", short: "卖", value: Number(profitability.value?.sold_count || 0) },
+      ]
+    : [
+        { label: "待审", short: "待", value: Number(profitability.value?.pending_review_count || 0) },
+        { label: "进行", short: "进", value: Number(profitability.value?.active_trades_count || 0) },
+        { label: "卖出", short: "卖", value: Number(profitability.value?.sold_count || 0) },
+        { label: "挂售", short: "挂", value: Number(inventory.value?.listed_trade_count || 0) },
+        { label: "来源", short: "源", value: Number(sourceLeaders.value.length || 0) },
+        { label: "卖家", short: "家", value: Number(sellerLeaders.value.length || 0) },
+        { label: "服务", short: "服", value: Number(runningServiceCount.value || 0) },
+      ];
   const maxValue = Math.max(...base.map(item => item.value), 1);
   return base.map(item => ({
     ...item,
@@ -241,25 +340,58 @@ const chartItems = computed(() => {
   }));
 });
 
-const insightText = computed(() => {
-  if (focusMode.value === "alerts")
-    return alertItems.value[0]?.message || "当前没有新的风险提示。";
-  if (focusMode.value === "service")
-    return runtime.value?.server_ready ? "核心服务在线。" : "服务状态需要关注。";
-  if (Number(profitability.value?.pending_review_count || 0) > 0)
-    return "待审机会仍有积压。";
-  if (Number(last7d.value?.realized_net_profit || 0) > 0)
-    return "近 7 天利润保持为正。";
-  return "当前仍在积累样本。";
+const sourceLeaders = computed(() =>
+  (Array.isArray(profitCockpit.value?.source_leaderboard_7d) ? profitCockpit.value.source_leaderboard_7d : [])
+    .slice(0, 3)
+    .map(item => ({
+      label: String(item.source || "未知来源"),
+      value: Number(item.realized_net_profit || 0),
+    })),
+);
+
+const sellerLeaders = computed(() =>
+  (Array.isArray(profitCockpit.value?.seller_leaderboard_7d) ? profitCockpit.value.seller_leaderboard_7d : [])
+    .slice(0, 3)
+    .map(item => ({
+      label: String(item.seller_id || "未知卖家"),
+      value: Number(item.realized_net_profit || 0),
+    })),
+);
+
+const donutSlices = computed(() => {
+  const rows = sourceLeaders.value.length
+    ? sourceLeaders.value
+    : [
+        { label: "来源 A", value: 1 },
+        { label: "来源 B", value: 1 },
+        { label: "来源 C", value: 1 },
+      ];
+  const total = rows.reduce((sum, item) => sum + Math.max(item.value, 0), 0) || 1;
+  const colors = ["#0051d5", "#495c94", "#c64f0a"];
+  return rows.map((item, index) => {
+    const percent = (Math.max(item.value, 0) / total) * 100;
+    return {
+      ...item,
+      color: colors[index % colors.length],
+      percent,
+      percentText: `${percent.toFixed(0)}%`,
+    };
+  });
 });
 
-const insightPanel = computed(() => {
-  if (focusMode.value === "alerts")
-    return "alert-panel";
-  if (focusMode.value === "service")
-    return "service-panel";
-  return "profit-panel";
+const donutGradient = computed(() => {
+  let cursor = 0;
+  const segments = donutSlices.value.map((item) => {
+    const start = cursor;
+    const end = cursor + item.percent;
+    cursor = end;
+    return `${item.color} ${start}% ${end}%`;
+  });
+  return `conic-gradient(${segments.join(", ")})`;
 });
+
+const donutCenterValue = computed(() => formatMoney(last7d.value?.realized_net_profit || 0));
+const donutCenterLabel = computed(() => "近 7 天");
 
 const baselineBadge = computed(() => {
   if (validationBaseline.value?.ready_for_scale)
@@ -318,7 +450,7 @@ const summaryCards = computed(() => [
   {
     label: "告警数量",
     value: formatInteger(alertCount.value),
-    note: runtime.value?.server_ready ? "服务正常" : "服务需要关注",
+    note: runtime.value?.server_ready ? "服务在线" : "服务受限",
     tone: alertCount.value > 0 ? "warning" : "positive",
   },
 ]);
@@ -378,25 +510,48 @@ const recentRows = computed(() => {
       time: generatedAt.value,
     });
   }
-  for (const item of serviceSnapshot.value.slice(0, 2)) {
+  for (const item of sourceLeaders.value) {
     rows.push({
       name: item.label,
-      type: "服务",
-      status: item.running ? "运行中" : "已停止",
-      tone: item.running ? "positive" : "warning",
+      type: "来源",
+      status: formatMoney(item.value),
+      tone: "positive",
       time: generatedAt.value,
     });
   }
-  for (const item of baselineSignals.value.slice(0, 2)) {
+  for (const item of sellerLeaders.value) {
     rows.push({
       name: item.label,
-      type: "基线",
-      status: baselineStatusText.value,
-      tone: validationBaseline.value?.ready ? "positive" : "warning",
+      type: "卖家",
+      status: formatMoney(item.value),
+      tone: "neutral",
       time: generatedAt.value,
     });
   }
   return rows;
+});
+
+const matrixColumns = computed(() => {
+  const countScale = (value) => {
+    const numeric = Number(value || 0);
+    if (numeric >= 10)
+      return 4;
+    if (numeric >= 5)
+      return 3;
+    if (numeric >= 1)
+      return 2;
+    return 1;
+  };
+
+  return [
+    { short: "待", score: countScale(profitability.value?.pending_review_count) },
+    { short: "进", score: countScale(profitability.value?.active_trades_count) },
+    { short: "卖", score: countScale(profitability.value?.sold_count) },
+    { short: "警", score: countScale(alertCount.value) },
+    { short: "服", score: Math.max(runningServiceCount.value, 1) },
+    { short: "基", score: validationBaseline.value?.ready_for_scale ? 4 : validationBaseline.value?.ready_for_tune ? 3 : 1 },
+    { short: "源", score: countScale(sourceLeaders.value.length) },
+  ];
 });
 
 const jumpToPanel = (panelId) => {
@@ -449,28 +604,73 @@ const formatNumber = (value, digits = 2) =>
   gap: 24px;
 }
 
-.top-section,
-.middle-section,
-.panel-grid {
+.header-row,
+.stats-grid,
+.analytics-grid,
+.middle-grid,
+.bottom-grid {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
-.top-section {
-  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 2fr);
+.header-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 }
 
-.middle-section {
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+.header-row h1 {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.header-row p {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.header-chip {
+  padding: 10px 16px;
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-full);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.header-chip.active {
+  color: #fff;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.analytics-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+}
+
+.middle-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr);
 }
 
 .hero-card,
-.chart-card,
-.insight-card,
-.efficiency-card,
-.summary-card,
+.metric-card,
 .panel,
-.table-card {
+.insight-card,
+.table-panel {
   border-radius: var(--radius-lg);
   background: var(--surface-card);
   border: 1px solid var(--surface-line);
@@ -478,15 +678,24 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .hero-card,
-.chart-card,
-.insight-card,
-.efficiency-card,
+.metric-card,
 .panel,
-.table-card {
-  padding: 28px;
+.insight-card,
+.table-panel {
+  padding: 24px;
 }
 
-.section-kicker {
+.card-head,
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.card-label,
+.section-label {
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 800;
@@ -494,72 +703,63 @@ const formatNumber = (value, digits = 2) =>
   text-transform: uppercase;
 }
 
-.hero-value {
-  margin: 18px 0 8px;
+.card-value,
+.metric-value {
+  margin: 14px 0 8px;
+  color: var(--text-primary);
   font-family: var(--font-display);
-  font-size: 52px;
+  font-size: 42px;
   font-weight: 800;
   letter-spacing: -0.05em;
 }
 
-.hero-trend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.card-chip {
   padding: 6px 10px;
   border-radius: var(--radius-full);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.hero-trend.positive {
+.card-chip.positive {
   color: var(--success-color);
   background: rgba(22, 163, 74, 0.08);
 }
 
-.hero-trend.warning {
+.card-chip.warning,
+.card-chip.warm {
   color: var(--warning-color);
   background: rgba(217, 119, 6, 0.08);
 }
 
-.hero-trend.neutral {
+.card-chip.neutral {
   color: var(--text-secondary);
-  background: rgba(73, 92, 148, 0.08);
+  background: var(--surface-soft);
 }
 
-.hero-progress {
-  margin-top: 28px;
+.mini-progress {
+  margin-top: 22px;
 }
 
-.hero-progress-meta,
-.efficiency-meta {
+.mini-progress-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-top: 8px;
   color: var(--text-secondary);
   font-size: 13px;
 }
 
-.hero-progress-meta strong,
-.efficiency-meta strong {
-  color: var(--text-primary);
-  font-weight: 800;
-}
-
-.progress-track {
-  height: 8px;
+.mini-progress-track {
+  height: 6px;
   border-radius: var(--radius-full);
   background: var(--surface-soft);
   overflow: hidden;
 }
 
-.progress-track.subtle {
-  height: 6px;
-}
-
-.progress-fill {
+.mini-progress-fill {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #306bf3, #0051d5);
@@ -568,8 +768,8 @@ const formatNumber = (value, digits = 2) =>
 .hero-foot {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  margin-top: 28px;
+  gap: 18px;
+  margin-top: 24px;
 }
 
 .foot-label {
@@ -588,58 +788,52 @@ const formatNumber = (value, digits = 2) =>
   font-weight: 800;
 }
 
-.card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.card-head h3 {
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.card-head p {
-  margin-top: 4px;
-  color: var(--text-muted);
+.metric-foot {
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
-.ghost-chip {
-  padding: 8px 14px;
-  border: 1px solid var(--surface-line);
-  border-radius: 10px;
+.toggle-shell {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
   background: var(--surface-soft);
-  color: var(--primary-color);
-  font-size: 12px;
+}
+
+.toggle-button {
+  padding: 7px 12px;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
   font-weight: 800;
+}
+
+.toggle-button.active {
+  color: var(--primary-color);
+  background: #fff;
+  box-shadow: var(--shadow-light);
 }
 
 .bar-chart {
   display: flex;
   align-items: end;
-  gap: 14px;
-  height: 220px;
-  padding: 0 6px;
+  gap: 10px;
+  height: 260px;
 }
 
-.bar-group {
+.bar-column {
   display: grid;
-  justify-items: center;
-  gap: 12px;
   flex: 1;
+  justify-items: center;
+  gap: 10px;
 }
 
-.bar-track {
+.bar-box {
   display: flex;
   align-items: end;
   width: 100%;
-  height: 180px;
+  height: 220px;
   border-radius: 12px 12px 6px 6px;
   background: var(--surface-soft);
   overflow: hidden;
@@ -649,156 +843,95 @@ const formatNumber = (value, digits = 2) =>
   width: 100%;
   border-radius: 12px 12px 0 0;
   background: linear-gradient(180deg, #4f7df6, #0051d5);
-  box-shadow: 0 10px 22px rgba(0, 81, 213, 0.18);
 }
 
-.bar-label {
+.bar-column span {
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.insight-card {
-  color: #fff;
-  background: linear-gradient(135deg, #1f5fe2, #0051d5);
-  border-color: transparent;
-}
-
-.card-head-light h3 {
-  color: #fff;
-}
-
-.title-with-icon {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.panel-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.16);
-  font-size: 14px;
-}
-
-.panel-icon.warm {
-  color: var(--tertiary-color);
-  background: rgba(198, 79, 10, 0.08);
-}
-
-.insight-card p {
-  max-width: 560px;
-  margin: 0 0 28px;
-  color: rgba(255, 255, 255, 0.84);
-  font-size: 15px;
-  line-height: 1.8;
-}
-
-.insight-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 18px;
-  border-radius: 12px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.status-chip {
-  padding: 6px 10px;
-  border-radius: 999px;
-  color: var(--primary-color);
-  background: var(--surface-soft);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.efficiency-list,
-.summary-grid,
-.metric-list,
-.service-list,
-.alert-list {
-  display: grid;
-  gap: 14px;
-}
-
-.summary-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.summary-card {
-  padding: 22px;
-}
-
-.summary-label {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.summary-value {
-  margin: 12px 0 8px;
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 36px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-}
-
-.summary-note {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.summary-note.positive {
-  color: var(--success-color);
-}
-
-.summary-note.warning {
-  color: var(--warning-color);
-}
-
-.panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.panel-header h3 {
+.panel h2,
+.card-head h2,
+.panel-head h2 {
   color: var(--text-primary);
   font-family: var(--font-display);
   font-size: 20px;
   font-weight: 800;
 }
 
-.panel-meta {
+.panel p,
+.card-head p,
+.panel-head p {
+  margin-top: 4px;
   color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
 }
 
+.donut-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.donut-chart {
+  width: 176px;
+  height: 176px;
+  padding: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donut-hole {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--surface-card);
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.donut-hole strong {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.donut-hole span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.legend-list,
+.efficiency-list,
+.metric-list,
+.service-list,
+.alert-list {
+  display: grid;
+  gap: 12px;
+}
+
+.legend-row,
+.efficiency-row,
 .metric-row,
 .service-row,
 .alert-row {
-  padding: 16px 18px;
+  padding: 14px 16px;
   border: 1px solid var(--surface-line);
   border-radius: 12px;
   background: var(--surface-soft);
 }
 
+.legend-row,
 .metric-row {
   display: flex;
   align-items: center;
@@ -807,19 +940,27 @@ const formatNumber = (value, digits = 2) =>
   color: var(--text-secondary);
 }
 
-.metric-row strong,
-.service-row strong,
-.alert-row strong {
-  color: var(--text-primary);
-  font-weight: 800;
+.legend-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.efficiency-row,
 .service-row,
 .alert-row {
   display: grid;
   gap: 8px;
 }
 
+.efficiency-meta,
 .service-side,
 .alert-top {
   display: flex;
@@ -828,33 +969,67 @@ const formatNumber = (value, digits = 2) =>
   gap: 12px;
 }
 
-.service-note,
-.service-time,
-.alert-row p {
-  color: var(--text-secondary);
-  font-size: 13px;
+.metric-row strong,
+.legend-row strong,
+.efficiency-meta strong,
+.service-row strong,
+.alert-row strong {
+  color: var(--text-primary);
+  font-weight: 800;
 }
 
-.bottom-section {
-  display: grid;
+.insight-card {
+  color: #fff;
+  background: linear-gradient(135deg, #1f5fe2, #0051d5);
+  border-color: transparent;
+}
+
+.insight-card .panel-head h2,
+.insight-card .panel-head p,
+.insight-card p,
+.insight-card .link-button {
+  color: #fff;
+}
+
+.insight-card p {
+  max-width: 520px;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.link-button {
+  color: var(--primary-color);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.efficiency-badge {
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  background: var(--surface-soft);
+  color: var(--primary-color);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .table-wrap {
   overflow-x: auto;
 }
 
-.event-table {
+.activity-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.event-table th,
-.event-table td {
+.activity-table th,
+.activity-table td {
   padding: 16px 8px;
   text-align: left;
 }
 
-.event-table thead th {
+.activity-table thead th {
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 800;
@@ -863,73 +1038,145 @@ const formatNumber = (value, digits = 2) =>
   border-bottom: 1px solid var(--surface-line);
 }
 
-.event-table tbody tr + tr td {
+.activity-table tbody tr + tr td {
   border-top: 1px solid rgba(195, 198, 215, 0.35);
 }
 
-.event-table tbody td {
+.activity-table tbody td {
   color: var(--text-secondary);
   font-size: 14px;
   font-weight: 600;
 }
 
-.table-status {
+.status-pill {
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.table-status.positive {
+.status-pill.positive {
   color: var(--success-color);
   background: rgba(22, 163, 74, 0.08);
 }
 
-.table-status.warning {
+.status-pill.warning {
   color: var(--warning-color);
   background: rgba(217, 119, 6, 0.08);
 }
 
-.table-status.danger {
+.status-pill.danger {
   color: var(--error-color);
   background: rgba(220, 38, 38, 0.08);
 }
 
-.ghost-link {
-  color: var(--primary-color);
-  font-size: 13px;
+.matrix-labels {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.matrix-labels span {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.matrix-cell {
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(0, 81, 213, 0.06);
+}
+
+.matrix-cell.active {
+  background: linear-gradient(180deg, rgba(79, 125, 246, 0.65), rgba(0, 81, 213, 0.95));
+}
+
+.matrix-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.matrix-stat span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.matrix-stat strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 24px;
   font-weight: 800;
 }
 
 @media (max-width: 1200px) {
-  .top-section,
-  .middle-section,
-  .panel-grid,
-  .summary-grid {
+  .header-row,
+  .stats-grid,
+  .analytics-grid,
+  .middle-grid,
+  .panel-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 768px) {
+  .header-row {
+    grid-template-columns: 1fr;
+  }
+
   .hero-card,
-  .chart-card,
-  .insight-card,
-  .efficiency-card,
+  .metric-card,
   .panel,
-  .table-card {
+  .insight-card,
+  .table-panel {
     padding: 20px;
   }
 
-  .hero-value {
-    font-size: 42px;
+  .header-actions {
+    flex-wrap: wrap;
+  }
+
+  .hero-value,
+  .card-value,
+  .metric-value {
+    font-size: 36px;
   }
 
   .bar-chart {
     gap: 8px;
+  }
+
+  .summary-grid,
+  .matrix-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .summary-grid,
+  .matrix-stats {
+    grid-template-columns: 1fr;
   }
 }
 </style>
