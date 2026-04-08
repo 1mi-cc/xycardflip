@@ -9,10 +9,6 @@
         </div>
       </div>
 
-      <p class="login-copy">
-        登录后直接看总览和交易数据，不需要再跳来跳去找页面。
-      </p>
-
       <n-form ref="loginFormRef" label-placement="top" :model="loginForm" :rules="loginRules">
         <n-form-item label="账号" path="username">
           <n-input
@@ -141,12 +137,6 @@ h1 {
   color: #fff;
   font-size: 28px;
   font-weight: 600;
-}
-
-.login-copy {
-  margin: 0 0 24px;
-  color: rgba(255, 255, 255, 0.78);
-  line-height: 1.7;
 }
 
 :deep(.n-form-item-label__text) {

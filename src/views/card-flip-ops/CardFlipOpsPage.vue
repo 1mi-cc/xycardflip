@@ -4,7 +4,6 @@
       <div class="hero-main">
         <div class="hero-kicker">卡片交易</div>
         <h2>{{ heroHeadline }}</h2>
-        <p>{{ heroDescription }}</p>
 
         <div class="focus-switch">
           <button
@@ -29,6 +28,8 @@
       </div>
     </section>
 
+    <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
+
     <section class="pulse-grid">
       <button
         v-for="item in pulseCards"
@@ -45,22 +46,6 @@
         </div>
       </button>
     </section>
-
-    <section class="story-grid">
-      <article class="story-card">
-        <div class="story-label">现在该盯什么</div>
-        <h3>{{ focusStoryTitle }}</h3>
-        <p>{{ focusStoryText }}</p>
-      </article>
-
-      <article class="story-card">
-        <div class="story-label">一句建议</div>
-        <h3>{{ actionHeadline }}</h3>
-        <p>{{ actionText }}</p>
-      </article>
-    </section>
-
-    <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
 
     <section class="summary-grid">
       <article v-for="card in summaryCards" :key="card.label" class="summary-card">
@@ -79,7 +64,6 @@
           </div>
           <span class="panel-meta">{{ generatedAt }}</span>
         </div>
-        <p class="panel-summary">{{ pipelineSummary }}</p>
         <div class="metric-list">
           <div v-for="item in pipelineRows" :key="item.label" class="metric-row">
             <span>{{ item.label }}</span>
@@ -95,7 +79,6 @@
             <h3>收益与库存</h3>
           </div>
         </div>
-        <p class="panel-summary">{{ profitSummary }}</p>
         <div class="metric-list">
           <div v-for="item in profitabilityRows" :key="item.label" class="metric-row">
             <span>{{ item.label }}</span>
@@ -136,7 +119,6 @@
           </div>
           <span class="panel-meta">{{ alertCount }} 条</span>
         </div>
-        <p class="panel-summary">{{ alertSummary }}</p>
         <div v-if="alertItems.length" class="alert-list">
           <div v-for="item in alertItems" :key="item.alert_key || item.title" class="alert-row">
             <div class="alert-top">
@@ -159,10 +141,9 @@
         <div class="panel-header">
           <div>
             <div class="section-label">基线</div>
-            <h3>运行护栏</h3>
+            <h3>验证进度</h3>
           </div>
         </div>
-        <p class="panel-summary">{{ baselineRecommendation }}</p>
         <div class="metric-list">
           <div v-for="item in baselineRows" :key="item.label" class="metric-row">
             <span>{{ item.label }}</span>
@@ -183,7 +164,6 @@
             <h3>自动化与服务</h3>
           </div>
         </div>
-        <p class="panel-summary">{{ serviceSummary }}</p>
         <div class="service-list">
           <div v-for="item in runtimeRows" :key="item.label" class="service-row">
             <div>
@@ -209,7 +189,6 @@ import useExecutiveOverview from "@/composables/useExecutiveOverview";
 const {
   alertItems,
   baselineDirectionText,
-  baselineRecommendation,
   baselineSignals,
   baselineStatusText,
   deploymentReadiness,
@@ -223,7 +202,6 @@ const {
   profitCockpit,
   profitability,
   runtime,
-  serviceSnapshot,
   validationBaseline,
 } = useExecutiveOverview();
 
@@ -240,7 +218,6 @@ const inventory = computed(() => profitCockpit.value?.inventory || {});
 const last7d = computed(() => profitCockpit.value?.last_7d || {});
 const generatedAt = computed(() => formatTime(overview.value?.generated_at));
 const alertCount = computed(() => Number(alertItems.value.length || 0));
-const serviceRunningCount = computed(() => serviceSnapshot.value.filter(item => item.running).length);
 
 const sourceLeaders = computed(() =>
   (Array.isArray(profitCockpit.value?.source_leaderboard_7d) ? profitCockpit.value.source_leaderboard_7d : [])
@@ -260,67 +237,107 @@ const sellerLeaders = computed(() =>
     })),
 );
 
-const focusCopyMap = computed(() => ({
-  pipeline: {
-    headline: "先看机会有没有堵住",
-    description: "待审机会、进行中交易和卖出速度，决定今天该盯哪一段。",
-    storyTitle: "交易进度",
-    storyText: Number(profitability.value?.pending_review_count || 0) > 0
-      ? "待审机会还在堆着，先看有没有需要尽快处理的部分。"
-      : "机会没有明显堆积，可以把注意力转到收益和服务状态。",
-    actionHeadline: "当前节奏",
-    actionText: `待审 ${formatInteger(profitability.value?.pending_review_count || 0)} 笔，进行中 ${formatInteger(profitability.value?.active_trades_count || 0)} 笔。`,
-  },
-  profit: {
-    headline: "再看利润是不是跑出来了",
-    description: "有利润的时候看效率，没利润的时候看样本和资金。",
-    storyTitle: "收益状态",
-    storyText: Number(last7d.value?.realized_net_profit || 0) > 0
-      ? "近 7 天已经有正向利润，可以继续盯资金占用和成交效率。"
-      : "现在更像在积累样本，先别急着追求结果。",
-    actionHeadline: "当前判断",
-    actionText: `近 7 天利润 ${formatMoney(last7d.value?.realized_net_profit || 0)}，在途资金 ${formatMoney(inventory.value?.deployed_capital || 0)}。`,
-  },
-  alerts: {
-    headline: "有告警就先处理告警",
-    description: "先把挡路的事清掉，再看收益和放量。",
-    storyTitle: "风险状态",
-    storyText: alertCount.value > 0
-      ? `当前有 ${alertCount.value} 条告警，建议先看第一条。`
-      : "当前没有明显告警，可以回去盯机会和收益。",
-    actionHeadline: "最需要关注",
-    actionText: alertItems.value[0]?.message || "现在没有新的风险提示。",
-  },
-  baseline: {
-    headline: "基线没站稳，就先别放量",
-    description: "样本不够时，判断会很飘，先把基线做扎实。",
-    storyTitle: "验证状态",
-    storyText: baselineStatusText.value === "已就绪"
-      ? "基线已经基本到位，可以谨慎考虑下一步。"
-      : "现在更适合继续观察，把样本做厚一点。",
-    actionHeadline: "最近建议",
-    actionText: baselineRecommendation.value,
-  },
-  service: {
-    headline: "最后确认后台是不是顺着跑",
-    description: "服务掉线的时候，前面所有数据都会失真。",
-    storyTitle: "服务状态",
-    storyText: serviceRunningCount.value >= 2
-      ? "核心服务基本在线，可以继续盯业务数据。"
-      : "有服务没跑起来，先把服务状态理顺再说。",
-    actionHeadline: "当前状态",
-    actionText: `${serviceRunningCount.value}/${serviceSnapshot.value.length} 个核心服务正在运行。`,
-  },
-}));
-
-const heroHeadline = computed(() => focusCopyMap.value[activeFocus.value].headline);
-const heroDescription = computed(() => focusCopyMap.value[activeFocus.value].description);
-const focusStoryTitle = computed(() => focusCopyMap.value[activeFocus.value].storyTitle);
-const focusStoryText = computed(() => focusCopyMap.value[activeFocus.value].storyText);
-const actionHeadline = computed(() => focusCopyMap.value[activeFocus.value].actionHeadline);
-const actionText = computed(() => focusCopyMap.value[activeFocus.value].actionText);
+const heroHeadline = computed(() => {
+  if (activeFocus.value === "alerts")
+    return alertCount.value > 0 ? `${alertCount.value} 条告警待处理` : "当前没有活动告警";
+  if (activeFocus.value === "service")
+    return runtime.value?.server_ready ? "后台服务正常" : "后台服务需要关注";
+  if (activeFocus.value === "baseline")
+    return baselineStatusText.value;
+  if (activeFocus.value === "profit")
+    return Number(last7d.value?.realized_net_profit || 0) > 0 ? "近 7 天利润为正" : "近 7 天利润还没起来";
+  return Number(profitability.value?.pending_review_count || 0) > 0 ? "待审机会还有积压" : "交易节奏正常";
+});
 
 const pulseCards = computed(() => {
+  if (activeFocus.value === "alerts") {
+    return [
+      {
+        label: "告警数量",
+        value: formatInteger(alertCount.value),
+        note: alertItems.value[0]?.title || "暂无",
+        tone: alertCount.value > 0 ? "warning" : "positive",
+        progress: `${Math.min(alertCount.value * 24, 100)}%`,
+        panel: "alert-panel",
+      },
+      {
+        label: "最新告警",
+        value: alertItems.value[0]?.title || "暂无",
+        note: alertItems.value[0]?.message || "没有新的风险提示",
+        tone: alertItems.value[0] ? "warning" : "neutral",
+        progress: alertItems.value[0] ? "72%" : "0%",
+        panel: "alert-panel",
+      },
+      {
+        label: "服务状态",
+        value: runtime.value?.server_ready ? "正常" : "受限",
+        note: runtime.value?.server_ready ? "整体可用" : "建议回看服务",
+        tone: runtime.value?.server_ready ? "positive" : "warning",
+        progress: runtime.value?.server_ready ? "100%" : "40%",
+        panel: "service-panel",
+      },
+    ];
+  }
+
+  if (activeFocus.value === "service") {
+    const services = runtime.value?.services || {};
+    return [
+      {
+        label: "自动化总控",
+        value: runtime.value?.automation?.all_running ? "运行中" : "部分运行",
+        note: runtime.value?.automation?.busy ? "处理中" : "空闲",
+        tone: runtime.value?.automation?.all_running ? "positive" : "warning",
+        progress: runtime.value?.automation?.all_running ? "100%" : "56%",
+        panel: "service-panel",
+      },
+      {
+        label: "市场监听",
+        value: services.monitor?.is_running ? "运行中" : "已停止",
+        note: services.monitor?.circuit_open ? "已熔断" : "正常",
+        tone: services.monitor?.is_running ? "positive" : "warning",
+        progress: services.monitor?.is_running ? "100%" : "28%",
+        panel: "service-panel",
+      },
+      {
+        label: "自动审批",
+        value: services.autotrade?.running ? "运行中" : "已停止",
+        note: `累计通过 ${formatInteger(services.autotrade?.total_approved || 0)} 笔`,
+        tone: services.autotrade?.running ? "positive" : "warning",
+        progress: services.autotrade?.running ? "100%" : "28%",
+        panel: "service-panel",
+      },
+    ];
+  }
+
+  if (activeFocus.value === "baseline") {
+    return [
+      {
+        label: "当前状态",
+        value: baselineStatusText.value,
+        note: baselineDirectionText.value,
+        tone: validationBaseline.value?.ready ? "positive" : "warning",
+        progress: validationBaseline.value?.ready ? "100%" : validationBaseline.value?.ready_for_tune ? "62%" : "28%",
+        panel: "baseline-panel",
+      },
+      {
+        label: "运行模式",
+        value: operatingModeText.value,
+        note: validationBaseline.value?.ready_for_scale ? "可以放量" : "先继续观察",
+        tone: "neutral",
+        progress: validationBaseline.value?.ready_for_scale ? "82%" : "38%",
+        panel: "baseline-panel",
+      },
+      {
+        label: "未达标项",
+        value: formatInteger(baselineSignals.value.length),
+        note: baselineSignals.value[0]?.label || "暂无",
+        tone: baselineSignals.value.length ? "warning" : "positive",
+        progress: baselineSignals.value.length ? "68%" : "100%",
+        panel: "baseline-panel",
+      },
+    ];
+  }
+
   if (activeFocus.value === "profit") {
     return [
       {
@@ -342,81 +359,12 @@ const pulseCards = computed(() => {
       {
         label: "预期价差",
         value: formatMoney(inventory.value?.expected_exit_spread || 0),
-        note: "看库存还有没有利润空间",
+        note: "看库存空间",
         tone: "neutral",
         progress: `${Math.min(Number(inventory.value?.expected_exit_spread || 0) / 5, 100)}%`,
         panel: "profit-panel",
       },
     ];
-  }
-
-  if (activeFocus.value === "alerts") {
-    return [
-      {
-        label: "告警数量",
-        value: formatInteger(alertCount.value),
-        note: alertCount.value > 0 ? "先看第一条" : "现在比较安静",
-        tone: alertCount.value > 0 ? "warning" : "positive",
-        progress: `${Math.min(alertCount.value * 24, 100)}%`,
-        panel: "alert-panel",
-      },
-      {
-        label: "最新告警",
-        value: alertItems.value[0]?.title || "暂无",
-        note: alertItems.value[0]?.message || "没有新的风险提示",
-        tone: alertItems.value[0] ? "warning" : "neutral",
-        progress: alertItems.value[0] ? "72%" : "0%",
-        panel: "alert-panel",
-      },
-      {
-        label: "服务总状态",
-        value: runtime.value?.server_ready ? "正常" : "受限",
-        note: runtime.value?.server_ready ? "整体可用" : "建议回头看服务卡片",
-        tone: runtime.value?.server_ready ? "positive" : "warning",
-        progress: runtime.value?.server_ready ? "100%" : "40%",
-        panel: "service-panel",
-      },
-    ];
-  }
-
-  if (activeFocus.value === "baseline") {
-    return [
-      {
-        label: "当前状态",
-        value: baselineStatusText.value,
-        note: baselineDirectionText.value,
-        tone: validationBaseline.value?.ready ? "positive" : "warning",
-        progress: validationBaseline.value?.ready ? "100%" : validationBaseline.value?.ready_for_tune ? "62%" : "28%",
-        panel: "baseline-panel",
-      },
-      {
-        label: "运行模式",
-        value: operatingModeText.value,
-        note: validationBaseline.value?.ready_for_scale ? "可以看放量" : "现在更适合观察",
-        tone: "neutral",
-        progress: validationBaseline.value?.ready_for_scale ? "82%" : "38%",
-        panel: "baseline-panel",
-      },
-      {
-        label: "最近建议",
-        value: baselineRecommendation.value,
-        note: "基于最近样本自动生成",
-        tone: "neutral",
-        progress: "58%",
-        panel: "baseline-panel",
-      },
-    ];
-  }
-
-  if (activeFocus.value === "service") {
-    return serviceSnapshot.value.map(item => ({
-      label: item.label,
-      value: item.running ? "运行中" : "已停止",
-      note: item.note,
-      tone: item.running ? "positive" : "warning",
-      progress: item.running ? "100%" : "28%",
-      panel: "service-panel",
-    }));
   }
 
   return [
@@ -541,36 +489,11 @@ const runtimeRows = computed(() => {
 
 const baselineRows = computed(() => [
   { label: "当前状态", value: baselineStatusText.value },
-  { label: "可以调优", value: validationBaseline.value?.ready_for_tune ? "是" : "否" },
-  { label: "可以放量", value: validationBaseline.value?.ready_for_scale ? "是" : "否" },
+  { label: "可调优", value: validationBaseline.value?.ready_for_tune ? "是" : "否" },
+  { label: "可扩量", value: validationBaseline.value?.ready_for_scale ? "是" : "否" },
   { label: "运行模式", value: operatingModeText.value },
   { label: "方向", value: baselineDirectionText.value },
-  { label: "最近建议", value: baselineRecommendation.value },
 ]);
-
-const pipelineSummary = computed(() => {
-  if (Number(profitability.value?.pending_review_count || 0) > 0)
-    return "待审机会还有积压，今天先看哪些需要尽快过一遍。";
-  return "机会没有明显堆积，当前节奏还算顺。";
-});
-
-const profitSummary = computed(() => {
-  if (Number(last7d.value?.realized_net_profit || 0) > 0)
-    return "近 7 天已经跑出正向利润，接下来重点看资金占用和成交效率。";
-  return "当前更像在积累样本，先别急着给结果下结论。";
-});
-
-const alertSummary = computed(() => {
-  if (!alertCount.value)
-    return "现在没有需要立刻处理的告警，可以回去盯机会和收益。";
-  return `当前最值得先看的是：${alertItems.value[0]?.title || "最新告警"}。`;
-});
-
-const serviceSummary = computed(() => {
-  if (serviceRunningCount.value === serviceSnapshot.value.length)
-    return "核心服务都在线，当前更适合盯业务数据本身。";
-  return "有服务没有跑起来，先把服务状态理顺再谈结果。";
-});
 
 const setFocus = (key) => {
   activeFocus.value = key;
@@ -617,7 +540,6 @@ const formatNumber = (value, digits = 2) =>
 
 .hero-panel,
 .pulse-card,
-.story-card,
 .summary-card,
 .panel,
 .sub-panel {
@@ -639,8 +561,7 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .hero-kicker,
-.section-label,
-.story-label {
+.section-label {
   color: #409eff;
   font-size: 12px;
   font-weight: 600;
@@ -649,23 +570,11 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .hero-panel h2,
-.story-card h3,
 .panel h3 {
   margin: 0;
   color: #303133;
   font-size: 28px;
   font-weight: 600;
-}
-
-.hero-panel p,
-.story-card p,
-.panel-summary,
-.service-note,
-.service-time,
-.alert-row p,
-.alert-meta {
-  color: #606266;
-  line-height: 1.7;
 }
 
 .focus-switch {
@@ -712,7 +621,6 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .pulse-grid,
-.story-grid,
 .summary-grid,
 .panel-grid,
 .sub-grid {
@@ -722,10 +630,6 @@ const formatNumber = (value, digits = 2) =>
 
 .pulse-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.story-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .summary-grid {
@@ -801,19 +705,6 @@ const formatNumber = (value, digits = 2) =>
   background: linear-gradient(90deg, #409eff, #67c23a);
 }
 
-.story-card {
-  padding: 18px 20px;
-}
-
-.story-card h3 {
-  margin-top: 10px;
-  font-size: 20px;
-}
-
-.story-card p {
-  margin: 10px 0 0;
-}
-
 .panel {
   padding: 20px 24px;
 }
@@ -830,13 +721,13 @@ const formatNumber = (value, digits = 2) =>
   font-size: 20px;
 }
 
-.panel-meta {
+.panel-meta,
+.service-note,
+.service-time,
+.alert-row p,
+.alert-meta {
   color: #909399;
   font-size: 13px;
-}
-
-.panel-summary {
-  margin: 0 0 16px;
 }
 
 .metric-list,
@@ -901,6 +792,8 @@ const formatNumber = (value, digits = 2) =>
 
 .alert-row p {
   margin: 8px 0 0;
+  color: #606266;
+  line-height: 1.6;
 }
 
 .pill-list {
@@ -928,7 +821,6 @@ const formatNumber = (value, digits = 2) =>
 
 @media (max-width: 900px) {
   .hero-panel,
-  .story-grid,
   .panel-grid,
   .sub-grid {
     grid-template-columns: 1fr;
@@ -946,14 +838,12 @@ const formatNumber = (value, digits = 2) =>
 
 @media (max-width: 640px) {
   .pulse-grid,
-  .story-grid,
   .summary-grid {
     grid-template-columns: 1fr;
   }
 
   .hero-panel,
   .pulse-card,
-  .story-card,
   .summary-card,
   .panel,
   .sub-panel {
