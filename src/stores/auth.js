@@ -182,8 +182,19 @@ const requestAuth = async ({
       continue;
     }
 
-    // Any other HTTP error (4xx/5xx) means the endpoint exists and returned
-    // a real error. Surface it immediately without trying further endpoints.
+    // If the error response body is not valid JSON, this is likely a
+    // proxy / gateway error (e.g. Vite proxy returning 500 because the
+    // backend is unreachable) rather than a real API error.  Fall through
+    // to the next endpoint so the fallback chain keeps working.
+    if (payload === null) {
+      if (!lastError)
+        lastError = new Error("请求失败");
+      continue;
+    }
+
+    // Any other HTTP error with a parseable JSON body means the endpoint
+    // exists and returned a real error.  Surface it immediately without
+    // trying further endpoints.
     throw new Error(extractErrorMessage(payload, "请求失败"));
   }
 
