@@ -77,11 +77,25 @@ def _build_parser(provider: str) -> argparse.ArgumentParser:
 def _build_search_url(provider: str, keyword: str, page: int) -> str:
     cfg = PROVIDER_CONFIG[provider]
     encoded = quote(str(keyword or cfg["default_keyword"]).strip() or str(cfg["default_keyword"]), safe="")
-    if provider == "jd":
-        return cfg["start_url"].format(keyword=encoded) + (f"&page={max(1, int(page))}" if int(page or 1) > 1 else "")
-    if provider == "pinduoduo":
-        return cfg["start_url"].format(keyword=encoded) + (f"&page={max(1, int(page))}" if int(page or 1) > 1 else "")
-    return cfg["start_url"].format(keyword=encoded)
+    suffix = f"&page={max(1, int(page))}" if int(page or 1) > 1 else ""
+    return cfg["start_url"].format(keyword=encoded) + suffix
+
+
+def _normalize_text(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _extract_price_from_text(value: str | None) -> float:
+    text = _normalize_text(value)
+    if not text:
+        return 0.0
+    match = re.search(r"[¥￥]\s*([0-9]+(?:\.[0-9]+)?)", text)
+    if not match:
+        return 0.0
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return 0.0
 
 
 def _keyword_variants(keyword: str) -> list[str]:
@@ -117,23 +131,6 @@ def _keyword_variants(keyword: str) -> list[str]:
     return deduped
 
 
-def _normalize_text(value: str | None) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
-
-
-def _extract_price_from_text(value: str | None) -> float:
-    text = _normalize_text(value)
-    if not text:
-        return 0.0
-    match = re.search(r"[¥￥]\s*([0-9]+(?:\.[0-9]+)?)", text)
-    if not match:
-        return 0.0
-    try:
-        return float(match.group(1))
-    except ValueError:
-        return 0.0
-
-
 def _keyword_score(text: str, keyword: str) -> int:
     lowered = _normalize_text(text).lower()
     if not lowered:
@@ -145,26 +142,49 @@ def _title_matches_keyword(title: str, keyword: str) -> bool:
     return _keyword_score(title, keyword) >= 2
 
 
+def _score_candidate(title: str, price: float, link: str, keyword: str) -> float:
+    keyword_hits = _keyword_score(title, keyword)
+    if keyword_hits <= 0:
+        return 0.0
+    score = keyword_hits * 0.28
+    if price > 0:
+        score += 0.18
+    if link:
+        score += 0.14
+    if price >= 10:
+        score += 0.1
+    if "psa" in title.lower():
+        score += 0.08
+    if any(alias in title.lower() for alias in ("\u5b9d\u53ef\u68a6", "\u795e\u5947\u5b9d\u8d1d", "\u5361", "\u5361\u724c")):
+        score += 0.08
+    return round(min(0.99, score), 4)
+
+
 def _build_extract_expression(provider: str, limit: int) -> str:
-    id_key = PROVIDER_CONFIG[provider]["id_key"]
-    title_key = PROVIDER_CONFIG[provider]["title_key"]
-    link_key = PROVIDER_CONFIG[provider]["link_key"]
+    cfg = PROVIDER_CONFIG[provider]
+    id_key = cfg["id_key"]
+    title_key = cfg["title_key"]
+    link_key = cfg["link_key"]
     if provider == "jd":
-        return f"""
+        href_filter = 'a[href*="item.jd.com/"]'
+        id_regex = r"item\.jd\.com/(\d+)\.html"
+    else:
+        href_filter = 'a[href*="goods"], a[href*="search_result"]'
+        id_regex = r"goods_id=(\d+)"
+    return f"""
 (() => {{
-  const maxItems = {max(1, int(limit)) * 10};
+  const maxItems = {max(1, int(limit)) * 12};
   const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
   const items = [];
-  const anchors = Array.from(document.querySelectorAll('a[href*="item.jd.com/"]'));
+  const anchors = Array.from(document.querySelectorAll('{href_filter}'));
   for (const anchor of anchors) {{
     const href = anchor.href || '';
-    const skuMatch = href.match(/item\\.jd\\.com\\/(\\d+)\\.html/);
-    if (!skuMatch) continue;
-    const container = anchor.closest('li, div');
+    const idMatch = href.match(/{id_regex}/);
+    const container = anchor.closest('li, div, article');
     items.push({{
-      {id_key!r}: skuMatch[1],
-      {title_key!r}: normalizeText(anchor.getAttribute('title') || anchor.textContent || container?.innerText || ''),
-      {link_key!r}: href,
+      {json.dumps(id_key)}: idMatch ? idMatch[1] : '',
+      {json.dumps(title_key)}: normalizeText(anchor.getAttribute('title') || anchor.textContent || container?.innerText || ''),
+      {json.dumps(link_key)}: href,
       priceText: normalizeText(container?.innerText || ''),
       listed_at: new Date().toISOString(),
     }});
@@ -172,80 +192,89 @@ def _build_extract_expression(provider: str, limit: int) -> str:
   }}
   return {{
     items,
-    bodyText: String(document.body?.innerText || '').slice(0, 60000),
-  }};
-}})()
-""".strip()
-    return f"""
-(() => {{
-  const maxItems = {max(1, int(limit)) * 10};
-  const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
-  const items = [];
-  const anchors = Array.from(document.querySelectorAll('a[href*="goods"], a[href*="search_result"]'));
-  for (const anchor of anchors) {{
-    const href = anchor.href || '';
-    const goodsMatch = href.match(/goods_id=(\\d+)/) || href.match(/goods_id%22%3A(\\d+)/);
-    items.push({{
-      {id_key!r}: goodsMatch ? goodsMatch[1] : '',
-      {title_key!r}: normalizeText(anchor.getAttribute('title') || anchor.textContent || anchor.closest('div,li,a')?.innerText || ''),
-      {link_key!r}: href,
-      priceText: normalizeText(anchor.closest('div,li,a')?.innerText || ''),
-      listed_at: new Date().toISOString(),
-    }});
-    if (items.length >= maxItems) break;
-  }}
-  return {{
-    items,
-    bodyText: String(document.body?.innerText || '').slice(0, 60000),
+    bodyText: String(document.body?.innerText || '').slice(0, 120000),
   }};
 }})()
 """.strip()
 
 
-def _coerce_bridge_items(provider: str, raw_items: list[dict[str, Any]], body_text: str, keyword: str, limit: int) -> list[dict[str, Any]]:
+def _coerce_bridge_items(
+    provider: str,
+    raw_items: list[dict[str, Any]],
+    body_text: str,
+    keyword: str,
+    limit: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     cfg = PROVIDER_CONFIG[provider]
     id_key = str(cfg["id_key"])
     title_key = str(cfg["title_key"])
     link_key = str(cfg["link_key"])
-    normalized: list[dict[str, Any]] = []
+    accepted: list[dict[str, Any]] = []
+    diagnostics: list[dict[str, Any]] = []
     seen: set[str] = set()
 
     for item in raw_items:
         title = _normalize_text(item.get(title_key))
-        if not _title_matches_keyword(title, keyword):
-            continue
         price = _extract_price_from_text(item.get("priceText") or item.get("price"))
-        if price <= 0:
+        link = _normalize_text(item.get(link_key))
+        listing_id = _normalize_text(item.get(id_key)) or (f"{title}:{price}" if title and price > 0 else "")
+        score = _score_candidate(title, price, link, keyword)
+        diagnostics.append(
+            {
+                "title": title[:120],
+                "price": price,
+                "link_present": bool(link),
+                "keyword_score": _keyword_score(title, keyword),
+                "score": score,
+                "accepted": False,
+                "source": "anchor",
+            }
+        )
+        if score < 0.65 or not listing_id:
             continue
-        listing_id = _normalize_text(item.get(id_key)) or f"{title}:{price}"
         if listing_id in seen:
             continue
         seen.add(listing_id)
-        normalized.append(
+        diagnostics[-1]["accepted"] = True
+        accepted.append(
             {
                 id_key: listing_id,
                 title_key: title,
                 "price": price,
-                link_key: _normalize_text(item.get(link_key)),
+                link_key: link,
                 "listed_at": item.get("listed_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
         )
-        if len(normalized) >= max(1, int(limit)):
-            return normalized
+        if len(accepted) >= max(1, int(limit)):
+            return accepted, diagnostics
+
+    if accepted:
+        return accepted, diagnostics
 
     lines = [_normalize_text(line) for line in re.split(r"\n+", str(body_text or "")) if _normalize_text(line)]
     for index, line in enumerate(lines):
-        if not _title_matches_keyword(line, keyword):
-            continue
         nearby = " ".join(lines[index : index + 4])
         price = _extract_price_from_text(nearby)
-        if price <= 0:
+        score = _score_candidate(line, price, "", keyword)
+        diagnostics.append(
+            {
+                "title": line[:120],
+                "price": price,
+                "link_present": False,
+                "keyword_score": _keyword_score(line, keyword),
+                "score": score,
+                "accepted": False,
+                "source": "body_line",
+            }
+        )
+        if score < 0.75:
             continue
         listing_id = f"{line}:{price}"
         if listing_id in seen:
             continue
         seen.add(listing_id)
-        normalized.append(
+        diagnostics[-1]["accepted"] = True
+        accepted.append(
             {
                 id_key: listing_id,
                 title_key: line,
@@ -254,9 +283,9 @@ def _coerce_bridge_items(provider: str, raw_items: list[dict[str, Any]], body_te
                 "listed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
         )
-        if len(normalized) >= max(1, int(limit)):
+        if len(accepted) >= max(1, int(limit)):
             break
-    return normalized
+    return accepted, diagnostics
 
 
 def _connect_browser(provider: str, remote_debug_port: int, reuse_browser: bool, search_url: str):
@@ -362,8 +391,11 @@ def _capture_snapshot(
         value = ((result.get("result") or {}).get("result") or {}).get("value") or {}
         raw_items = list(value.get("items") or []) if isinstance(value, dict) else []
         body_text = str(value.get("bodyText") or "") if isinstance(value, dict) else ""
-        filtered_items = _coerce_bridge_items(provider, raw_items, body_text, keyword, limit)
-        confidence_score = round(min(0.98, 0.25 + (0.18 * len(filtered_items))), 4) if filtered_items else 0.0
+        filtered_items, diagnostics = _coerce_bridge_items(provider, raw_items, body_text, keyword, limit)
+        confidence_score = round(
+            min(0.98, max((item["score"] for item in diagnostics if item.get("accepted")), default=0.0)),
+            4,
+        ) if filtered_items else 0.0
         low_confidence = len(filtered_items) == 0
 
         cfg = PROVIDER_CONFIG[provider]
@@ -386,6 +418,7 @@ def _capture_snapshot(
                 if low_confidence
                 else []
             ),
+            "diagnostics": diagnostics[:20],
             "payload": payload,
             "risk_level": "high-risk-unstable",
             "mode": "cookie-browser-bridge",
