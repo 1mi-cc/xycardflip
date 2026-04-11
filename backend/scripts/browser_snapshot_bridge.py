@@ -105,16 +105,16 @@ def _keyword_variants(keyword: str) -> list[str]:
         if token.strip() and not token.strip().isdigit()
     ]
     aliases = {
-        "pokemon": ["\u5b9d\u53ef\u68a6", "\u795e\u5947\u5b9d\u8d1d"],
-        "card": ["\u5361", "\u5361\u724c", "\u6536\u85cf\u5361"],
+        "pokemon": ["宝可梦", "神奇宝贝"],
+        "card": ["卡", "卡牌", "收藏卡"],
         "psa": ["psa"],
-        "charizard": ["\u55b7\u706b\u9f99"],
-        "pikachu": ["\u76ae\u5361\u4e18"],
-        "mewtwo": ["\u8d85\u68a6"],
-        "lugia": ["\u6d1b\u5947\u4e9a"],
-        "rayquaza": ["\u88c2\u7a7a\u5ea7"],
-        "dragonite": ["\u5feb\u9f99"],
-        "blastoise": ["\u6c34\u7bad\u9f9f"],
+        "charizard": ["喷火龙"],
+        "pikachu": ["皮卡丘"],
+        "mewtwo": ["超梦"],
+        "lugia": ["洛奇亚"],
+        "rayquaza": ["裂空座"],
+        "dragonite": ["快龙"],
+        "blastoise": ["水箭龟"],
     }
     variants: list[str] = []
     for token in tokens:
@@ -138,10 +138,6 @@ def _keyword_score(text: str, keyword: str) -> int:
     return sum(1 for variant in _keyword_variants(keyword) if variant.lower() in lowered)
 
 
-def _title_matches_keyword(title: str, keyword: str) -> bool:
-    return _keyword_score(title, keyword) >= 2
-
-
 def _score_candidate(title: str, price: float, link: str, keyword: str) -> float:
     keyword_hits = _keyword_score(title, keyword)
     if keyword_hits <= 0:
@@ -152,10 +148,11 @@ def _score_candidate(title: str, price: float, link: str, keyword: str) -> float
     if link:
         score += 0.14
     if price >= 10:
-        score += 0.1
-    if "psa" in title.lower():
+        score += 0.10
+    lowered = title.lower()
+    if "psa" in lowered:
         score += 0.08
-    if any(alias in title.lower() for alias in ("\u5b9d\u53ef\u68a6", "\u795e\u5947\u5b9d\u8d1d", "\u5361", "\u5361\u724c")):
+    if any(alias in lowered for alias in ("宝可梦", "神奇宝贝", "卡", "卡牌")):
         score += 0.08
     return round(min(0.99, score), 4)
 

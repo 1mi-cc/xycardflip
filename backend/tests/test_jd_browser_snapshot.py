@@ -21,9 +21,9 @@ def test_keyword_variants_add_expected_aliases() -> None:
     assert "卡牌" in lowered
 
 
-def test_title_matches_keyword_requires_strong_overlap() -> None:
-    assert bridge._title_matches_keyword("宝可梦 快龙 ex PSA10 收藏卡", "Pokemon Card PSA 10")
-    assert not bridge._title_matches_keyword("特步 跑鞋 男鞋", "Pokemon Card PSA 10")
+def test_keyword_score_requires_strong_overlap() -> None:
+    assert bridge._keyword_score("宝可梦 快龙 ex PSA10 收藏卡", "Pokemon Card PSA 10") >= 2
+    assert bridge._keyword_score("特步 跑鞋 男鞋", "Pokemon Card PSA 10") == 0
 
 
 def test_coerce_bridge_items_filters_irrelevant_candidates() -> None:
