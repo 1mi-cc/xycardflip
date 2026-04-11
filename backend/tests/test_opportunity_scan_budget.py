@@ -72,7 +72,7 @@ async def test_scan_open_listings_skips_frozen_sellers(
     monkeypatch.setattr(
         opportunity_scan_module.repo,
         "get_open_listings",
-        lambda limit=0, include_noise_filtered=False: [
+        lambda limit=0, include_noise_filtered=False, include_simulation=False: [
             {
                 "id": 1,
                 "source": "alpha",
@@ -164,7 +164,7 @@ async def test_scan_open_listings_counts_noise_filtered_rows(
     monkeypatch.setattr(
         opportunity_scan_module.repo,
         "get_open_listings",
-        lambda limit=0, include_noise_filtered=False: [
+        lambda limit=0, include_noise_filtered=False, include_simulation=False: [
             {
                 "id": 10,
                 "source": "alpha",
@@ -252,7 +252,7 @@ async def test_scan_open_listings_filters_thin_tradable_markets(
     monkeypatch.setattr(
         opportunity_scan_module.repo,
         "get_open_listings",
-        lambda limit=0, include_noise_filtered=False: [
+        lambda limit=0, include_noise_filtered=False, include_simulation=False: [
             {
                 "id": 21,
                 "source": "alpha",
