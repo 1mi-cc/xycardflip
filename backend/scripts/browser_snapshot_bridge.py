@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler
@@ -11,7 +12,6 @@ from typing import Any
 from urllib.parse import parse_qs
 from urllib.parse import quote
 from urllib.parse import urlparse
-import re
 
 
 PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
@@ -19,17 +19,21 @@ PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
         "default_port": 8775,
         "default_keyword": "Pokemon Card PSA 10",
         "start_url": "https://search.jd.com/Search?keyword={keyword}",
-        "domain_keywords": ("jd.com", "3.cn"),
         "root_key": "jd_union_open_goods_query_response",
         "result_path": ("queryResult", "goodsList"),
+        "id_key": "skuId",
+        "title_key": "skuName",
+        "link_key": "materialUrl",
     },
     "pinduoduo": {
         "default_port": 8776,
         "default_keyword": "Pokemon Card PSA 10",
         "start_url": "https://mobile.yangkeduo.com/search_result.html?search_key={keyword}",
-        "domain_keywords": ("yangkeduo.com", "pinduoduo.com"),
         "root_key": "goods_search_response",
         "result_path": ("goods_list",),
+        "id_key": "goods_id",
+        "title_key": "goods_name",
+        "link_key": "goods_link",
     },
 }
 
@@ -86,15 +90,22 @@ def _keyword_variants(keyword: str) -> list[str]:
         for token in re.split(r"\s+", str(keyword or "").strip())
         if token.strip() and not token.strip().isdigit()
     ]
+    aliases = {
+        "pokemon": ["\u5b9d\u53ef\u68a6", "\u795e\u5947\u5b9d\u8d1d"],
+        "card": ["\u5361", "\u5361\u724c", "\u6536\u85cf\u5361"],
+        "psa": ["psa"],
+        "charizard": ["\u55b7\u706b\u9f99"],
+        "pikachu": ["\u76ae\u5361\u4e18"],
+        "mewtwo": ["\u8d85\u68a6"],
+        "lugia": ["\u6d1b\u5947\u4e9a"],
+        "rayquaza": ["\u88c2\u7a7a\u5ea7"],
+        "dragonite": ["\u5feb\u9f99"],
+        "blastoise": ["\u6c34\u7bad\u9f9f"],
+    }
     variants: list[str] = []
     for token in tokens:
         variants.append(token)
-        if token == "pokemon":
-            variants.append("宝可梦")
-        elif token == "card":
-            variants.extend(["卡", "卡牌", "收藏卡"])
-        elif token == "psa":
-            variants.append("psa")
+        variants.extend(aliases.get(token, []))
     deduped: list[str] = []
     seen: set[str] = set()
     for item in variants:
@@ -106,242 +117,146 @@ def _keyword_variants(keyword: str) -> list[str]:
     return deduped
 
 
-def _title_matches_keyword(title: str, keyword: str) -> bool:
-    text = str(title or "").strip().lower()
+def _normalize_text(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _extract_price_from_text(value: str | None) -> float:
+    text = _normalize_text(value)
     if not text:
-        return False
-    variants = _keyword_variants(keyword)
-    if not variants:
-        return True
-    hits = sum(1 for variant in variants if variant.lower() in text)
-    return hits >= 2 or ("宝可梦" in text and "psa" in text)
+        return 0.0
+    match = re.search(r"[¥￥]\s*([0-9]+(?:\.[0-9]+)?)", text)
+    if not match:
+        return 0.0
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return 0.0
 
 
-def _build_extract_expression(provider: str, keyword: str, limit: int) -> str:
-    keyword_tokens = [
-        token.lower()
-        for token in str(keyword or "").strip().split()
-        if token.strip() and not token.strip().isdigit()
-    ][:8]
-    keyword_tokens_json = json.dumps(keyword_tokens, ensure_ascii=True)
+def _keyword_score(text: str, keyword: str) -> int:
+    lowered = _normalize_text(text).lower()
+    if not lowered:
+        return 0
+    return sum(1 for variant in _keyword_variants(keyword) if variant.lower() in lowered)
+
+
+def _title_matches_keyword(title: str, keyword: str) -> bool:
+    return _keyword_score(title, keyword) >= 2
+
+
+def _build_extract_expression(provider: str, limit: int) -> str:
+    id_key = PROVIDER_CONFIG[provider]["id_key"]
+    title_key = PROVIDER_CONFIG[provider]["title_key"]
+    link_key = PROVIDER_CONFIG[provider]["link_key"]
     if provider == "jd":
         return f"""
 (() => {{
-  const maxItems = {max(1, int(limit))};
-  const keywordTokens = {keyword_tokens_json};
-  const keywordVariants = keywordTokens.flatMap((token) => {{
-    const variants = [token];
-    if (token === 'pokemon') variants.push('宝可梦');
-    if (token === 'card') variants.push('卡', '卡牌', '收藏卡');
-    if (token === 'psa') variants.push('psa');
-    return variants;
-  }});
-  const parsePrice = (text) => {{
-    const cleaned = String(text || '').replace(/,/g, '');
-    const match = cleaned.match(/[\\u00A5\\uFFE5]\\s*([0-9]+(?:\\.[0-9]+)?)/) || cleaned.match(/(^|\\s)([0-9]+(?:\\.[0-9]+)?)(\\s|$)/);
-    if (!match) return null;
-    return Number(match[1] || match[2] || 0);
-  }};
+  const maxItems = {max(1, int(limit)) * 10};
   const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
-  const splitLines = (value) => String(value || '').split(/\\n+/).map(part => normalizeText(part)).filter(Boolean);
-  const keywordHit = (value) => {{
-    const lowered = String(value || '').toLowerCase();
-    return !keywordVariants.length || keywordVariants.some(token => lowered.includes(String(token).toLowerCase()));
-  }};
-  const titleLike = (value) => {{
-    const text = normalizeText(value);
-    if (!text || text.length < 6 || text.length > 120) return false;
-    if (/[\\u00A5\\uFFE5]\\s*\\d/.test(text)) return false;
-    if (/^(商品|搜索|全部商品|配送至|筛选|综合|销量|价格|到手价|包邮|好评|看过|京东首页|网站导航)/.test(text)) return false;
-    return keywordHit(text);
-  }};
-  const seen = new Set();
-  const results = [];
+  const items = [];
   const anchors = Array.from(document.querySelectorAll('a[href*="item.jd.com/"]'));
   for (const anchor of anchors) {{
     const href = anchor.href || '';
     const skuMatch = href.match(/item\\.jd\\.com\\/(\\d+)\\.html/);
     if (!skuMatch) continue;
-    const skuId = skuMatch[1];
-    if (seen.has(skuId)) continue;
     const container = anchor.closest('li, div');
-    const title = normalizeText(anchor.getAttribute('title') || anchor.textContent || container?.querySelector('em')?.textContent || '');
-    if (!title || title.length < 4) continue;
-    if (!keywordHit(title)) continue;
-    const containerText = normalizeText(container?.innerText || '');
-    const price = parsePrice(containerText);
-    if (!price || !Number.isFinite(price) || price <= 0) continue;
-    seen.add(skuId);
-    results.push({{
-      skuId,
-      skuName: title,
-      owner: '',
-      price,
-      materialUrl: href,
+    items.push({{
+      {id_key!r}: skuMatch[1],
+      {title_key!r}: normalizeText(anchor.getAttribute('title') || anchor.textContent || container?.innerText || ''),
+      {link_key!r}: href,
+      priceText: normalizeText(container?.innerText || ''),
       listed_at: new Date().toISOString(),
     }});
-    if (results.length >= maxItems) break;
+    if (items.length >= maxItems) break;
   }}
-  if (results.length < maxItems) {{
-    const lines = splitLines(document.body?.innerText || '');
-    for (let i = 0; i < lines.length; i += 1) {{
-      const line = lines[i];
-      if (!keywordHit(line)) continue;
-      const nearby = [line, lines[i + 1] || '', lines[i + 2] || ''].join(' ');
-      const price = parsePrice(nearby);
-      if (!price || !Number.isFinite(price) || price <= 0) continue;
-      const title = line;
-      const skuId = `${{title}}:${{price}}`;
-      if (seen.has(skuId)) continue;
-      seen.add(skuId);
-      results.push({{
-        skuId,
-        skuName: title,
-        owner: '',
-        price,
-        materialUrl: '',
-        listed_at: new Date().toISOString(),
-      }});
-      if (results.length >= maxItems) break;
-    }}
-  }}
-  if (results.length < maxItems) {{
-    const blocks = Array.from(document.querySelectorAll('a, li, div')).map(node => {{
-      const text = normalizeText(node.innerText || '');
-      const href = node.closest('a')?.href || node.querySelector('a')?.href || '';
-      return {{ text, href }};
-    }}).filter(block => block.text && block.text.length >= 12 && block.text.length <= 220 && /[\\u00A5\\uFFE5]\\s*\\d/.test(block.text) && keywordHit(block.text));
-    for (const block of blocks) {{
-      const price = parsePrice(block.text);
-      if (!price || !Number.isFinite(price) || price <= 0) continue;
-      const lines = splitLines(block.text);
-      const title = lines.find(titleLike) || lines[0] || '';
-      if (!titleLike(title)) continue;
-      const skuMatch = String(block.href || '').match(/item\\.jd\\.com\\/(\\d+)\\.html/);
-      const skuId = skuMatch ? skuMatch[1] : `${{title}}:${{price}}`;
-      if (seen.has(skuId)) continue;
-      seen.add(skuId);
-      results.push({{
-        skuId,
-        skuName: title,
-        owner: '',
-        price,
-        materialUrl: block.href || '',
-        listed_at: new Date().toISOString(),
-      }});
-      if (results.length >= maxItems) break;
-    }}
-  }}
-  return results;
+  return {{
+    items,
+    bodyText: String(document.body?.innerText || '').slice(0, 60000),
+  }};
 }})()
 """.strip()
     return f"""
 (() => {{
-  const maxItems = {max(1, int(limit))};
-  const keywordTokens = {keyword_tokens_json};
-  const keywordVariants = keywordTokens.flatMap((token) => {{
-    const variants = [token];
-    if (token === 'pokemon') variants.push('宝可梦');
-    if (token === 'card') variants.push('卡', '卡牌', '收藏卡');
-    if (token === 'psa') variants.push('psa');
-    return variants;
-  }});
-  const parsePrice = (text) => {{
-    const cleaned = String(text || '').replace(/,/g, '');
-    const match = cleaned.match(/[\\u00A5\\uFFE5]\\s*([0-9]+(?:\\.[0-9]+)?)/) || cleaned.match(/(^|\\s)([0-9]+(?:\\.[0-9]+)?)(\\s|$)/);
-    if (!match) return null;
-    return Number(match[1] || match[2] || 0);
-  }};
+  const maxItems = {max(1, int(limit)) * 10};
   const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
-  const splitLines = (value) => String(value || '').split(/\\n+/).map(part => normalizeText(part)).filter(Boolean);
-  const keywordHit = (value) => {{
-    const lowered = String(value || '').toLowerCase();
-    return !keywordVariants.length || keywordVariants.some(token => lowered.includes(String(token).toLowerCase()));
-  }};
-  const titleLike = (value) => {{
-    const text = normalizeText(value);
-    if (!text || text.length < 6 || text.length > 120) return false;
-    if (/[\\u00A5\\uFFE5]\\s*\\d/.test(text)) return false;
-    if (/^(登录|手机登录|扫码登录|发送验证码|同意协议|返回|搜索|综合|销量|价格|筛选)/.test(text)) return false;
-    return keywordHit(text);
-  }};
-  const seen = new Set();
-  const results = [];
+  const items = [];
   const anchors = Array.from(document.querySelectorAll('a[href*="goods"], a[href*="search_result"]'));
   for (const anchor of anchors) {{
     const href = anchor.href || '';
     const goodsMatch = href.match(/goods_id=(\\d+)/) || href.match(/goods_id%22%3A(\\d+)/);
-    const container = anchor.closest('div, li, a');
-    const fallbackText = normalizeText(container?.innerText || anchor.textContent || '');
-    const title = normalizeText(anchor.getAttribute('title') || fallbackText);
-    if (!title || title.length < 4) continue;
-    const price = parsePrice(fallbackText);
-    if (!price || !Number.isFinite(price) || price <= 0) continue;
-    const goodsId = goodsMatch ? goodsMatch[1] : (title + ':' + price);
-    if (seen.has(goodsId)) continue;
-    seen.add(goodsId);
-    results.push({{
-      goods_id: goodsId,
-      goods_name: title,
-      mall_id: '',
-      price,
-      goods_link: href,
+    items.push({{
+      {id_key!r}: goodsMatch ? goodsMatch[1] : '',
+      {title_key!r}: normalizeText(anchor.getAttribute('title') || anchor.textContent || anchor.closest('div,li,a')?.innerText || ''),
+      {link_key!r}: href,
+      priceText: normalizeText(anchor.closest('div,li,a')?.innerText || ''),
       listed_at: new Date().toISOString(),
     }});
-    if (results.length >= maxItems) break;
+    if (items.length >= maxItems) break;
   }}
-  if (results.length < maxItems) {{
-    const lines = splitLines(document.body?.innerText || '');
-    for (let i = 0; i < lines.length; i += 1) {{
-      const line = lines[i];
-      if (!keywordHit(line)) continue;
-      const nearby = [line, lines[i + 1] || '', lines[i + 2] || ''].join(' ');
-      const price = parsePrice(nearby);
-      if (!price || !Number.isFinite(price) || price <= 0) continue;
-      const goodsId = `${{line}}:${{price}}`;
-      if (seen.has(goodsId)) continue;
-      seen.add(goodsId);
-      results.push({{
-        goods_id: goodsId,
-        goods_name: line,
-        mall_id: '',
-        price,
-        goods_link: '',
-        listed_at: new Date().toISOString(),
-      }});
-      if (results.length >= maxItems) break;
-    }}
-  }}
-  if (results.length < maxItems) {{
-    const blocks = Array.from(document.querySelectorAll('a, li, div')).map(node => {{
-      const text = normalizeText(node.innerText || '');
-      const href = node.closest('a')?.href || node.querySelector('a')?.href || '';
-      return {{ text, href }};
-    }}).filter(block => block.text && block.text.length >= 12 && block.text.length <= 220 && /[\\u00A5\\uFFE5]\\s*\\d/.test(block.text) && keywordHit(block.text));
-    for (const block of blocks) {{
-      const price = parsePrice(block.text);
-      if (!price || !Number.isFinite(price) || price <= 0) continue;
-      const lines = splitLines(block.text);
-      const title = lines.find(titleLike) || lines[0] || '';
-      if (!titleLike(title)) continue;
-      const goodsMatch = String(block.href || '').match(/goods_id=(\\d+)/);
-      const goodsId = goodsMatch ? goodsMatch[1] : `${{title}}:${{price}}`;
-      if (seen.has(goodsId)) continue;
-      seen.add(goodsId);
-      results.push({{
-        goods_id: goodsId,
-        goods_name: title,
-        mall_id: '',
-        price,
-        goods_link: block.href || '',
-        listed_at: new Date().toISOString(),
-      }});
-      if (results.length >= maxItems) break;
-    }}
-  }}
-  return results;
+  return {{
+    items,
+    bodyText: String(document.body?.innerText || '').slice(0, 60000),
+  }};
 }})()
 """.strip()
+
+
+def _coerce_bridge_items(provider: str, raw_items: list[dict[str, Any]], body_text: str, keyword: str, limit: int) -> list[dict[str, Any]]:
+    cfg = PROVIDER_CONFIG[provider]
+    id_key = str(cfg["id_key"])
+    title_key = str(cfg["title_key"])
+    link_key = str(cfg["link_key"])
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for item in raw_items:
+        title = _normalize_text(item.get(title_key))
+        if not _title_matches_keyword(title, keyword):
+            continue
+        price = _extract_price_from_text(item.get("priceText") or item.get("price"))
+        if price <= 0:
+            continue
+        listing_id = _normalize_text(item.get(id_key)) or f"{title}:{price}"
+        if listing_id in seen:
+            continue
+        seen.add(listing_id)
+        normalized.append(
+            {
+                id_key: listing_id,
+                title_key: title,
+                "price": price,
+                link_key: _normalize_text(item.get(link_key)),
+                "listed_at": item.get("listed_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        )
+        if len(normalized) >= max(1, int(limit)):
+            return normalized
+
+    lines = [_normalize_text(line) for line in re.split(r"\n+", str(body_text or "")) if _normalize_text(line)]
+    for index, line in enumerate(lines):
+        if not _title_matches_keyword(line, keyword):
+            continue
+        nearby = " ".join(lines[index : index + 4])
+        price = _extract_price_from_text(nearby)
+        if price <= 0:
+            continue
+        listing_id = f"{line}:{price}"
+        if listing_id in seen:
+            continue
+        seen.add(listing_id)
+        normalized.append(
+            {
+                id_key: listing_id,
+                title_key: line,
+                "price": price,
+                link_key: "",
+                "listed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        )
+        if len(normalized) >= max(1, int(limit)):
+            break
+    return normalized
 
 
 def _connect_browser(provider: str, remote_debug_port: int, reuse_browser: bool, search_url: str):
@@ -417,7 +332,16 @@ def _send(ws, method: str, params: dict[str, Any] | None = None) -> dict[str, An
             return payload
 
 
-def _capture_snapshot(provider: str, *, keyword: str, page: int, limit: int, remote_debug_port: int, page_wait_ms: int, reuse_browser: bool) -> dict[str, Any]:
+def _capture_snapshot(
+    provider: str,
+    *,
+    keyword: str,
+    page: int,
+    limit: int,
+    remote_debug_port: int,
+    page_wait_ms: int,
+    reuse_browser: bool,
+) -> dict[str, Any]:
     search_url = _build_search_url(provider, keyword, page)
     _requests, _websocket, ws, proc = _connect_browser(provider, remote_debug_port, reuse_browser, search_url)
     try:
@@ -425,7 +349,7 @@ def _capture_snapshot(provider: str, *, keyword: str, page: int, limit: int, rem
         _send(ws, "Page.enable")
         _send(ws, "Page.navigate", {"url": search_url})
         time.sleep(max(1.0, float(page_wait_ms) / 1000.0))
-        expression = _build_extract_expression(provider, keyword, limit)
+        expression = _build_extract_expression(provider, limit)
         result = _send(
             ws,
             "Runtime.evaluate",
@@ -435,30 +359,26 @@ def _capture_snapshot(provider: str, *, keyword: str, page: int, limit: int, rem
                 "awaitPromise": True,
             },
         )
-        value = ((result.get("result") or {}).get("result") or {}).get("value")
-        items = value if isinstance(value, list) else []
-        filtered_items = [
-            item
-            for item in items
-            if _title_matches_keyword(
-                str(item.get("skuName") or item.get("goods_name") or item.get("title") or ""),
-                keyword,
-            )
-        ]
+        value = ((result.get("result") or {}).get("result") or {}).get("value") or {}
+        raw_items = list(value.get("items") or []) if isinstance(value, dict) else []
+        body_text = str(value.get("bodyText") or "") if isinstance(value, dict) else ""
+        filtered_items = _coerce_bridge_items(provider, raw_items, body_text, keyword, limit)
         confidence_score = round(min(0.98, 0.25 + (0.18 * len(filtered_items))), 4) if filtered_items else 0.0
         low_confidence = len(filtered_items) == 0
+
         cfg = PROVIDER_CONFIG[provider]
         if provider == "jd":
             payload = {cfg["root_key"]: {cfg["result_path"][0]: {cfg["result_path"][1]: filtered_items}}}
         else:
             payload = {cfg["root_key"]: {cfg["result_path"][0]: filtered_items}}
+
         return {
             "provider": provider,
             "keyword": keyword,
             "page": int(page),
             "captured_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "item_count": len(filtered_items),
-            "raw_item_count": len(items),
+            "raw_item_count": len(raw_items),
             "confidence_score": confidence_score,
             "low_confidence": low_confidence,
             "warnings": (
