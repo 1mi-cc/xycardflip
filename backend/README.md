@@ -697,6 +697,38 @@ Notes:
 - It extracts visible browser results, not a formal API.
 - It does not print cookies or raw response bodies.
 
+### Browser session keeper
+
+For providers that need a stable logged-in browser session, start a persistent Edge remote-debug
+window first, keep it open, then run the browser snapshot bridge with `--reuse-browser`.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
+  -Provider jd `
+  -Keyword "Pokemon Card PSA 10" `
+  -ReuseIfRunning
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
+  -Provider pinduoduo `
+  -Keyword "Pokemon Card PSA 10" `
+  -ReuseIfRunning
+```
+
+Convenience launchers:
+
+```cmd
+start_jd_browser_keeper.cmd
+start_pinduoduo_browser_keeper.cmd
+```
+
+Then start the snapshot bridge against the same remote debug browser:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 -Provider pinduoduo -ReuseBrowser
+```
+
 ### Push local browser snapshot to remote server
 
 Because the remote backend cannot reach your local `127.0.0.1` bridge directly, use the
