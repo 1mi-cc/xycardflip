@@ -37,9 +37,13 @@ class MarketplaceShadowService:
             "virtual_only": True,
             "shipping_cost": 0.0,
             "candidate_limit": int(settings.marketplace_shadow_candidate_limit),
-            "min_net_profit": float(settings.marketplace_shadow_min_net_profit),
-            "min_roi": float(settings.marketplace_shadow_min_roi),
-            "min_confidence": float(settings.marketplace_shadow_min_confidence),
+            "min_net_profit": float(settings.marketplace_shadow_virtual_min_net_profit),
+            "min_roi": float(settings.marketplace_shadow_virtual_min_roi),
+            "min_confidence": float(settings.marketplace_shadow_virtual_min_confidence),
+            "fallback_min_net_profit": float(settings.marketplace_shadow_min_net_profit),
+            "fallback_min_roi": float(settings.marketplace_shadow_min_roi),
+            "fallback_min_confidence": float(settings.marketplace_shadow_min_confidence),
+            "threshold_source": "virtual",
             "min_platform_count": int(settings.marketplace_shadow_min_platform_count),
             "cooldown_minutes": int(settings.marketplace_shadow_cooldown_minutes),
             **snapshot,
@@ -57,13 +61,26 @@ class MarketplaceShadowService:
             1,
             min(100, int(limit or settings.marketplace_shadow_candidate_limit)),
         )
-        min_net_profit = float(settings.marketplace_shadow_min_net_profit)
-        min_roi = float(settings.marketplace_shadow_min_roi)
-        min_confidence = float(settings.marketplace_shadow_min_confidence)
         min_platform_count = max(2, int(settings.marketplace_shadow_min_platform_count))
         cooldown_minutes = max(1, int(settings.marketplace_shadow_cooldown_minutes))
-        effective_virtual_only = True
-        shipping_cost = 0.0
+        effective_virtual_only = bool(virtual_only)
+        threshold_source = "virtual" if effective_virtual_only else "global"
+        shipping_cost = 0.0 if effective_virtual_only else float(settings.default_shipping_cost)
+        min_net_profit = float(
+            settings.marketplace_shadow_virtual_min_net_profit
+            if effective_virtual_only
+            else settings.marketplace_shadow_min_net_profit
+        )
+        min_roi = float(
+            settings.marketplace_shadow_virtual_min_roi
+            if effective_virtual_only
+            else settings.marketplace_shadow_min_roi
+        )
+        min_confidence = float(
+            settings.marketplace_shadow_virtual_min_confidence
+            if effective_virtual_only
+            else settings.marketplace_shadow_min_confidence
+        )
 
         opportunity_payload = build_arbitrage_opportunities(
             limit=candidate_limit,
@@ -105,6 +122,7 @@ class MarketplaceShadowService:
                 "dry_run_only": True,
                 "virtual_only": effective_virtual_only,
                 "shipping_cost": shipping_cost,
+                "threshold_source": threshold_source,
                 "force": bool(force),
             },
             summary={
@@ -164,6 +182,10 @@ class MarketplaceShadowService:
                             "dry_run_only": True,
                             "item_type": str(candidate.get("item_type") or "").strip(),
                             "virtual_only": effective_virtual_only,
+                            "threshold_source": threshold_source,
+                            "min_net_profit": min_net_profit,
+                            "min_roi": min_roi,
+                            "min_confidence": min_confidence,
                         },
                     },
                 )
@@ -199,6 +221,7 @@ class MarketplaceShadowService:
                 "dry_run_only": True,
                 "virtual_only": effective_virtual_only,
                 "shipping_cost": shipping_cost,
+                "threshold_source": threshold_source,
                 "force": bool(force),
             },
             summary={

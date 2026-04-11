@@ -2129,13 +2129,19 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
     old_min_net_profit = settings.marketplace_shadow_min_net_profit
     old_min_roi = settings.marketplace_shadow_min_roi
     old_min_confidence = settings.marketplace_shadow_min_confidence
+    old_virtual_min_net_profit = settings.marketplace_shadow_virtual_min_net_profit
+    old_virtual_min_roi = settings.marketplace_shadow_virtual_min_roi
+    old_virtual_min_confidence = settings.marketplace_shadow_virtual_min_confidence
     old_candidate_limit = settings.marketplace_shadow_candidate_limit
     old_cooldown = settings.marketplace_shadow_cooldown_minutes
     object.__setattr__(settings, "sqlite_path", str(tmp_path / "marketplace_shadow_virtual.db"))
     object.__setattr__(settings, "marketplace_shadow_enabled", True)
-    object.__setattr__(settings, "marketplace_shadow_min_net_profit", 5.0)
-    object.__setattr__(settings, "marketplace_shadow_min_roi", 0.02)
+    object.__setattr__(settings, "marketplace_shadow_min_net_profit", 100.0)
+    object.__setattr__(settings, "marketplace_shadow_min_roi", 0.12)
     object.__setattr__(settings, "marketplace_shadow_min_confidence", 0.75)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", 5.0)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_roi", 0.02)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", 0.75)
     object.__setattr__(settings, "marketplace_shadow_candidate_limit", 10)
     object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", 240)
     try:
@@ -2219,6 +2225,8 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
             payload = run.json()
             assert payload["accepted_count"] >= 1
             assert payload["run"]["config"]["virtual_only"] is True
+            assert payload["run"]["config"]["min_net_profit"] == 5.0
+            assert payload["run"]["config"]["min_roi"] == 0.02
             assert payload["run"]["summary"]["arbitrage_summary"]["opportunity_count"] == 1
             accepted = [item for item in payload["intents"] if item.get("decision_status") == "accepted"]
             assert accepted
@@ -2232,6 +2240,9 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
         object.__setattr__(settings, "marketplace_shadow_min_net_profit", old_min_net_profit)
         object.__setattr__(settings, "marketplace_shadow_min_roi", old_min_roi)
         object.__setattr__(settings, "marketplace_shadow_min_confidence", old_min_confidence)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", old_virtual_min_net_profit)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_roi", old_virtual_min_roi)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", old_virtual_min_confidence)
         object.__setattr__(settings, "marketplace_shadow_candidate_limit", old_candidate_limit)
         object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", old_cooldown)
 
