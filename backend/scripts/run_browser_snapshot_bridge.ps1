@@ -6,7 +6,8 @@ param(
   [int]$Page = 1,
   [int]$Limit = 20,
   [int]$Port = 0,
-  [string]$Host = "127.0.0.1",
+  [Alias("Host")]
+  [string]$ListenHost = "127.0.0.1",
   [int]$RemoteDebugPort = 9222,
   [int]$PageWaitMs = 6000,
   [switch]$ReuseBrowser
@@ -68,18 +69,20 @@ if (-not (Test-Path $targetScript)) {
 
 $args = @(
   $targetScript,
-  "--host", $Host,
+  "--host", $ListenHost,
   "--port", $targetPort,
-  "--keyword", $Keyword,
   "--page", $Page,
   "--limit", $Limit,
   "--remote-debug-port", $RemoteDebugPort,
   "--page-wait-ms", $PageWaitMs
 )
+if ($Keyword) {
+  $args += @("--keyword", $Keyword)
+}
 if ($ReuseBrowser) {
   $args += "--reuse-browser"
 }
 
-Write-Host ("Starting {0} browser snapshot bridge on http://{1}:{2}" -f $Provider, $Host, $targetPort) -ForegroundColor Cyan
+Write-Host ("Starting {0} browser snapshot bridge on http://{1}:{2}" -f $Provider, $ListenHost, $targetPort) -ForegroundColor Cyan
 & $pythonExe @args
 exit $LASTEXITCODE

@@ -42,9 +42,11 @@ if (-not (Test-Path $targetScript)) {
 $args = @(
   $targetScript,
   "--provider", $Provider,
-  "--keyword", $Keyword,
   "--profile-directory", $ProfileDirectory
 )
+if ($Keyword) {
+  $args += @("--keyword", $Keyword)
+}
 if ($RemoteDebugPort -gt 0) {
   $args += @("--remote-debug-port", $RemoteDebugPort)
 }
