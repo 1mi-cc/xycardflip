@@ -27,7 +27,8 @@ PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
     },
     "pinduoduo": {
         "default_port": 8776,
-        "default_keyword": "Pokemon Card PSA 10",
+        "default_keyword": "Q币 自动充值",
+        "default_virtual_goods_only": True,
         "start_url": "https://mobile.yangkeduo.com/search_result.html?search_key={keyword}",
         "root_key": "goods_search_response",
         "result_path": ("goods_list",),
@@ -71,6 +72,9 @@ def _build_parser(provider: str) -> argparse.ArgumentParser:
     parser.add_argument("--remote-debug-port", type=int, default=9222)
     parser.add_argument("--page-wait-ms", type=int, default=6000)
     parser.add_argument("--reuse-browser", action="store_true")
+    parser.set_defaults(virtual_goods_only=bool(cfg.get("default_virtual_goods_only", False)))
+    parser.add_argument("--virtual-goods-only", dest="virtual_goods_only", action="store_true")
+    parser.add_argument("--allow-physical-goods", dest="virtual_goods_only", action="store_false")
     return parser
 
 
@@ -138,6 +142,68 @@ def _keyword_score(text: str, keyword: str) -> int:
     return sum(1 for variant in _keyword_variants(keyword) if variant.lower() in lowered)
 
 
+def _classify_fulfillment_mode(text: str) -> str:
+    lowered = _normalize_text(text).lower()
+    if not lowered:
+        return "unknown"
+    virtual_terms = (
+        "自动充值",
+        "秒发",
+        "直充",
+        "卡密",
+        "cdk",
+        "兑换码",
+        "激活码",
+        "代充",
+        "q币",
+        "点卡",
+        "礼品卡",
+        "会员",
+        "steam",
+        "psn",
+        "xbox",
+        "switch",
+        "游戏币",
+        "钻石充值",
+        "月卡",
+        "auto recharge",
+        "instant delivery",
+        "direct topup",
+        "topup",
+    )
+    physical_terms = (
+        "发货",
+        "送达",
+        "实物",
+        "玩具",
+        "配件",
+        "饰品",
+        "手工",
+        "塑料",
+        "合金",
+        "铜钱",
+        "相框",
+        "摇钱树",
+        "退货",
+        "运费",
+        "本店已拼",
+        "diy",
+        "材质",
+        "toy",
+        "prop",
+        "physical",
+    )
+    if any(term in lowered for term in virtual_terms):
+        return "virtual"
+    if any(term in lowered for term in physical_terms):
+        return "physical"
+    return "unknown"
+
+
+def _item_type_from_fulfillment_mode(mode: str) -> str:
+    return "virtual_goods" if str(mode or "").strip() == "virtual" else "generic"
+
+
 def _score_candidate(title: str, price: float, link: str, keyword: str) -> float:
     keyword_hits = _keyword_score(title, keyword)
     if keyword_hits <= 0:
@@ -154,7 +220,12 @@ def _score_candidate(title: str, price: float, link: str, keyword: str) -> float
         score += 0.08
     if any(alias in lowered for alias in ("宝可梦", "神奇宝贝", "卡", "卡牌")):
         score += 0.08
-    return round(min(0.99, score), 4)
+    fulfillment_mode = _classify_fulfillment_mode(title)
+    if fulfillment_mode == "virtual":
+        score += 0.18
+    elif fulfillment_mode == "physical":
+        score -= 0.18
+    return round(min(0.99, max(0.0, score)), 4)
 
 
 def _detect_login_page(provider: str, body_text: str) -> bool:
@@ -189,9 +260,16 @@ def _build_snapshot_state(
     filtered_items: list[dict[str, Any]],
     diagnostics: list[dict[str, Any]],
     login_required: bool,
+    virtual_goods_only_applied: bool,
 ) -> dict[str, Any]:
     accepted_item_count = len(filtered_items)
     raw_item_count = len(raw_items)
+    virtual_candidate_count = sum(
+        1 for item in diagnostics if item.get("source") == "anchor" and item.get("fulfillment_mode") == "virtual"
+    )
+    physical_candidate_count = sum(
+        1 for item in diagnostics if item.get("source") == "anchor" and item.get("fulfillment_mode") == "physical"
+    )
     confidence_score = (
         round(
             min(0.98, max((item["score"] for item in diagnostics if item.get("accepted")), default=0.0)),
@@ -207,7 +285,13 @@ def _build_snapshot_state(
         accepted_item_count=accepted_item_count,
         login_required=login_required,
     )
-    ready_for_push = (not login_required) and (not low_confidence) and accepted_item_count > 0
+    ready_for_push = (
+        (not login_required)
+        and (not low_confidence)
+        and accepted_item_count > 0
+        and virtual_candidate_count > 0
+        and virtual_goods_only_applied
+    )
     warnings: list[str] = []
     if login_required:
         warnings.append("Browser page looks like a login screen. Keep the provider logged in and retry.")
@@ -217,6 +301,9 @@ def _build_snapshot_state(
         "provider": provider,
         "raw_item_count": raw_item_count,
         "accepted_item_count": accepted_item_count,
+        "virtual_candidate_count": virtual_candidate_count,
+        "physical_candidate_count": physical_candidate_count,
+        "virtual_goods_only_applied": virtual_goods_only_applied,
         "confidence_score": confidence_score,
         "low_confidence": low_confidence,
         "login_required": login_required,
@@ -338,6 +425,7 @@ def _coerce_bridge_items(
     body_text: str,
     keyword: str,
     limit: int,
+    virtual_goods_only: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     cfg = PROVIDER_CONFIG[provider]
     id_key = str(cfg["id_key"])
@@ -351,6 +439,7 @@ def _coerce_bridge_items(
         title = _normalize_text(item.get(title_key))
         price = _extract_price_from_text(item.get("priceText") or item.get("price"))
         link = _normalize_text(item.get(link_key))
+        fulfillment_mode = _classify_fulfillment_mode(title)
         listing_id = _normalize_text(item.get(id_key)) or (f"{title}:{price}" if title and price > 0 else "")
         score = _score_candidate(title, price, link, keyword)
         diagnostics.append(
@@ -358,6 +447,7 @@ def _coerce_bridge_items(
                 "title": title[:120],
                 "price": price,
                 "link_present": bool(link),
+                "fulfillment_mode": fulfillment_mode,
                 "keyword_score": _keyword_score(title, keyword),
                 "score": score,
                 "accepted": False,
@@ -365,6 +455,8 @@ def _coerce_bridge_items(
             }
         )
         if score < 0.65 or not listing_id:
+            continue
+        if virtual_goods_only and fulfillment_mode != "virtual":
             continue
         if listing_id in seen:
             continue
@@ -375,6 +467,9 @@ def _coerce_bridge_items(
                 id_key: listing_id,
                 title_key: title,
                 "price": price,
+                "fulfillment_mode": fulfillment_mode,
+                "item_type": _item_type_from_fulfillment_mode(fulfillment_mode),
+                "shipping_cost": 0.0 if fulfillment_mode == "virtual" else 0.0,
                 link_key: link,
                 "listed_at": item.get("listed_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
@@ -390,11 +485,13 @@ def _coerce_bridge_items(
         nearby = " ".join(lines[index : index + 4])
         price = _extract_price_from_text(nearby)
         score = _score_candidate(line, price, "", keyword)
+        fulfillment_mode = _classify_fulfillment_mode(line)
         diagnostics.append(
             {
                 "title": line[:120],
                 "price": price,
                 "link_present": False,
+                "fulfillment_mode": fulfillment_mode,
                 "keyword_score": _keyword_score(line, keyword),
                 "score": score,
                 "accepted": False,
@@ -402,6 +499,8 @@ def _coerce_bridge_items(
             }
         )
         if score < 0.75:
+            continue
+        if virtual_goods_only and fulfillment_mode != "virtual":
             continue
         listing_id = f"{line}:{price}"
         if listing_id in seen:
@@ -413,6 +512,9 @@ def _coerce_bridge_items(
                 id_key: listing_id,
                 title_key: line,
                 "price": price,
+                "fulfillment_mode": fulfillment_mode,
+                "item_type": _item_type_from_fulfillment_mode(fulfillment_mode),
+                "shipping_cost": 0.0 if fulfillment_mode == "virtual" else 0.0,
                 link_key: "",
                 "listed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
@@ -498,6 +600,7 @@ def _capture_snapshot(
     remote_debug_port: int,
     page_wait_ms: int,
     reuse_browser: bool,
+    virtual_goods_only: bool,
 ) -> dict[str, Any]:
     search_url = _build_search_url(provider, keyword, page)
     _requests, _websocket, ws, proc = _connect_browser(provider, remote_debug_port, reuse_browser, search_url)
@@ -520,13 +623,21 @@ def _capture_snapshot(
         raw_items = list(value.get("items") or []) if isinstance(value, dict) else []
         body_text = str(value.get("bodyText") or "") if isinstance(value, dict) else ""
         login_required = _detect_login_page(provider, body_text)
-        filtered_items, diagnostics = _coerce_bridge_items(provider, raw_items, body_text, keyword, limit)
+        filtered_items, diagnostics = _coerce_bridge_items(
+            provider,
+            raw_items,
+            body_text,
+            keyword,
+            limit,
+            virtual_goods_only=virtual_goods_only,
+        )
         snapshot_state = _build_snapshot_state(
             provider=provider,
             raw_items=raw_items,
             filtered_items=filtered_items,
             diagnostics=diagnostics,
             login_required=login_required,
+            virtual_goods_only_applied=virtual_goods_only,
         )
 
         cfg = PROVIDER_CONFIG[provider]
@@ -570,6 +681,7 @@ def _build_handler(
     remote_debug_port: int,
     page_wait_ms: int,
     reuse_browser: bool,
+    virtual_goods_only: bool,
 ):
     class BrowserSnapshotHandler(BaseHTTPRequestHandler):
         server_version = "BrowserSnapshotBridge/1.0"
@@ -615,6 +727,7 @@ def _build_handler(
                     remote_debug_port=remote_debug_port,
                     page_wait_ms=page_wait_ms,
                     reuse_browser=reuse_browser,
+                    virtual_goods_only=virtual_goods_only,
                 )
             except Exception as exc:
                 self._send_json(
@@ -647,6 +760,7 @@ def main(provider: str, argv: list[str] | None = None) -> int:
         remote_debug_port=int(args.remote_debug_port),
         page_wait_ms=max(1000, int(args.page_wait_ms)),
         reuse_browser=bool(args.reuse_browser),
+        virtual_goods_only=bool(args.virtual_goods_only),
     )
     server = ThreadingHTTPServer((args.host, int(args.port)), handler)
     print(
@@ -657,6 +771,7 @@ def main(provider: str, argv: list[str] | None = None) -> int:
                 "snapshot_url": f"http://{args.host}:{args.port}/snapshot",
                 "health_url": f"http://{args.host}:{args.port}/health",
                 "keyword": str(args.keyword or cfg["default_keyword"]),
+                "virtual_goods_only": bool(args.virtual_goods_only),
                 "mode": "cookie-browser-bridge",
                 "risk_level": "high-risk-unstable",
             },

@@ -54,16 +54,16 @@ $token = $login.data.token
 if (-not $token) {
   throw "Remote auth token missing."
 }
-$headers = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+$headers = @{ Authorization = "Bearer $token" }
 
 switch ($Provider) {
   "jd" {
     $payload = ($snapshot.payload | ConvertTo-Json -Depth 20 -Compress)
-    $result = Invoke-RestMethod -UseBasicParsing -Method Post -Uri "${baseUrl}/marketplace/providers/jd/ingest-snapshot" -Headers $headers -Body $payload
+    $result = Invoke-RestMethod -UseBasicParsing -Method Post -Uri "${baseUrl}/marketplace/providers/jd/ingest-snapshot" -Headers $headers -ContentType "application/json; charset=utf-8" -Body $payload
   }
   "pinduoduo" {
     $payload = ($snapshot.payload | ConvertTo-Json -Depth 20 -Compress)
-    $result = Invoke-RestMethod -UseBasicParsing -Method Post -Uri "${baseUrl}/marketplace/providers/pinduoduo/ingest-snapshot" -Headers $headers -Body $payload
+    $result = Invoke-RestMethod -UseBasicParsing -Method Post -Uri "${baseUrl}/marketplace/providers/pinduoduo/ingest-snapshot" -Headers $headers -ContentType "application/json; charset=utf-8" -Body $payload
   }
   default {
     throw "Unsupported provider: $Provider"

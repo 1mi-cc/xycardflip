@@ -2,7 +2,7 @@
 param(
   [ValidateSet("jd", "pinduoduo")]
   [string]$Provider,
-  [string]$Keyword = "Pokemon Card PSA 10",
+  [string]$Keyword = "",
   [int]$RemoteDebugPort = 0,
   [string]$ProfileDirectory = "Default",
   [switch]$ReuseIfRunning,

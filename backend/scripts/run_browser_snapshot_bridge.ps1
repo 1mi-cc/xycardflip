@@ -2,7 +2,7 @@
 param(
   [ValidateSet("jd", "pinduoduo")]
   [string]$Provider,
-  [string]$Keyword = "Pokemon Card PSA 10",
+  [string]$Keyword = "",
   [int]$Page = 1,
   [int]$Limit = 20,
   [int]$Port = 0,

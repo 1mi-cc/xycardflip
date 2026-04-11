@@ -707,14 +707,16 @@ Examples:
 ```powershell
 powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
   -Provider jd `
-  -Keyword "Pokemon Card PSA 10" `
   -ReuseIfRunning
 
 powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
   -Provider pinduoduo `
-  -Keyword "Pokemon Card PSA 10" `
   -ReuseIfRunning
 ```
+
+If no keyword is provided, `pinduoduo` now defaults to the virtual-goods seed:
+
+- `Q币 自动充值`
 
 Probe the current keeper session without launching a new browser:
 
@@ -744,6 +746,8 @@ Then start the snapshot bridge against the same remote debug browser:
 powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 -Provider pinduoduo -ReuseBrowser
 ```
 
+`pinduoduo` browser snapshot now applies `virtual_goods_only` by default.
+
 ### Push local browser snapshot to remote server
 
 Because the remote backend cannot reach your local `127.0.0.1` bridge directly, use the
@@ -770,3 +774,5 @@ Push is fail-closed:
   - `login_required = false`
   - `low_confidence = false`
   - `accepted_item_count > 0`
+  - `virtual_candidate_count > 0`
+  - `virtual_goods_only_applied = true`

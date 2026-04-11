@@ -25,6 +25,20 @@ def _float(value: Any) -> float:
         return 0.0
 
 
+def _item_type(raw: dict[str, Any]) -> str:
+    explicit = _text(raw.get("item_type") or raw.get("categoryName") or "generic") or "generic"
+    fulfillment_mode = _text(raw.get("fulfillment_mode")).lower()
+    if explicit == "virtual_goods" or fulfillment_mode == "virtual":
+        return "virtual_goods"
+    return explicit
+
+
+def _shipping_cost(raw: dict[str, Any]) -> float:
+    if _item_type(raw) == "virtual_goods":
+        return 0.0
+    return _float(raw.get("shipping_cost") or 0.0)
+
+
 def _datetime(value: Any) -> datetime:
     text = _text(value)
     if not text:
@@ -87,9 +101,9 @@ def normalize_jd_snapshot(payload: Any) -> list[MarketplaceOfferIn]:
                 canonical_key=normalize_marketplace_canonical_key(
                     raw.get("canonical_key") or raw.get("skuName") or title,
                 ),
-                item_type=_text(raw.get("item_type") or raw.get("categoryName") or "generic") or "generic",
+                item_type=_item_type(raw),
                 list_price=price,
-                shipping_cost=_float(raw.get("shipping_cost") or 0.0),
+                shipping_cost=_shipping_cost(raw),
                 fee_rate=_float(raw.get("commisionRatioWl") or raw.get("fee_rate") or 0.0),
                 currency=_text(raw.get("currency") or "CNY") or "CNY",
                 listed_at=_datetime(raw.get("listed_at") or raw.get("create_time")),

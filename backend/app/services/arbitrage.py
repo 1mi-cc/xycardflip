@@ -103,6 +103,7 @@ def _load_marketplace_offers(
     listing_hours: int,
     include_sources: tuple[str, ...] = (),
     keyword: str = "",
+    virtual_only: bool = False,
 ) -> list[ArbitrageListing]:
     source_values = [str(item or "").strip().lower() for item in include_sources if str(item or "").strip()]
     keyword_text = str(keyword or "").strip().lower()
@@ -115,6 +116,9 @@ def _load_marketplace_offers(
       AND listed_at >= ?
     """
     params: list[Any] = [listed_after]
+    if virtual_only:
+        sql += " AND item_type = ?"
+        params.append("virtual_goods")
     if source_values:
         placeholders = ",".join("?" for _ in source_values)
         sql += f" AND platform IN ({placeholders})"
@@ -229,6 +233,7 @@ def build_cross_platform_arbitrage_candidates(
     min_roi: float = 0.0,
     include_sources: tuple[str, ...] = (),
     keyword: str = "",
+    virtual_only: bool = False,
     buy_fee_rate: float = 0.0,
     sell_fee_rate: float = 0.0,
     shipping_cost: float = 0.0,
@@ -237,6 +242,7 @@ def build_cross_platform_arbitrage_candidates(
         listing_hours=listing_hours,
         include_sources=include_sources,
         keyword=keyword,
+        virtual_only=virtual_only,
     )
     listings = marketplace_listings
 
@@ -283,6 +289,7 @@ def build_cross_platform_arbitrage_candidates(
             "min_roi": float(min_roi),
             "include_sources": list(include_sources),
             "keyword": str(keyword or "").strip(),
+            "virtual_only": bool(virtual_only),
             "data_mode": "marketplace_offers",
         },
         "summary": {
@@ -308,6 +315,7 @@ def build_arbitrage_matching_preview(
     listing_hours: int = 24 * 30,
     include_sources: tuple[str, ...] = (),
     keyword: str = "",
+    virtual_only: bool = False,
     buy_fee_rate: float = 0.0,
     sell_fee_rate: float = 0.0,
     shipping_cost: float = 0.0,
@@ -316,6 +324,7 @@ def build_arbitrage_matching_preview(
         listing_hours=listing_hours,
         include_sources=include_sources,
         keyword=keyword,
+        virtual_only=virtual_only,
     )
     groups, _source_counts = _group_marketplace_listings(listings)
     items: list[dict[str, Any]] = []
@@ -377,6 +386,7 @@ def build_arbitrage_matching_preview(
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "count": len(items),
         "listing_hours": int(listing_hours),
+        "virtual_only": bool(virtual_only),
         "data_mode": "marketplace_offers",
         "items": items[: max(1, int(limit))],
     }
@@ -451,6 +461,7 @@ def build_arbitrage_opportunities(
     window_hours: int = 48,
     keyword: str = "",
     sources: list[str] | None = None,
+    virtual_only: bool = False,
     min_platforms: int = 2,
     buy_fee_rate: float = 0.0,
     sell_fee_rate: float = 0.0,
@@ -466,6 +477,7 @@ def build_arbitrage_opportunities(
         min_roi=min_roi,
         include_sources=tuple(sources or ()),
         keyword=keyword,
+        virtual_only=virtual_only,
         buy_fee_rate=buy_fee_rate,
         sell_fee_rate=sell_fee_rate,
         shipping_cost=shipping_cost,

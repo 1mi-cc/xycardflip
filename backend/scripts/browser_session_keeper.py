@@ -16,7 +16,7 @@ PROVIDER_CONFIG = {
         "start_url": "https://search.jd.com/Search?keyword={keyword}",
     },
     "pinduoduo": {
-        "default_keyword": "Pokemon Card PSA 10",
+        "default_keyword": "Q币 自动充值",
         "default_debug_port": 9446,
         "start_url": "https://mobile.yangkeduo.com/search_result.html?search_key={keyword}",
     },
@@ -88,17 +88,24 @@ def _provider_hosts(provider: str) -> tuple[str, ...]:
 def _infer_page_state(provider: str, *, current_url: str, page_title: str) -> str:
     url = _normalize_text(current_url).lower()
     title = _normalize_text(page_title).lower()
+    parsed = urlparse(url)
+    path = _normalize_text(parsed.path).lower()
+    netloc = _normalize_text(parsed.netloc).lower()
     if provider == "pinduoduo":
-        if "login" in url or "登录" in title:
-            return "login"
-        if "search_result" in url:
+        if "search_result" in path:
             return "search_results"
+        if path.endswith("/login.html") or path.endswith("/login") or ("login" in path and "search_result" not in path):
+            return "login"
+        if title == "登录" or "登录 -" in title:
+            return "login"
         return "unknown"
     if provider == "jd":
-        if "passport" in url or "login" in url or "登录" in title:
-            return "login"
-        if "search.jd.com" in url and "search" in url:
+        if "search.jd.com" in netloc and "search" in path:
             return "search_results"
+        if "passport" in path or path.endswith("/login") or "login" in path:
+            return "login"
+        if title == "登录" or "登录 -" in title:
+            return "login"
         return "unknown"
     return "unknown"
 
