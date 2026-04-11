@@ -39,3 +39,25 @@ def test_pinduoduo_coerce_bridge_items_stays_empty_for_login_like_page() -> None
     assert accepted == []
     assert diagnostics
     assert all(not item["accepted"] for item in diagnostics)
+
+
+def test_pinduoduo_coerce_bridge_items_accepts_relevant_candidate() -> None:
+    accepted, diagnostics = bridge._coerce_bridge_items(
+        "pinduoduo",
+        raw_items=[
+            {
+                "goods_id": "pdd-1",
+                "goods_name": "宝可梦 快龙 ex PSA10 收藏卡",
+                "goods_link": "https://mobile.yangkeduo.com/goods.html?goods_id=123456",
+                "priceText": "宝可梦 快龙 ex PSA10 收藏卡 到手价 ¥63.00",
+                "listed_at": "2026-04-11T00:00:00Z",
+            }
+        ],
+        body_text="",
+        keyword="Pokemon Card PSA 10",
+        limit=5,
+    )
+
+    assert len(accepted) == 1
+    assert accepted[0]["goods_id"] == "pdd-1"
+    assert any(item["accepted"] for item in diagnostics)

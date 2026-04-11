@@ -176,10 +176,7 @@ def _build_extract_expression(provider: str, limit: int) -> str:
     if provider == "jd":
         href_filter = 'a[href*="item.jd.com/"]'
         id_regex = r"item\.jd\.com/(\d+)\.html"
-    else:
-        href_filter = 'a[href*="goods"], a[href*="search_result"]'
-        id_regex = r"goods_id=(\d+)"
-    return f"""
+        return f"""
 (() => {{
   const maxItems = {max(1, int(limit)) * 12};
   const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
@@ -200,6 +197,38 @@ def _build_extract_expression(provider: str, limit: int) -> str:
   }}
   return {{
     items,
+    bodyText: String(document.body?.innerText || '').slice(0, 120000),
+  }};
+}})()
+""".strip()
+    return f"""
+(() => {{
+  const maxItems = {max(1, int(limit)) * 20};
+  const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+  const parseGoodsId = (href) => {{
+    const match = String(href || '').match(/goods_id=(\\d+)/);
+    return match ? match[1] : '';
+  }};
+  const candidates = [];
+  const blocks = Array.from(document.querySelectorAll('div, li, a'));
+  for (const node of blocks) {{
+    const text = normalizeText(node.innerText || '');
+    if (!text || text.length < 12 || text.length > 260) continue;
+    const href = node.closest('a')?.href || node.querySelector('a')?.href || '';
+    const goodsId = parseGoodsId(href) || node.getAttribute('data-goods-id') || '';
+    const className = normalizeText(node.className || '');
+    candidates.push({{
+      {json.dumps(id_key)}: goodsId,
+      {json.dumps(title_key)}: text,
+      {json.dumps(link_key)}: href,
+      priceText: text,
+      className,
+      listed_at: new Date().toISOString(),
+    }});
+    if (candidates.length >= maxItems) break;
+  }}
+  return {{
+    items: candidates,
     bodyText: String(document.body?.innerText || '').slice(0, 120000),
   }};
 }})()
