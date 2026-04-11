@@ -244,7 +244,13 @@ def _detect_risk_challenge_page(provider: str, current_url: str, page_title: str
     if provider != "jd":
         return False
     haystack = f"{current_url} {page_title} {body_text}".lower()
-    return "cfe.m.jd.com" in haystack or "risk_handler" in haystack
+    return (
+        "cfe.m.jd.com" in haystack
+        or "risk_handler" in haystack
+        or "当前页面异常" in haystack
+        or "内容太火爆" in haystack
+        or "www.jd.com/?from=pc_search_sd" in haystack
+    )
 
 
 def _detect_page_state(

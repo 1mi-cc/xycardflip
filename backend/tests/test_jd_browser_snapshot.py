@@ -170,6 +170,24 @@ def test_jd_snapshot_state_marks_risk_challenge_not_ready_for_push() -> None:
     assert snapshot_state["ready_for_push"] is False
 
 
+def test_jd_detects_abnormal_homepage_as_risk_challenge() -> None:
+    assert bridge._detect_risk_challenge_page(
+        "jd",
+        "https://www.jd.com/?from=pc_search_sd",
+        "JD",
+        "内容太火爆了，请稍后再试 当前页面异常 请刷新或切换账户试试",
+    ) is True
+
+
+def test_jd_detects_homepage_search_redirect_as_risk_challenge() -> None:
+    assert bridge._detect_risk_challenge_page(
+        "jd",
+        "https://www.jd.com/?from=pc_search_sd",
+        "京东(JD.COM)-正品低价、品质保障、配送及时、轻松购物！",
+        "",
+    ) is True
+
+
 def test_jd_selects_risk_challenge_page_over_unrelated_search_tab() -> None:
     selected = bridge._select_debug_page(
         "jd",
