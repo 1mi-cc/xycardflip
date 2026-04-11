@@ -17,7 +17,8 @@ from urllib.parse import urlparse
 PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
     "jd": {
         "default_port": 8775,
-        "default_keyword": "Pokemon Card PSA 10",
+        "default_keyword": "Q coin auto recharge",
+        "default_virtual_goods_only": True,
         "start_url": "https://search.jd.com/Search?keyword={keyword}",
         "root_key": "jd_union_open_goods_query_response",
         "result_path": ("queryResult", "goodsList"),
@@ -239,13 +240,23 @@ def _detect_login_page(provider: str, body_text: str) -> bool:
     return bool(markers) and all(marker in text for marker in markers[:2])
 
 
+def _detect_risk_challenge_page(provider: str, current_url: str, page_title: str, body_text: str) -> bool:
+    if provider != "jd":
+        return False
+    haystack = f"{current_url} {page_title} {body_text}".lower()
+    return "cfe.m.jd.com" in haystack or "risk_handler" in haystack
+
+
 def _detect_page_state(
     provider: str,
     *,
     raw_item_count: int,
     accepted_item_count: int,
     login_required: bool,
+    risk_challenge_required: bool = False,
 ) -> str:
+    if risk_challenge_required:
+        return "risk_challenge"
     if login_required:
         return "login"
     if accepted_item_count > 0 or raw_item_count > 0:
@@ -260,7 +271,8 @@ def _build_snapshot_state(
     filtered_items: list[dict[str, Any]],
     diagnostics: list[dict[str, Any]],
     login_required: bool,
-    virtual_goods_only_applied: bool,
+    risk_challenge_required: bool = False,
+    virtual_goods_only_applied: bool = False,
 ) -> dict[str, Any]:
     accepted_item_count = len(filtered_items)
     raw_item_count = len(raw_items)
@@ -278,15 +290,17 @@ def _build_snapshot_state(
         if filtered_items
         else 0.0
     )
-    low_confidence = login_required or accepted_item_count == 0
+    low_confidence = login_required or risk_challenge_required or accepted_item_count == 0
     page_state = _detect_page_state(
         provider,
         raw_item_count=raw_item_count,
         accepted_item_count=accepted_item_count,
         login_required=login_required,
+        risk_challenge_required=risk_challenge_required,
     )
     ready_for_push = (
         (not login_required)
+        and (not risk_challenge_required)
         and (not low_confidence)
         and accepted_item_count > 0
         and virtual_candidate_count > 0
@@ -295,6 +309,8 @@ def _build_snapshot_state(
     warnings: list[str] = []
     if login_required:
         warnings.append("Browser page looks like a login screen. Keep the provider logged in and retry.")
+    elif risk_challenge_required:
+        warnings.append("Browser page looks like a platform risk challenge. Resolve it in the browser and retry.")
     elif low_confidence:
         warnings.append("No strongly keyword-matching items were found in the visible browser results.")
     return {
@@ -307,6 +323,7 @@ def _build_snapshot_state(
         "confidence_score": confidence_score,
         "low_confidence": low_confidence,
         "login_required": login_required,
+        "risk_challenge_required": risk_challenge_required,
         "page_state": page_state,
         "ready_for_push": ready_for_push,
         "warnings": warnings,
@@ -382,6 +399,8 @@ def _build_extract_expression(provider: str, limit: int) -> str:
   return {{
     items,
     bodyText: String(document.body?.innerText || '').slice(0, 120000),
+    currentUrl: String(window.location?.href || ''),
+    pageTitle: String(document.title || ''),
   }};
 }})()
 """.strip()
@@ -414,6 +433,8 @@ def _build_extract_expression(provider: str, limit: int) -> str:
   return {{
     items: candidates,
     bodyText: String(document.body?.innerText || '').slice(0, 120000),
+    currentUrl: String(window.location?.href || ''),
+    pageTitle: String(document.title || ''),
   }};
 }})()
 """.strip()
@@ -622,7 +643,21 @@ def _capture_snapshot(
         value = ((result.get("result") or {}).get("result") or {}).get("value") or {}
         raw_items = list(value.get("items") or []) if isinstance(value, dict) else []
         body_text = str(value.get("bodyText") or "") if isinstance(value, dict) else ""
+        current_url = str(value.get("currentUrl") or "") if isinstance(value, dict) else ""
+        page_title = str(value.get("pageTitle") or "") if isinstance(value, dict) else ""
+        if not current_url:
+            try:
+                pages = _requests.get(
+                    f"http://127.0.0.1:{int(remote_debug_port)}/json/list",
+                    timeout=3,
+                ).json()
+                selected_page = _select_debug_page(provider, pages if isinstance(pages, list) else [], search_url) or {}
+                current_url = _normalize_text(selected_page.get("url"))
+                page_title = page_title or _normalize_text(selected_page.get("title"))
+            except Exception:
+                pass
         login_required = _detect_login_page(provider, body_text)
+        risk_challenge_required = _detect_risk_challenge_page(provider, current_url, page_title, body_text)
         filtered_items, diagnostics = _coerce_bridge_items(
             provider,
             raw_items,
@@ -637,6 +672,7 @@ def _capture_snapshot(
             filtered_items=filtered_items,
             diagnostics=diagnostics,
             login_required=login_required,
+            risk_challenge_required=risk_challenge_required,
             virtual_goods_only_applied=virtual_goods_only,
         )
 
@@ -652,6 +688,8 @@ def _capture_snapshot(
             "page": int(page),
             "captured_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "item_count": len(filtered_items),
+            "current_url": current_url,
+            "page_title": page_title,
             **snapshot_state,
             "diagnostics": diagnostics[:20],
             "payload": payload,

@@ -1361,6 +1361,135 @@ def test_jd_snapshot_ingest_creates_arbitrage_candidate(tmp_path: Path) -> None:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)
 
 
+def test_jd_virtual_goods_snapshot_ingest_supports_virtual_only_arbitrage(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    object.__setattr__(settings, "sqlite_path", str(tmp_path / "jd_virtual_snapshot.db"))
+    try:
+        init_db()
+        listed_at = datetime.now(timezone.utc)
+        repo.insert_marketplace_offers(
+            [
+                MarketplaceOfferIn(
+                    platform="xianyu",
+                    offer_id="xy-jd-virtual-1",
+                    seller_id="xy-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=45.0,
+                    shipping_cost=0.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/xy-jd-virtual-1",
+                    raw={},
+                ),
+                MarketplaceOfferIn(
+                    platform="xianyu",
+                    offer_id="xy-jd-physical-1",
+                    seller_id="xy-seller",
+                    title="Plastic toy coin prop set",
+                    canonical_key="plastic toy coin prop set",
+                    item_type="generic",
+                    list_price=8.0,
+                    shipping_cost=8.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/xy-jd-physical-1",
+                    raw={},
+                ),
+            ]
+        )
+
+        with TestClient(create_app()) as client:
+            login = client.post(
+                "/auth/login",
+                json={
+                    "username": settings.ui_auth_username,
+                    "password": settings.ui_auth_password,
+                },
+            )
+            assert login.status_code == 200
+            admin_token = login.json()["data"]["token"]
+
+            snapshot = {
+                "jd_union_open_goods_query_response": {
+                    "queryResult": {
+                        "goodsList": [
+                            {
+                                "skuId": "jd-virtual-1",
+                                "skuName": "Q coin auto recharge instant delivery direct topup",
+                                "owner": "jd-shop",
+                                "price": 65.0,
+                                "materialUrl": "https://example.com/jd-virtual-1",
+                                "listed_at": listed_at.isoformat(),
+                                "item_type": "virtual_goods",
+                                "fulfillment_mode": "virtual",
+                                "shipping_cost": 12.0,
+                            },
+                            {
+                                "skuId": "jd-physical-1",
+                                "skuName": "Plastic toy coin prop set",
+                                "owner": "jd-shop",
+                                "price": 8.88,
+                                "materialUrl": "https://example.com/jd-physical-1",
+                                "listed_at": listed_at.isoformat(),
+                                "item_type": "generic",
+                                "fulfillment_mode": "physical",
+                                "shipping_cost": 12.0,
+                            },
+                        ]
+                    }
+                }
+            }
+            ingested = client.post(
+                "/marketplace/providers/jd/ingest-snapshot",
+                json=snapshot,
+                headers=_bearer(admin_token),
+            )
+            assert ingested.status_code == 200
+            assert ingested.json()["count"] == 2
+
+            offers = repo.list_marketplace_offers(platform="jd", limit=10)
+            virtual_offer = next(row for row in offers if str(row["offer_id"]) == "jd-virtual-1")
+            physical_offer = next(row for row in offers if str(row["offer_id"]) == "jd-physical-1")
+            assert str(virtual_offer["item_type"]) == "virtual_goods"
+            assert float(virtual_offer["shipping_cost"] or 0.0) == 0.0
+            assert str(physical_offer["item_type"]) == "generic"
+
+            candidates = client.get(
+                "/analysis/arbitrage/opportunities",
+                params={
+                    "limit": 5,
+                    "window_hours": 72,
+                    "min_platforms": 2,
+                    "virtual_only": True,
+                    "shipping_cost": 0.0,
+                },
+                headers=_bearer(admin_token),
+            )
+            assert candidates.status_code == 200
+            payload = candidates.json()
+            assert payload["assumptions"]["virtual_only"] is True
+            assert payload["summary"]["opportunity_count"] >= 1
+            first = payload["items"][0]
+            assert first["item_type"] == "virtual_goods"
+            assert first["buy_source"] == "xianyu"
+            assert first["sell_source"] == "jd"
+
+            preview = client.get(
+                "/analysis/arbitrage/matching-preview",
+                params={"limit": 5, "window_hours": 72, "virtual_only": True},
+                headers=_bearer(admin_token),
+            )
+            assert preview.status_code == 200
+            preview_payload = preview.json()
+            assert preview_payload["virtual_only"] is True
+            assert preview_payload["count"] >= 1
+            assert all(offer["item_type"] == "virtual_goods" for offer in preview_payload["items"][0]["offers"])
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+
+
 def test_jd_sync_once_route_ingests_marketplace_offers(
     tmp_path: Path,
     monkeypatch,

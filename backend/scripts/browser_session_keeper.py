@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 PROVIDER_CONFIG = {
     "jd": {
-        "default_keyword": "Pokemon Card PSA 10",
+        "default_keyword": "Q coin auto recharge",
         "default_debug_port": 9445,
         "start_url": "https://search.jd.com/Search?keyword={keyword}",
     },
@@ -100,6 +100,8 @@ def _infer_page_state(provider: str, *, current_url: str, page_title: str) -> st
             return "login"
         return "unknown"
     if provider == "jd":
+        if "cfe.m.jd.com" in netloc or "risk_handler" in path:
+            return "risk_challenge"
         if "search.jd.com" in netloc and "search" in path:
             return "search_results"
         if "passport" in path or path.endswith("/login") or "login" in path:

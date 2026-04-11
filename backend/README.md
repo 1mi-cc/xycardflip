@@ -671,20 +671,20 @@ Examples:
 ```powershell
 powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 `
   -Provider jd `
-  -Keyword "Pokemon Card PSA 10" `
+  -Keyword "Q coin auto recharge" `
   -Port 8785
 
 powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 `
   -Provider pinduoduo `
-  -Keyword "Pokemon Card PSA 10" `
+  -Keyword "Q币 自动充值" `
   -Port 8786
 ```
 
 Wrappers:
 
 ```powershell
-python backend/scripts/jd_browser_snapshot.py --keyword "Pokemon Card PSA 10" --port 8785
-python backend/scripts/pinduoduo_browser_snapshot.py --keyword "Pokemon Card PSA 10" --port 8786
+python backend/scripts/jd_browser_snapshot.py --keyword "Q coin auto recharge" --port 8785
+python backend/scripts/pinduoduo_browser_snapshot.py --keyword "Q币 自动充值" --port 8786
 ```
 
 Use these bridge URLs in the dashboard:
@@ -714,8 +714,9 @@ powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_kee
   -ReuseIfRunning
 ```
 
-If no keyword is provided, `pinduoduo` now defaults to the virtual-goods seed:
+If no keyword is provided, `jd` and `pinduoduo` now default to virtual-goods seeds:
 
+- `jd`: `Q coin auto recharge`
 - `Q币 自动充值`
 
 Probe the current keeper session without launching a new browser:
@@ -746,7 +747,7 @@ Then start the snapshot bridge against the same remote debug browser:
 powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 -Provider pinduoduo -ReuseBrowser
 ```
 
-`pinduoduo` browser snapshot now applies `virtual_goods_only` by default.
+`jd` and `pinduoduo` browser snapshots now apply `virtual_goods_only` by default.
 
 ### Push local browser snapshot to remote server
 
