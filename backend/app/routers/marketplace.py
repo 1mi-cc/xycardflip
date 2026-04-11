@@ -177,12 +177,14 @@ def marketplace_shadow_status() -> dict:
 def marketplace_shadow_run_once(
     limit: int = Query(default=0, ge=0, le=100),
     force: bool = False,
+    virtual_only: bool = Query(default=True),
     trigger_source: str = Query(default="operator"),
 ) -> dict:
     return marketplace_shadow_service.run_once(
         limit=limit if limit > 0 else None,
         trigger_source=trigger_source,
         force=force,
+        virtual_only=virtual_only,
     )
 
 

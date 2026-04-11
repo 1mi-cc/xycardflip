@@ -2044,6 +2044,34 @@ def test_marketplace_shadow_run_once_creates_dry_run_intent_only(tmp_path: Path)
                     listing_url="https://example.com/pdd-shadow-1",
                     raw={},
                 ),
+                MarketplaceOfferIn(
+                    platform="manual_virtual",
+                    offer_id="manual-shadow-1",
+                    seller_id="manual-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=49.0,
+                    shipping_cost=0.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/manual-shadow-1",
+                    raw={},
+                ),
+                MarketplaceOfferIn(
+                    platform="pinduoduo",
+                    offer_id="pdd-shadow-virtual-1",
+                    seller_id="pdd-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=130.0,
+                    shipping_cost=0.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/pdd-shadow-virtual-1",
+                    raw={},
+                ),
             ]
         )
         with TestClient(create_app()) as client:
@@ -2095,6 +2123,119 @@ def test_marketplace_shadow_run_once_creates_dry_run_intent_only(tmp_path: Path)
         object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", old_cooldown)
 
 
+def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    old_enabled = settings.marketplace_shadow_enabled
+    old_min_net_profit = settings.marketplace_shadow_min_net_profit
+    old_min_roi = settings.marketplace_shadow_min_roi
+    old_min_confidence = settings.marketplace_shadow_min_confidence
+    old_candidate_limit = settings.marketplace_shadow_candidate_limit
+    old_cooldown = settings.marketplace_shadow_cooldown_minutes
+    object.__setattr__(settings, "sqlite_path", str(tmp_path / "marketplace_shadow_virtual.db"))
+    object.__setattr__(settings, "marketplace_shadow_enabled", True)
+    object.__setattr__(settings, "marketplace_shadow_min_net_profit", 5.0)
+    object.__setattr__(settings, "marketplace_shadow_min_roi", 0.02)
+    object.__setattr__(settings, "marketplace_shadow_min_confidence", 0.75)
+    object.__setattr__(settings, "marketplace_shadow_candidate_limit", 10)
+    object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", 240)
+    try:
+        init_db()
+        listed_at = datetime.now(timezone.utc)
+        repo.insert_marketplace_offers(
+            [
+                MarketplaceOfferIn(
+                    platform="pinduoduo",
+                    offer_id="pdd-virtual-shadow",
+                    seller_id="pdd-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=49.0,
+                    shipping_cost=0.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/pdd-virtual-shadow",
+                    raw={},
+                ),
+                MarketplaceOfferIn(
+                    platform="manual_virtual",
+                    offer_id="manual-virtual-shadow",
+                    seller_id="operator-baseline",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=79.0,
+                    shipping_cost=0.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/manual-virtual-shadow",
+                    raw={"provenance": "operator_manual_virtual_baseline"},
+                ),
+                MarketplaceOfferIn(
+                    platform="pinduoduo",
+                    offer_id="pdd-generic-shadow",
+                    seller_id="pdd-seller",
+                    title="Pokemon Card Charizard PSA 10",
+                    canonical_key="pokemon card charizard psa 10",
+                    item_type="generic",
+                    list_price=2000.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/pdd-generic-shadow",
+                    raw={},
+                ),
+                MarketplaceOfferIn(
+                    platform="jd",
+                    offer_id="jd-generic-shadow",
+                    seller_id="jd-seller",
+                    title="Pokemon Card Charizard PSA 10",
+                    canonical_key="pokemon card charizard psa 10",
+                    item_type="generic",
+                    list_price=2600.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/jd-generic-shadow",
+                    raw={},
+                ),
+            ]
+        )
+        with TestClient(create_app()) as client:
+            login = client.post(
+                "/auth/login",
+                json={
+                    "username": settings.ui_auth_username,
+                    "password": settings.ui_auth_password,
+                },
+            )
+            assert login.status_code == 200
+            admin_token = login.json()["data"]["token"]
+
+            run = client.post(
+                "/marketplace/shadow/run-once",
+                params={"virtual_only": True, "force": True},
+                headers=_bearer(admin_token),
+            )
+            assert run.status_code == 200
+            payload = run.json()
+            assert payload["accepted_count"] >= 1
+            assert payload["run"]["config"]["virtual_only"] is True
+            assert payload["run"]["summary"]["arbitrage_summary"]["opportunity_count"] == 1
+            accepted = [item for item in payload["intents"] if item.get("decision_status") == "accepted"]
+            assert accepted
+            candidate = accepted[0]["snapshot"]["candidate"]
+            assert candidate["item_type"] == "virtual_goods"
+            assert candidate["sources"] == ["manual_virtual", "pinduoduo"]
+            assert "Pokemon" not in candidate["reference_title"]
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+        object.__setattr__(settings, "marketplace_shadow_enabled", old_enabled)
+        object.__setattr__(settings, "marketplace_shadow_min_net_profit", old_min_net_profit)
+        object.__setattr__(settings, "marketplace_shadow_min_roi", old_min_roi)
+        object.__setattr__(settings, "marketplace_shadow_min_confidence", old_min_confidence)
+        object.__setattr__(settings, "marketplace_shadow_candidate_limit", old_candidate_limit)
+        object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", old_cooldown)
+
+
 def test_marketplace_shadow_run_once_respects_cooldown(tmp_path: Path) -> None:
     old_sqlite_path = settings.sqlite_path
     old_min_net_profit = settings.marketplace_shadow_min_net_profit
@@ -2114,29 +2255,31 @@ def test_marketplace_shadow_run_once_respects_cooldown(tmp_path: Path) -> None:
         repo.insert_marketplace_offers(
             [
                 MarketplaceOfferIn(
-                    platform="taobao",
-                    offer_id="tb-shadow-2",
-                    seller_id="tb-seller",
-                    title="Pokemon Card Blastoise PSA 10",
-                    canonical_key="pokemon card blastoise psa 10",
-                    item_type="card",
-                    list_price=1500.0,
+                    platform="manual_virtual",
+                    offer_id="manual-shadow-2",
+                    seller_id="manual-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=49.0,
+                    shipping_cost=0.0,
                     listed_at=listed_at,
                     status="open",
-                    listing_url="https://example.com/tb-shadow-2",
+                    listing_url="https://example.com/manual-shadow-2",
                     raw={},
                 ),
                 MarketplaceOfferIn(
-                    platform="jd",
-                    offer_id="jd-shadow-2",
-                    seller_id="jd-seller",
-                    title="Pokemon Card Blastoise PSA 10",
-                    canonical_key="pokemon card blastoise psa 10",
-                    item_type="card",
-                    list_price=2399.0,
+                    platform="pinduoduo",
+                    offer_id="pdd-shadow-virtual-2",
+                    seller_id="pdd-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=130.0,
+                    shipping_cost=0.0,
                     listed_at=listed_at,
                     status="open",
-                    listing_url="https://example.com/jd-shadow-2",
+                    listing_url="https://example.com/pdd-shadow-virtual-2",
                     raw={},
                 ),
             ]

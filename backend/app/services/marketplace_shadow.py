@@ -34,6 +34,8 @@ class MarketplaceShadowService:
         return {
             "enabled": bool(settings.marketplace_shadow_enabled),
             "dry_run_only": True,
+            "virtual_only": True,
+            "shipping_cost": 0.0,
             "candidate_limit": int(settings.marketplace_shadow_candidate_limit),
             "min_net_profit": float(settings.marketplace_shadow_min_net_profit),
             "min_roi": float(settings.marketplace_shadow_min_roi),
@@ -49,6 +51,7 @@ class MarketplaceShadowService:
         limit: int | None = None,
         trigger_source: str = "operator",
         force: bool = False,
+        virtual_only: bool = True,
     ) -> dict[str, Any]:
         candidate_limit = max(
             1,
@@ -59,18 +62,27 @@ class MarketplaceShadowService:
         min_confidence = float(settings.marketplace_shadow_min_confidence)
         min_platform_count = max(2, int(settings.marketplace_shadow_min_platform_count))
         cooldown_minutes = max(1, int(settings.marketplace_shadow_cooldown_minutes))
+        effective_virtual_only = True
+        shipping_cost = 0.0
 
         opportunity_payload = build_arbitrage_opportunities(
             limit=candidate_limit,
             window_hours=72,
+            virtual_only=effective_virtual_only,
             min_platforms=2,
             min_net_profit=0.0,
             min_roi=0.0,
             buy_fee_rate=0.0,
             sell_fee_rate=float(settings.platform_fee_rate or 0.0),
-            shipping_cost=float(settings.default_shipping_cost or 0.0),
+            shipping_cost=shipping_cost,
         )
         candidates = list(opportunity_payload.get("items") or [])
+        if effective_virtual_only:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if str(candidate.get("item_type") or "").strip() == "virtual_goods"
+            ]
         accepted = 0
         blocked = 0
         errors = 0
@@ -91,6 +103,8 @@ class MarketplaceShadowService:
                 "min_platform_count": min_platform_count,
                 "cooldown_minutes": cooldown_minutes,
                 "dry_run_only": True,
+                "virtual_only": effective_virtual_only,
+                "shipping_cost": shipping_cost,
                 "force": bool(force),
             },
             summary={
@@ -148,6 +162,8 @@ class MarketplaceShadowService:
                             "decision_status": decision_status,
                             "blocked_reason": blocked_reason,
                             "dry_run_only": True,
+                            "item_type": str(candidate.get("item_type") or "").strip(),
+                            "virtual_only": effective_virtual_only,
                         },
                     },
                 )
@@ -181,10 +197,13 @@ class MarketplaceShadowService:
                 "min_platform_count": min_platform_count,
                 "cooldown_minutes": cooldown_minutes,
                 "dry_run_only": True,
+                "virtual_only": effective_virtual_only,
+                "shipping_cost": shipping_cost,
                 "force": bool(force),
             },
             summary={
                 "run_ref_id": run_id,
+                "arbitrage_summary": opportunity_payload.get("summary") or {},
                 "accepted_intent_ids": [item.get("id") for item in intent_rows if item.get("decision_status") == "accepted"],
                 "blocked_intent_ids": [item.get("id") for item in intent_rows if item.get("decision_status") == "blocked"],
                 "errors": errors,
