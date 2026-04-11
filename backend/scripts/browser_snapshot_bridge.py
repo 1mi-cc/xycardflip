@@ -157,6 +157,17 @@ def _score_candidate(title: str, price: float, link: str, keyword: str) -> float
     return round(min(0.99, score), 4)
 
 
+def _detect_login_page(provider: str, body_text: str) -> bool:
+    text = _normalize_text(body_text)
+    if not text:
+        return False
+    markers = {
+        "pinduoduo": ("手机登录", "扫码登录", "发送验证码", "同意协议并登录"),
+        "jd": ("登录", "验证码"),
+    }.get(provider, ())
+    return bool(markers) and all(marker in text for marker in markers[:2])
+
+
 def _build_extract_expression(provider: str, limit: int) -> str:
     cfg = PROVIDER_CONFIG[provider]
     id_key = cfg["id_key"]
@@ -388,12 +399,13 @@ def _capture_snapshot(
         value = ((result.get("result") or {}).get("result") or {}).get("value") or {}
         raw_items = list(value.get("items") or []) if isinstance(value, dict) else []
         body_text = str(value.get("bodyText") or "") if isinstance(value, dict) else ""
+        login_required = _detect_login_page(provider, body_text)
         filtered_items, diagnostics = _coerce_bridge_items(provider, raw_items, body_text, keyword, limit)
         confidence_score = round(
             min(0.98, max((item["score"] for item in diagnostics if item.get("accepted")), default=0.0)),
             4,
         ) if filtered_items else 0.0
-        low_confidence = len(filtered_items) == 0
+        low_confidence = login_required or len(filtered_items) == 0
 
         cfg = PROVIDER_CONFIG[provider]
         if provider == "jd":
@@ -410,11 +422,12 @@ def _capture_snapshot(
             "raw_item_count": len(raw_items),
             "confidence_score": confidence_score,
             "low_confidence": low_confidence,
+            "login_required": login_required,
             "warnings": (
-                ["No strongly keyword-matching items were found in the visible browser results."]
-                if low_confidence
-                else []
-            ),
+                ["Browser page looks like a login screen. Keep the provider logged in and retry."]
+                if login_required
+                else ["No strongly keyword-matching items were found in the visible browser results."]
+            ) if low_confidence else [],
             "diagnostics": diagnostics[:20],
             "payload": payload,
             "risk_level": "high-risk-unstable",
