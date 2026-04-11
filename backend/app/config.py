@@ -502,6 +502,66 @@ class Settings:
         "XIAN_YU_COOKIE_REFRESH_MIN_TTL_SEC",
         1800,
     )
+    taobao_top_gateway_url: str = os.getenv(
+        "TAOBAO_TOP_GATEWAY_URL",
+        "https://eco.taobao.com/router/rest",
+    )
+    taobao_top_app_key: str = os.getenv("TAOBAO_TOP_APP_KEY", "")
+    taobao_top_app_secret: str = os.getenv("TAOBAO_TOP_APP_SECRET", "")
+    taobao_top_method: str = os.getenv("TAOBAO_TOP_METHOD", "alibaba.tuike.offer.get")
+    taobao_top_sign_method: str = os.getenv("TAOBAO_TOP_SIGN_METHOD", "hmac")
+    taobao_top_isv_code: str = os.getenv("TAOBAO_TOP_ISV_CODE", "")
+    taobao_top_query_string: str = os.getenv("TAOBAO_TOP_QUERY_STRING", "")
+    taobao_top_session: str = os.getenv("TAOBAO_TOP_SESSION", "")
+    taobao_top_timeout_sec: float = _get_float("TAOBAO_TOP_TIMEOUT_SEC", 15.0)
+    pinduoduo_api_url: str = os.getenv(
+        "PINDUODUO_API_URL",
+        "https://gw-api.pinduoduo.com/api/router",
+    )
+    pinduoduo_client_id: str = os.getenv("PINDUODUO_CLIENT_ID", "")
+    pinduoduo_client_secret: str = os.getenv("PINDUODUO_CLIENT_SECRET", "")
+    pinduoduo_type: str = os.getenv("PINDUODUO_TYPE", "pdd.ddk.goods.search")
+    pinduoduo_access_token: str = os.getenv("PINDUODUO_ACCESS_TOKEN", "")
+    pinduoduo_data_type: str = os.getenv("PINDUODUO_DATA_TYPE", "JSON")
+    pinduoduo_params_json: str = os.getenv("PINDUODUO_PARAMS_JSON", "")
+    pinduoduo_timeout_sec: float = _get_float("PINDUODUO_TIMEOUT_SEC", 15.0)
+    pinduoduo_cookie: str = os.getenv("PINDUODUO_COOKIE", "")
+    pinduoduo_cookie_provider_url: str = os.getenv("PINDUODUO_COOKIE_PROVIDER_URL", "")
+    pinduoduo_cookie_refresh_url: str = os.getenv("PINDUODUO_COOKIE_REFRESH_URL", "")
+    pinduoduo_cookie_refresh_on_start: bool = _get_bool(
+        "PINDUODUO_COOKIE_REFRESH_ON_START", False
+    )
+    pinduoduo_cookie_ttl_sec: int = _get_int("PINDUODUO_COOKIE_TTL_SEC", 540)
+    pinduoduo_cookie_refresh_min_ttl_sec: int = _get_int(
+        "PINDUODUO_COOKIE_REFRESH_MIN_TTL_SEC",
+        1800,
+    )
+    pinduoduo_snapshot_provider_url: str = os.getenv("PINDUODUO_SNAPSHOT_PROVIDER_URL", "")
+    jd_api_url: str = os.getenv(
+        "JD_API_URL",
+        "https://router.jd.com/api",
+    )
+    jd_app_key: str = os.getenv("JD_APP_KEY", "")
+    jd_app_secret: str = os.getenv("JD_APP_SECRET", "")
+    jd_method: str = os.getenv("JD_METHOD", "jd.union.open.goods.query")
+    jd_access_token: str = os.getenv("JD_ACCESS_TOKEN", "")
+    jd_sign_method: str = os.getenv("JD_SIGN_METHOD", "md5")
+    jd_version: str = os.getenv("JD_VERSION", "1.0")
+    jd_format: str = os.getenv("JD_FORMAT", "json")
+    jd_param_json: str = os.getenv("JD_PARAM_JSON", "")
+    jd_timeout_sec: float = _get_float("JD_TIMEOUT_SEC", 15.0)
+    jd_cookie: str = os.getenv("JD_COOKIE", "")
+    jd_cookie_provider_url: str = os.getenv("JD_COOKIE_PROVIDER_URL", "")
+    jd_cookie_refresh_url: str = os.getenv("JD_COOKIE_REFRESH_URL", "")
+    jd_cookie_refresh_on_start: bool = _get_bool(
+        "JD_COOKIE_REFRESH_ON_START", False
+    )
+    jd_cookie_ttl_sec: int = _get_int("JD_COOKIE_TTL_SEC", 540)
+    jd_cookie_refresh_min_ttl_sec: int = _get_int(
+        "JD_COOKIE_REFRESH_MIN_TTL_SEC",
+        1800,
+    )
+    jd_snapshot_provider_url: str = os.getenv("JD_SNAPSHOT_PROVIDER_URL", "")
     monitor_pages: int = _get_int("MONITOR_PAGES", 1)
     monitor_use_proxy_pool: bool = _get_bool("MONITOR_USE_PROXY_POOL", False)
     proxy_pool_api: str = os.getenv("PROXY_POOL_API", "http://127.0.0.1:8899/")
@@ -630,6 +690,13 @@ class Settings:
         "AUTO_EXECUTE_LIST_ON_BUY_SUCCESS", False
     )
     auto_execute_list_dry_run: bool = _get_bool("AUTO_EXECUTE_LIST_DRY_RUN", True)
+    marketplace_shadow_enabled: bool = _get_bool("MARKETPLACE_SHADOW_ENABLED", False)
+    marketplace_shadow_candidate_limit: int = _get_int("MARKETPLACE_SHADOW_CANDIDATE_LIMIT", 20)
+    marketplace_shadow_min_net_profit: float = _get_float("MARKETPLACE_SHADOW_MIN_NET_PROFIT", 100.0)
+    marketplace_shadow_min_roi: float = _get_float("MARKETPLACE_SHADOW_MIN_ROI", 0.12)
+    marketplace_shadow_min_confidence: float = _get_float("MARKETPLACE_SHADOW_MIN_CONFIDENCE", 0.75)
+    marketplace_shadow_min_platform_count: int = _get_int("MARKETPLACE_SHADOW_MIN_PLATFORM_COUNT", 2)
+    marketplace_shadow_cooldown_minutes: int = _get_int("MARKETPLACE_SHADOW_COOLDOWN_MINUTES", 240)
     auto_approve_max_consecutive_losses: int = _get_int("AUTO_APPROVE_MAX_CONSECUTIVE_LOSSES", 3)
     auto_approve_daily_loss_limit: float = _get_float("AUTO_APPROVE_DAILY_LOSS_LIMIT", 100.0)
     auto_approve_loss_recovery_enabled: bool = _get_bool("AUTO_APPROVE_LOSS_RECOVERY_ENABLED", True)

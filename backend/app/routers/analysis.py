@@ -8,10 +8,12 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from .. import repositories as repo
 from ..auth_utils import build_user_profile
 from ..auth_utils import require_current_user
+from ..config import settings
 from ..config import single_account_guardrail_status
 from ..database import get_database_health_snapshot
 from ..database import get_conn
@@ -25,7 +27,10 @@ from ..services.autotrade_alerting import public_cockpit_payload
 from ..services.execution import execution_service
 from ..services.execution_retry import execution_retry_service
 from ..services.market_monitor import monitor_service
+from ..services.marketplace_normalizer import explain_marketplace_match
 from ..services.operating_state import operating_state_service
+from ..services.arbitrage import build_arbitrage_opportunities
+from ..services.arbitrage import build_arbitrage_matching_preview
 from ..services.risk_overrides import risk_overrides_service
 from ..services.strategy_advisor import build_market_snapshot_documents
 from ..services.strategy_advisor import get_strategy_proposal
@@ -37,6 +42,30 @@ router = APIRouter(
     tags=["analysis"],
     dependencies=[Depends(require_cardflip_view)],
 )
+
+
+class ArbitrageMatchValidateIn(BaseModel):
+    left_title: str
+    right_title: str
+    left_key: str = ""
+    right_key: str = ""
+
+
+class ArbitrageMatchBatchItemIn(BaseModel):
+    left_title: str
+    right_title: str
+    left_key: str = ""
+    right_key: str = ""
+
+
+class ArbitrageMatchSampleIn(ArbitrageMatchBatchItemIn):
+    expected_verdict: str = ""
+    note: str = ""
+
+
+class ArbitrageReviewQueueLabelIn(BaseModel):
+    expected_verdict: Literal["same_group", "close_match", "different_group"]
+    note: str = ""
 
 MAX_ANALYSIS_LIMIT = 500
 RECOMMENDATION_AUTOTRADE_CAP = 200
@@ -334,6 +363,19 @@ def _market_snapshot() -> dict[str, Any]:
     }
 
 
+def _arbitrage_snapshot(limit: int) -> dict[str, Any]:
+    return build_arbitrage_opportunities(
+        limit=limit,
+        window_hours=48,
+        min_platforms=2,
+        buy_fee_rate=0.0,
+        sell_fee_rate=float(settings.platform_fee_rate or 0.0),
+        shipping_cost=float(settings.default_shipping_cost or 0.0),
+        min_net_profit=0.0,
+        min_roi=0.0,
+    )
+
+
 def _trend_analysis(prices: list[float]) -> dict[str, Any]:
     if len(prices) < 2:
         return {"direction": "flat", "change_pct": 0.0}
@@ -517,6 +559,163 @@ def get_price_history(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMI
 def get_trade_records(limit: int = Query(default=100, ge=1, le=MAX_ANALYSIS_LIMIT)) -> dict[str, Any]:
     items = _trade_records(limit=limit)
     return {"items": items, "count": len(items)}
+
+
+@router.get("/arbitrage/opportunities")
+def get_arbitrage_opportunities(
+    limit: int = Query(default=20, ge=1, le=100),
+    window_hours: int = Query(default=48, ge=1, le=24 * 30),
+    keyword: str = "",
+    sources: str = "",
+    min_platforms: int = Query(default=2, ge=2, le=10),
+    buy_fee_rate: float = Query(default=0.0, ge=0.0, le=1.0),
+    sell_fee_rate: float = Query(default=float(settings.platform_fee_rate or 0.0), ge=0.0, le=1.0),
+    shipping_cost: float = Query(default=float(settings.default_shipping_cost or 0.0), ge=0.0, le=999999.0),
+    min_net_profit: float = Query(default=0.0, ge=0.0, le=999999.0),
+    min_roi: float = Query(default=0.0, ge=0.0, le=100.0),
+) -> dict[str, Any]:
+    parsed_sources = [item.strip() for item in str(sources or "").split(",") if item.strip()]
+    return build_arbitrage_opportunities(
+        limit=limit,
+        window_hours=window_hours,
+        keyword=keyword,
+        sources=parsed_sources,
+        min_platforms=min_platforms,
+        buy_fee_rate=buy_fee_rate,
+        sell_fee_rate=sell_fee_rate,
+        shipping_cost=shipping_cost,
+        min_net_profit=min_net_profit,
+        min_roi=min_roi,
+    )
+
+
+@router.get("/arbitrage/matching-preview")
+def get_arbitrage_matching_preview(
+    limit: int = Query(default=20, ge=1, le=100),
+    window_hours: int = Query(default=72, ge=1, le=24 * 30),
+    keyword: str = "",
+    sources: str = "",
+    buy_fee_rate: float = Query(default=0.0, ge=0.0, le=1.0),
+    sell_fee_rate: float = Query(default=float(settings.platform_fee_rate or 0.0), ge=0.0, le=1.0),
+    shipping_cost: float = Query(default=float(settings.default_shipping_cost or 0.0), ge=0.0, le=999999.0),
+) -> dict[str, Any]:
+    parsed_sources = [item.strip() for item in str(sources or "").split(",") if item.strip()]
+    return build_arbitrage_matching_preview(
+        limit=limit,
+        listing_hours=window_hours,
+        include_sources=tuple(parsed_sources),
+        keyword=keyword,
+        buy_fee_rate=buy_fee_rate,
+        sell_fee_rate=sell_fee_rate,
+        shipping_cost=shipping_cost,
+    )
+
+
+@router.post("/arbitrage/validate-match")
+def validate_arbitrage_match(payload: ArbitrageMatchValidateIn) -> dict[str, Any]:
+    return explain_marketplace_match(
+        left_title=payload.left_title,
+        right_title=payload.right_title,
+        left_key=payload.left_key,
+        right_key=payload.right_key,
+    )
+
+
+@router.post("/arbitrage/validate-batch")
+def validate_arbitrage_match_batch(
+    payload: list[ArbitrageMatchBatchItemIn],
+) -> dict[str, Any]:
+    items = [
+        {
+            "input": item.model_dump(),
+            "result": explain_marketplace_match(
+                left_title=item.left_title,
+                right_title=item.right_title,
+                left_key=item.left_key,
+                right_key=item.right_key,
+            ),
+        }
+        for item in payload
+    ]
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/arbitrage/match-samples", dependencies=[Depends(require_cardflip_operate)])
+def create_arbitrage_match_sample(payload: ArbitrageMatchSampleIn) -> dict[str, Any]:
+    result = explain_marketplace_match(
+        left_title=payload.left_title,
+        right_title=payload.right_title,
+        left_key=payload.left_key,
+        right_key=payload.right_key,
+    )
+    return repo.create_matching_lab_sample(
+        left_title=payload.left_title,
+        right_title=payload.right_title,
+        left_key=payload.left_key,
+        right_key=payload.right_key,
+        expected_verdict=payload.expected_verdict,
+        note=payload.note,
+        result=result,
+    )
+
+
+@router.get("/arbitrage/match-samples")
+def get_arbitrage_match_samples(
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    items = repo.list_matching_lab_samples(limit=limit)
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/arbitrage/match-samples/report")
+def get_arbitrage_match_sample_report(
+    days: int = Query(default=30, ge=1, le=365),
+    limit: int = Query(default=2000, ge=1, le=10000),
+    accuracy_threshold: float = Query(default=0.8, ge=0.0, le=1.0),
+    min_scored_samples: int = Query(default=10, ge=1, le=10000),
+) -> dict[str, Any]:
+    return repo.build_matching_lab_report(
+        days=days,
+        limit=limit,
+        accuracy_threshold=accuracy_threshold,
+        min_scored_samples=min_scored_samples,
+    )
+
+
+@router.get("/arbitrage/review-queue")
+def get_arbitrage_review_queue(
+    limit: int = Query(default=20, ge=1, le=100),
+    listing_hours: int = Query(default=24 * 30, ge=1, le=24 * 30),
+    candidate_pool: int = Query(default=300, ge=20, le=1000),
+    min_token_overlap: float = Query(default=0.35, ge=0.0, le=1.0),
+) -> dict[str, Any]:
+    return repo.build_matching_review_queue(
+        limit=limit,
+        listing_hours=listing_hours,
+        candidate_pool=candidate_pool,
+        min_token_overlap=min_token_overlap,
+    )
+
+
+@router.post("/arbitrage/review-queue/{review_id}/label", dependencies=[Depends(require_cardflip_operate)])
+def label_arbitrage_review_queue_item(
+    review_id: str,
+    payload: ArbitrageReviewQueueLabelIn,
+    listing_hours: int = Query(default=24 * 30, ge=1, le=24 * 30),
+    candidate_pool: int = Query(default=300, ge=20, le=1000),
+    min_token_overlap: float = Query(default=0.35, ge=0.0, le=1.0),
+) -> dict[str, Any]:
+    try:
+        return repo.label_matching_review_queue_item(
+            review_id=review_id,
+            expected_verdict=payload.expected_verdict,
+            note=payload.note,
+            listing_hours=listing_hours,
+            candidate_pool=candidate_pool,
+            min_token_overlap=min_token_overlap,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"review queue item not found: {exc}") from exc
 
 
 @router.get("/data/market-snapshot")

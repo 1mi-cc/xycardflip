@@ -12,7 +12,7 @@ const routes = [
     name: "Login",
     component: () => import("@/views/Login.vue"),
     meta: {
-      title: "登录",
+      title: "Sign In",
       guestOnly: true,
     },
   },
@@ -29,7 +29,7 @@ const routes = [
         name: "Dashboard",
         component: () => import("@/views/Dashboard.vue"),
         meta: {
-          title: "总览",
+          title: "Overview",
           permission: "dashboard:view",
           adminOnly: true,
         },
@@ -39,7 +39,16 @@ const routes = [
         name: "CardFlipOps",
         component: () => import("@/views/card-flip-ops/CardFlipOpsPage.vue"),
         meta: {
-          title: "卡片交易",
+          title: "Card Trading",
+          permission: "cardflip:view",
+        },
+      },
+      {
+        path: "matching-lab",
+        name: "MatchingLab",
+        component: () => import("@/views/MatchingLab.vue"),
+        meta: {
+          title: "Matching Lab",
           permission: "cardflip:view",
         },
       },
@@ -50,7 +59,7 @@ const routes = [
     name: "NotFound",
     component: () => import("@/views/NotFound.vue"),
     meta: {
-      title: "页面不存在",
+      title: "Not Found",
     },
   },
 ];
@@ -65,12 +74,43 @@ const router = createRouter({
   },
 });
 
+const CHUNK_RELOAD_GUARD_KEY = "xycardflip:chunk-reload-guard";
+
+function isDynamicImportFailure(error) {
+  const text = String(error?.message || error || "").trim();
+  if (!text)
+    return false;
+  return [
+    "Failed to fetch dynamically imported module",
+    "Importing a module script failed",
+    "Loading chunk",
+    "Unable to preload CSS",
+  ].some(pattern => text.includes(pattern));
+}
+
+router.onError((error, to) => {
+  if (!isDynamicImportFailure(error))
+    return;
+
+  const targetPath = String(
+    to?.fullPath
+    || `${window.location.pathname || "/"}${window.location.search || ""}${window.location.hash || ""}`,
+  ).trim() || "/";
+  const guardValue = sessionStorage.getItem(CHUNK_RELOAD_GUARD_KEY);
+
+  if (guardValue === targetPath)
+    return;
+
+  sessionStorage.setItem(CHUNK_RELOAD_GUARD_KEY, targetPath);
+  window.location.assign(targetPath);
+});
+
 router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
 
   document.title = to.meta?.title
-    ? `${to.meta.title} - XYZW 卡片交易后台`
-    : "XYZW 卡片交易后台";
+    ? `${to.meta.title} - XYZW Card Trading Console`
+    : "XYZW Card Trading Console";
 
   if (!authStore.initialized)
     await authStore.initAuth();
@@ -100,6 +140,12 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   next();
+});
+
+router.afterEach((to) => {
+  const guardValue = sessionStorage.getItem(CHUNK_RELOAD_GUARD_KEY);
+  if (guardValue && guardValue === String(to?.fullPath || ""))
+    sessionStorage.removeItem(CHUNK_RELOAD_GUARD_KEY);
 });
 
 export default router;

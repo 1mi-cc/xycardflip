@@ -33,18 +33,41 @@ def _parse_risk_score(note: str) -> float | None:
     return None
 
 
+def _build_listing_url(source: str | None, listing_id: str | None) -> str | None:
+    if not listing_id:
+        return None
+    source_norm = (source or "").lower()
+    if source_norm in {"xianyu", "goofish", "idle", "xianyu_monitor"}:
+        return f"https://www.goofish.com/item?id={listing_id}"
+    return None
+
+
 @router.post("/scan", dependencies=[Depends(require_cardflip_operate)])
 async def scan_opportunities(limit: int = Query(default=50, ge=1, le=500)) -> dict[str, Any]:
     return await scan_open_listings(limit=limit)
 
 
 @router.get("")
-def list_opportunities(status: str | None = None, limit: int = Query(default=100, ge=1, le=500)) -> dict:
-    rows = repo.list_opportunities(status=status, limit=limit)
+def list_opportunities(
+    status: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    include_simulation: bool = False,
+) -> dict:
+    rows = repo.list_opportunities(
+        status=status,
+        limit=limit,
+        include_simulation=include_simulation,
+    )
     items = [
         {
             "opportunity_id": row["id"],
             "listing_row_id": row["listing_row_id"],
+            "listing_id": row["listing_id"],
+            "listing_url": _build_listing_url(row["source"], row["listing_id"]),
+            "source": row["source"],
+            "seller_id": row["seller_id"],
+            "item_type": row["item_type"],
+            "normalized_key": row["normalized_key"],
             "title": row["title"],
             "list_price": row["list_price"],
             "expected_sale_price": row["expected_sale_price"],

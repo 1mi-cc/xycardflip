@@ -81,3 +81,10 @@ def simulation_bootstrap(
     count: int = Query(default=6, ge=1, le=30),
 ) -> dict:
     return automation_service.bootstrap_simulation_data(count=count)
+
+
+@router.post("/simulation-cleanup", dependencies=[Depends(require_cardflip_operate)])
+def simulation_cleanup(
+    note: str = Query(default="simulation seed archived from live workflow"),
+) -> dict:
+    return automation_service.cleanup_simulation_seed_data(note=note)

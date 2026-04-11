@@ -1,77 +1,35 @@
 <template>
   <div class="dashboard-page">
-    <section class="header-row">
+    <section class="hero-row">
       <div>
-        <h1>System Dashboard</h1>
-        <p>{{ generatedAt }}</p>
+        <h1>Dashboard Overview</h1>
+        <p>Real-time performance and service health monitoring.</p>
       </div>
 
-      <div class="header-actions">
+      <div class="hero-actions">
         <button
           v-for="item in rangeTabs"
           :key="item.value"
-          class="header-chip"
+          class="hero-chip"
           :class="{ active: activeRange === item.value }"
           type="button"
           @click="activeRange = item.value"
         >
           {{ item.label }}
         </button>
-        <n-button type="primary" :loading="loading" @click="loadOverview">刷新</n-button>
+        <n-button type="primary" :loading="refreshing" @click="openTradingWorkspace">Open Trading</n-button>
       </div>
     </section>
 
     <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
 
-    <section class="stats-grid">
-      <article class="stat-card revenue-card">
-        <div class="stat-head">
-          <span class="stat-label">Total Revenue</span>
-          <span class="stat-chip positive">{{ profitDeltaLabel }}</span>
+    <section class="metrics-grid">
+      <article v-for="item in metricCards" :key="item.label" class="metric-card">
+        <p>{{ item.label }}</p>
+        <div class="metric-value-row">
+          <span class="metric-value" :class="item.tone">{{ item.value }}</span>
+          <span v-if="item.trailing" class="metric-trailing">{{ item.trailing }}</span>
         </div>
-        <div class="stat-value">{{ primaryProfitValue }}</div>
-        <div class="progress-track">
-          <div class="progress-fill" :style="{ width: profitHitWidth }"></div>
-        </div>
-      </article>
-
-      <article class="stat-card">
-        <div class="stat-head">
-          <span class="stat-label">Active Trades</span>
-          <span class="stat-chip neutral">{{ formatInteger(inventory.active_trade_count || 0) }} 笔</span>
-        </div>
-        <div class="stat-value">{{ formatInteger(profitability.active_trades_count || 0) }}</div>
-        <div class="mini-bars">
-          <span
-            v-for="item in activeTradeBars"
-            :key="`trade-${item}`"
-            :style="{ height: `${item}%` }"
-          ></span>
-        </div>
-      </article>
-
-      <article class="stat-card">
-        <div class="stat-head">
-          <span class="stat-label">Server Load</span>
-          <span class="stat-chip warm">{{ runtime.server_ready ? "正常" : "受限" }}</span>
-        </div>
-        <div class="stat-value">{{ serverLoadText }}</div>
-        <div class="signal-bars">
-          <span
-            v-for="item in signalBars"
-            :key="`signal-${item}`"
-            :style="{ opacity: item / 10 }"
-          ></span>
-        </div>
-      </article>
-
-      <article class="stat-card">
-        <div class="stat-head">
-          <span class="stat-label">Avg Holding</span>
-          <span class="stat-chip neutral">{{ baselineStatusText }}</span>
-        </div>
-        <div class="stat-value">{{ avgHoldingText }}</div>
-        <div class="stat-foot">{{ operatingModeText }}</div>
       </article>
     </section>
 
@@ -79,29 +37,35 @@
       <article class="panel chart-panel">
         <div class="panel-head">
           <div>
-            <h2>Performance Trends</h2>
-            <p>Profit, pipeline, and signal distribution</p>
+            <h3>Trading Profit Trend</h3>
+            <p>Daily performance over the last {{ selectedRangeDays }} days</p>
           </div>
-          <div class="toggle-shell">
-            <button
-              v-for="item in chartModes"
-              :key="item.value"
-              class="toggle-button"
-              :class="{ active: chartMode === item.value }"
-              type="button"
-              @click="chartMode = item.value"
-            >
-              {{ item.label }}
-            </button>
-          </div>
+          <div class="panel-tag">{{ activeRangeLabel }}</div>
         </div>
 
-        <div class="bar-chart">
-          <div v-for="item in chartItems" :key="item.label" class="bar-column">
-            <div class="bar-box">
-              <div class="bar-fill" :style="{ height: item.height }"></div>
-            </div>
-            <span>{{ item.short }}</span>
+        <div class="chart-shell">
+          <div class="chart-grid"></div>
+          <svg v-if="priceChart.points.length" class="chart-svg" viewBox="0 0 1000 220" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="priceChartFill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#0071e3" stop-opacity="0.28"></stop>
+                <stop offset="100%" stop-color="#0071e3" stop-opacity="0"></stop>
+              </linearGradient>
+            </defs>
+            <path :d="priceChart.areaPath" fill="url(#priceChartFill)"></path>
+            <path :d="priceChart.linePath" fill="none" stroke="#0071e3" stroke-width="3" stroke-linecap="round"></path>
+            <circle
+              v-if="priceChart.lastPoint"
+              :cx="priceChart.lastPoint.x"
+              :cy="priceChart.lastPoint.y"
+              r="5"
+              fill="#0071e3"
+            ></circle>
+          </svg>
+          <div v-else class="chart-empty">No sales history available.</div>
+          <div class="chart-corner">{{ priceChart.maxLabel }}</div>
+          <div class="chart-axis">
+            <span v-for="item in chartAxisLabels" :key="item.label">{{ item.label }}</span>
           </div>
         </div>
       </article>
@@ -109,16 +73,16 @@
       <article class="panel donut-panel">
         <div class="panel-head">
           <div>
-            <h2>Revenue by Category</h2>
-            <p>来源贡献结构</p>
+            <h3>Asset Distribution</h3>
+            <p>Volume by product category</p>
           </div>
         </div>
 
         <div class="donut-wrap">
           <div class="donut-chart" :style="{ background: donutGradient }">
             <div class="donut-hole">
-              <strong>{{ donutCenterValue }}</strong>
-              <span>{{ donutCenterLabel }}</span>
+              <strong>{{ donutTotalLabel }}</strong>
+              <span>Allocated</span>
             </div>
           </div>
         </div>
@@ -135,293 +99,503 @@
       </article>
     </section>
 
-    <section class="middle-grid">
-      <article class="panel timeline-panel">
-        <div class="panel-head">
-          <div>
-            <h2>Recent Activity</h2>
-            <p>Latest alerts, services, and baseline signals</p>
-          </div>
+    <section class="arbitrage-panel panel">
+      <div class="panel-head">
+        <div>
+          <h3>Cross-Platform Spread Watch</h3>
+          <p>Read-only arbitrage scan across active listing sources. Buy on the cheapest source, sell on the highest.</p>
         </div>
+        <div class="panel-actions">
+          <div class="panel-tag">{{ arbitrageDataModeLabel }}</div>
+          <n-button secondary @click="openMarketplaceDrawer">Marketplace Intake</n-button>
+        </div>
+      </div>
 
-        <div class="timeline">
-          <div v-for="row in timelineRows" :key="`${row.type}-${row.name}`" class="timeline-item">
-            <div class="timeline-dot" :class="row.tone"></div>
-            <div class="timeline-main">
-              <div class="timeline-top">
-                <strong>{{ row.name }}</strong>
-                <span>{{ row.time }}</span>
-              </div>
-              <p>{{ row.note }}</p>
+      <div class="arbitrage-meta">
+        <div class="arbitrage-stat">
+          <span>Scanned Listings</span>
+          <strong>{{ formatInteger(arbitrageSummary.scanned_listing_count || 0) }}</strong>
+        </div>
+        <div class="arbitrage-stat">
+          <span>Source Count</span>
+          <strong>{{ formatInteger(arbitrageSummary.source_count || 0) }}</strong>
+        </div>
+        <div class="arbitrage-stat">
+          <span>Live Opportunities</span>
+          <strong>{{ formatInteger(arbitrageSummary.opportunity_count || 0) }}</strong>
+        </div>
+        <div class="arbitrage-stat">
+          <span>Best Net Spread</span>
+          <strong>{{ formatMoney(arbitrageSummary.best_estimated_net_profit || 0) }}</strong>
+        </div>
+      </div>
+
+      <div v-if="arbitrageRows.length" class="arbitrage-list">
+        <article v-for="item in arbitrageRows" :key="item.arbitrage_key" class="arbitrage-row">
+          <div class="arbitrage-main">
+            <h4>{{ item.reference_title }}</h4>
+            <p>{{ item.sources.join(' -> ') }}</p>
+          </div>
+          <div class="arbitrage-side">
+            <div class="arbitrage-price-line">
+              <span>Buy {{ item.buy.source }}</span>
+              <strong>{{ formatMoney(item.buy.list_price) }}</strong>
+            </div>
+            <div class="arbitrage-price-line">
+              <span>Sell {{ item.sell.source }}</span>
+              <strong>{{ formatMoney(item.sell.list_price) }}</strong>
+            </div>
+            <div class="arbitrage-price-line emphasis">
+              <span>Est. Net / ROI</span>
+              <strong>{{ formatMoney(item.estimated_net_profit) }} / {{ formatPercent(item.estimated_roi) }}</strong>
             </div>
           </div>
-        </div>
-      </article>
+        </article>
+      </div>
+      <div v-else class="arbitrage-empty">
+        <strong>No cross-platform spread yet.</strong>
+        <span>Current live data only contains one source. Add Taobao, JD, or Pinduoduo listings to start seeing spread candidates.</span>
+      </div>
 
-      <article class="panel efficiency-panel">
-        <div class="panel-head">
-          <div>
-            <h2>Efficiency</h2>
-            <p>{{ baselineStatusText }}</p>
+      <div class="drawer-panel">
+        <strong>Matching Preview</strong>
+        <p>See which offers were grouped together and why they are or are not creating arbitrage candidates.</p>
+      </div>
+      <div v-if="arbitrageMatchingRows.length" class="arbitrage-list">
+        <article v-for="item in arbitrageMatchingRows" :key="`match-${item.arbitrage_key}`" class="arbitrage-row">
+          <div class="arbitrage-main">
+            <h4>{{ item.reference_title }}</h4>
+            <p>{{ item.reason }}</p>
           </div>
-          <span class="efficiency-badge">{{ operatingModeText }}</span>
+          <div class="arbitrage-side">
+            <div class="arbitrage-price-line">
+              <span>Status</span>
+              <strong>{{ item.status }}</strong>
+            </div>
+            <div class="arbitrage-price-line">
+              <span>Platforms</span>
+              <strong>{{ item.sources.join(" / ") || "--" }}</strong>
+            </div>
+            <div class="arbitrage-price-line emphasis">
+              <span>Net / ROI</span>
+              <strong>{{ formatMoney(item.estimated_net_profit || 0) }} / {{ formatPercent(item.estimated_roi || 0) }}</strong>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="services-section">
+      <div class="services-toolbar">
+        <div class="services-title">
+          <h2>Services</h2>
+          <span>/ Backend Services</span>
         </div>
 
-        <div class="efficiency-list">
-          <div v-for="item in efficiencyItems" :key="item.label" class="efficiency-row">
-            <div class="efficiency-meta">
+        <div class="services-controls">
+          <div class="segmented-control">
+            <button
+              v-for="item in serviceFilters"
+              :key="item.value"
+              class="segmented-button"
+              :class="{ active: activeServiceFilter === item.value }"
+              type="button"
+              @click="activeServiceFilter = item.value"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+
+          <div class="sort-shell">
+            <span>Sort:</span>
+            <n-select
+              v-model:value="serviceSort"
+              size="small"
+              :options="serviceSortOptions"
+            ></n-select>
+          </div>
+        </div>
+      </div>
+
+      <div class="service-stack">
+        <article v-for="item in filteredServiceRows" :key="item.id" class="service-row-card">
+          <div class="service-main">
+            <div class="service-header">
+              <div>
+                <div class="service-title-line">
+                  <h3>{{ item.title }}</h3>
+                  <span class="service-badge" :class="item.tone">{{ item.badge }}</span>
+                </div>
+                <div class="service-status-line">
+                  <span class="service-dot" :class="item.tone"></span>
+                  <span>Status: {{ item.statusText }}</span>
+                </div>
+              </div>
+
+              <button class="service-round-button" type="button" @click="openServiceDrawer(item.id)">
+                <n-icon size="18"><PlayOutline></PlayOutline></n-icon>
+              </button>
+            </div>
+
+            <div v-if="item.layout === 'metrics'" class="service-mini-grid">
+              <div v-for="metric in item.metrics" :key="`${item.id}-${metric.label}`" class="mini-metric">
+                <p>{{ metric.label }}</p>
+                <strong>{{ metric.value }}</strong>
+              </div>
+            </div>
+
+            <div v-else class="service-placeholder-row">
+              <span>{{ item.placeholder }}</span>
+            </div>
+          </div>
+
+          <div class="service-side">
+            <div class="side-icon-shell">
+              <n-icon size="26"><component :is="item.sideIcon"></component></n-icon>
+            </div>
+            <div class="side-label">{{ item.sideTitle }}</div>
+            <div class="side-value">{{ item.sideValue }}</div>
+            <button class="side-link" type="button" @click="openServiceDrawer(item.id)">{{ item.actionLabel }}</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="network-panel">
+      <div class="network-overlay"></div>
+      <div class="network-content">
+        <div>
+          <h2>Global Trading Network</h2>
+          <p>Active nodes across Asian market clusters.</p>
+        </div>
+
+        <div class="network-stats">
+          <div v-for="item in networkStatCards" :key="item.label" class="network-stat">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <n-drawer v-model:show="showServiceDrawer" placement="right" :width="420">
+      <n-drawer-content :title="selectedServiceRow?.title || 'Service Details'" closable>
+        <div v-if="selectedServiceRow" class="drawer-stack">
+          <div class="drawer-hero">
+            <div class="drawer-status">
+              <span class="drawer-status-dot" :class="selectedServiceRow.tone"></span>
+              <strong>{{ selectedServiceRow.badge }}</strong>
+            </div>
+            <p>{{ selectedServiceRow.drawerDescription }}</p>
+          </div>
+          <div class="drawer-list">
+            <div v-for="item in selectedServiceRow.drawerItems" :key="`${selectedServiceRow.id}-${item.label}`" class="drawer-row">
               <span>{{ item.label }}</span>
               <strong>{{ item.value }}</strong>
             </div>
-            <div class="progress-track subtle">
-              <div class="progress-fill" :style="{ width: item.progress }"></div>
+          </div>
+          <div v-if="selectedServiceRow.controlActions?.length" class="drawer-actions">
+            <n-button
+              v-for="item in selectedServiceRow.controlActions"
+              :key="`${selectedServiceRow.id}-${item.key}`"
+              :type="item.primary ? 'primary' : 'default'"
+              :disabled="!canOperate"
+              :loading="actionLoading === item.key"
+              @click="runDashboardAction(item.key)"
+            >
+              {{ item.label }}
+            </n-button>
+          </div>
+          <div class="drawer-actions">
+            <n-button type="primary" @click="handleRefresh">Refresh Data</n-button>
+            <n-button secondary @click="showServiceDrawer = false">Close</n-button>
+          </div>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
+
+    <n-drawer v-model:show="showMarketplaceDrawer" placement="right" :width="520">
+      <n-drawer-content title="Marketplace Offers Intake" closable>
+        <div class="drawer-stack">
+          <div class="drawer-hero">
+            <div class="drawer-status">
+              <span class="drawer-status-dot neutral"></span>
+              <strong>Read-Only Offers</strong>
+            </div>
+            <p>Import normalized Taobao, JD, or Pinduoduo offers into the dedicated marketplace layer. These rows do not enter the card-flip review flow.</p>
+          </div>
+          <n-select v-model:value="marketplacePlatform" :options="marketplacePlatformOptions"></n-select>
+          <n-input
+            v-model:value="marketplaceOffersJson"
+            type="textarea"
+            :autosize="{ minRows: 10, maxRows: 20 }"
+            placeholder="Paste a JSON array of marketplace offers."
+          ></n-input>
+          <n-input
+            v-model:value="taobaoSnapshotJson"
+            type="textarea"
+            :autosize="{ minRows: 8, maxRows: 16 }"
+            placeholder="Paste a raw Taobao snapshot JSON object."
+          ></n-input>
+          <n-input
+            v-model:value="pinduoduoSnapshotJson"
+            type="textarea"
+            :autosize="{ minRows: 8, maxRows: 16 }"
+            placeholder="Paste a raw Pinduoduo snapshot JSON object."
+          ></n-input>
+          <n-input
+            v-model:value="pinduoduoSnapshotBridgeUrl"
+            placeholder="Optional Pinduoduo snapshot bridge URL for cookie-mode sync-once"
+          ></n-input>
+          <n-input
+            v-model:value="jdSnapshotJson"
+            type="textarea"
+            :autosize="{ minRows: 8, maxRows: 16 }"
+            placeholder="Paste a raw JD snapshot JSON object."
+          ></n-input>
+          <n-input
+            v-model:value="jdSnapshotBridgeUrl"
+            placeholder="Optional JD snapshot bridge URL for cookie-mode sync-once"
+          ></n-input>
+          <div class="drawer-actions">
+            <n-button secondary @click="taobaoSnapshotJson = TAOBAO_SNAPSHOT_EXAMPLE">Load Taobao Example</n-button>
+            <n-button secondary @click="pinduoduoSnapshotJson = PINDUODUO_SNAPSHOT_EXAMPLE">Load Pinduoduo Example</n-button>
+            <n-button secondary @click="jdSnapshotJson = JD_SNAPSHOT_EXAMPLE">Load JD Example</n-button>
+          </div>
+          <div class="drawer-actions">
+            <n-button type="primary" :loading="marketplaceImportLoading" @click="importMarketplaceOffers">Import Offers</n-button>
+            <n-button secondary :loading="taobaoSnapshotLoading" @click="importTaobaoSnapshot">Import Taobao Snapshot</n-button>
+            <n-button secondary :loading="taobaoSyncLoading" @click="syncTaobaoOnce">Sync Taobao API</n-button>
+            <n-button secondary :loading="pinduoduoSnapshotLoading" @click="importPinduoduoSnapshot">Import Pinduoduo Snapshot</n-button>
+            <n-button secondary :loading="pinduoduoSyncLoading" @click="syncPinduoduoOnce">Sync Pinduoduo API</n-button>
+            <n-button secondary :loading="jdSnapshotLoading" @click="importJdSnapshot">Import JD Snapshot</n-button>
+            <n-button secondary :loading="jdSyncLoading" @click="syncJdOnce">Sync JD API</n-button>
+            <n-button secondary :loading="marketplaceBackfillLoading" @click="backfillMarketplaceOffers">Backfill Xianyu</n-button>
+            <n-button secondary @click="refreshMarketplaceLayer">Refresh Layer</n-button>
+          </div>
+          <div v-if="marketplaceImportResult" class="drawer-panel">
+            <strong>Last Import</strong>
+            <p>{{ marketplaceImportResult }}</p>
+          </div>
+          <div class="drawer-panel">
+            <strong>Platform Health</strong>
+            <p>{{ marketplaceHealthSummary }}</p>
+          </div>
+          <div class="drawer-list">
+            <div v-for="item in marketplaceHealthRows" :key="item.source" class="drawer-row">
+              <span>{{ item.source }}</span>
+              <strong>{{ formatInteger(item.listing_count) }} offers</strong>
+            </div>
+          </div>
+          <div class="drawer-panel">
+            <strong>Provider Readiness</strong>
+            <p>{{ marketplaceReadinessSummary }}</p>
+          </div>
+          <div class="drawer-panel">
+            <strong>Shadow Automation</strong>
+            <p>{{ marketplaceShadowSummary }}</p>
+          </div>
+          <div class="drawer-actions">
+            <n-button secondary :loading="marketplaceShadowLoading" @click="runMarketplaceShadowOnce">Run Shadow Once</n-button>
+          </div>
+          <div class="drawer-panel">
+            <strong>Taobao API Status</strong>
+            <p>{{ taobaoStatusSummary }}</p>
+          </div>
+          <div class="drawer-panel">
+            <strong>Pinduoduo API Status</strong>
+            <p>{{ pinduoduoStatusSummary }}</p>
+          </div>
+          <div class="drawer-panel">
+            <strong>JD API Status</strong>
+            <p>{{ jdStatusSummary }}</p>
+          </div>
+          <div class="drawer-list">
+            <div v-for="item in marketplaceProviderRows" :key="item.provider" class="drawer-row">
+              <span>{{ item.provider }}</span>
+              <strong>{{ formatInteger(item.offer_count) }} offers / {{ formatInteger(item.legacy_open_listing_count) }} legacy</strong>
+            </div>
+          </div>
+          <div class="drawer-panel">
+            <strong>Recent Shadow Intents</strong>
+            <p>Dry-run decisions only. No real trade execution is triggered.</p>
+          </div>
+          <div class="drawer-list">
+            <div v-for="item in marketplaceShadowIntents" :key="item.id" class="drawer-row">
+              <span>{{ item.reference_title || item.intent_key }}</span>
+              <strong>{{ item.decision_status }} / {{ item.blocked_reason || 'accepted' }}</strong>
+            </div>
+          </div>
+          <div class="drawer-panel">
+            <strong>Recent Shadow Runs</strong>
+            <p>Latest dry-run batches with accepted and blocked counts.</p>
+          </div>
+          <div class="drawer-list">
+            <div v-for="item in marketplaceShadowRuns" :key="item.id" class="drawer-row">
+              <span>{{ compactTime(item.created_at) }}</span>
+              <strong>{{ formatInteger(item.accepted_count) }} accepted / {{ formatInteger(item.blocked_count) }} blocked</strong>
             </div>
           </div>
         </div>
-      </article>
-    </section>
-
-    <section class="bottom-grid">
-      <article class="panel table-panel">
-        <div class="panel-head">
-          <div>
-            <h2>Recent Reports</h2>
-            <p>Latest operating snapshots</p>
-          </div>
-          <button class="link-button" type="button" @click="chartMode = nextChartMode">
-            {{ nextChartModeLabel }}
-          </button>
-        </div>
-
-        <div class="table-wrap">
-          <table class="activity-table">
-            <thead>
-              <tr>
-                <th>项目</th>
-                <th>类别</th>
-                <th>状态</th>
-                <th>时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in recentRows" :key="`${row.type}-${row.name}`">
-                <td>{{ row.name }}</td>
-                <td>{{ row.type }}</td>
-                <td>
-                  <span class="status-pill" :class="row.tone">{{ row.status }}</span>
-                </td>
-                <td>{{ row.time }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="panel matrix-panel">
-        <div class="panel-head">
-          <div>
-            <h2>Regional Traffic Density</h2>
-            <p>Signal density snapshot</p>
-          </div>
-          <button class="link-button" type="button" @click="activeRange = nextRange">
-            {{ nextRangeLabel }}
-          </button>
-        </div>
-
-        <div class="matrix-labels">
-          <span v-for="item in matrixColumns" :key="item.short">{{ item.short }}</span>
-        </div>
-        <div class="matrix-grid">
-          <template v-for="level in [4, 3, 2, 1]" :key="level">
-            <div
-              v-for="item in matrixColumns"
-              :key="`${level}-${item.short}`"
-              class="matrix-cell"
-              :class="{ active: item.score >= level }"
-            ></div>
-          </template>
-        </div>
-
-        <div class="matrix-stats">
-          <div class="matrix-stat">
-            <span>活跃来源</span>
-            <strong>{{ formatInteger(sourceLeaders.length) }}</strong>
-          </div>
-          <div class="matrix-stat">
-            <span>活跃卖家</span>
-            <strong>{{ formatInteger(sellerLeaders.length) }}</strong>
-          </div>
-          <div class="matrix-stat">
-            <span>基线信号</span>
-            <strong>{{ formatInteger(baselineSignals.length) }}</strong>
-          </div>
-        </div>
-      </article>
-    </section>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
+import {
+  InformationCircleOutline,
+  PlayOutline,
+  PulseOutline,
+  ServerOutline,
+} from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 
+import cardFlipApi from "@/api/cardFlip";
 import useExecutiveOverview from "@/composables/useExecutiveOverview";
+import { useAuthStore } from "@/stores/auth";
 
 const {
-  alertItems,
-  baselineSignals,
-  baselineStatusText,
-  deploymentReadiness,
   error,
-  lastLoadedAt,
   loadOverview,
   loading,
-  operatingModeText,
-  overview,
   profitCockpit,
   profitability,
   runtime,
-  serviceSnapshot,
-  validationBaseline,
-  formatTime,
 } = useExecutiveOverview();
+const router = useRouter();
+const authStore = useAuthStore();
+const message = useMessage();
 
-const activeRange = ref("7d");
-const chartMode = ref("pipeline");
+const activeRange = ref("30d");
+const activeServiceFilter = ref("all");
+const serviceSort = ref("load");
+const priceHistory = ref([]);
+const priceHistoryLoading = ref(false);
+const showServiceDrawer = ref(false);
+const selectedServiceId = ref("");
+const reportSummary = ref({});
+const reportLoading = ref(false);
+const actionLoading = ref("");
+const arbitrageSummary = ref({});
+const arbitrageRows = ref([]);
+const arbitrageMatchingRows = ref([]);
+const arbitrageLoading = ref(false);
+const arbitrageAssumptionsState = ref({});
+const showMarketplaceDrawer = ref(false);
+const marketplacePlatform = ref("taobao");
+const marketplaceOffersJson = ref("");
+const taobaoSnapshotJson = ref("");
+const pinduoduoSnapshotJson = ref("");
+const pinduoduoSnapshotBridgeUrl = ref("");
+const jdSnapshotJson = ref("");
+const jdSnapshotBridgeUrl = ref("");
+const marketplaceImportLoading = ref(false);
+const taobaoSnapshotLoading = ref(false);
+const taobaoSyncLoading = ref(false);
+const pinduoduoSnapshotLoading = ref(false);
+const pinduoduoSyncLoading = ref(false);
+const jdSnapshotLoading = ref(false);
+const jdSyncLoading = ref(false);
+const marketplaceImportResult = ref("");
+const marketplaceHealthRows = ref([]);
+const marketplaceProviderRows = ref([]);
+const marketplaceBackfillLoading = ref(false);
+const marketplaceShadowStatus = ref({});
+const marketplaceShadowIntents = ref([]);
+const marketplaceShadowRuns = ref([]);
+const marketplaceShadowLoading = ref(false);
+const taobaoProviderStatus = ref({});
+const pinduoduoProviderStatus = ref({});
+const jdProviderStatus = ref({});
 
 const rangeTabs = [
-  { label: "7D", value: "7d" },
-  { label: "1M", value: "1m" },
-  { label: "3M", value: "3m" },
+  { label: "Last 7 Days", value: "7d" },
+  { label: "Last 30 Days", value: "30d" },
+  { label: "Last 90 Days", value: "90d" },
 ];
 
-const chartModes = [
-  { label: "Units", value: "pipeline" },
-  { label: "Risk", value: "risk" },
+const serviceFilters = [
+  { label: "All", value: "all" },
+  { label: "Running", value: "running" },
+  { label: "Stopped", value: "stopped" },
+];
+const serviceSortOptions = [
+  { label: "Highest Load", value: "load" },
+  { label: "Uptime", value: "uptime" },
+  { label: "Name (A-Z)", value: "name" },
 ];
 
-const today = computed(() => profitCockpit.value?.today || {});
-const last7d = computed(() => profitCockpit.value?.last_7d || {});
 const inventory = computed(() => profitCockpit.value?.inventory || {});
-const generatedAt = computed(() => formatTime(overview.value?.generated_at));
-const alertCount = computed(() => Number(alertItems.value.length || 0));
-const runningServiceCount = computed(() => serviceSnapshot.value.filter(item => item.running).length);
-
-const nextRange = computed(() => {
-  const order = rangeTabs.map(item => item.value);
-  const currentIndex = order.indexOf(activeRange.value);
-  return order[(currentIndex + 1) % order.length];
-});
-const nextRangeLabel = computed(() => ({
-  "7d": "切到 1M",
-  "1m": "切到 3M",
-  "3m": "切到 7D",
-})[activeRange.value] || "切换");
-
-const nextChartMode = computed(() => (chartMode.value === "pipeline" ? "risk" : "pipeline"));
-const nextChartModeLabel = computed(() => (chartMode.value === "pipeline" ? "切到 Risk" : "切到 Units"));
-
 const sourceLeaders = computed(() =>
   (Array.isArray(profitCockpit.value?.source_leaderboard_7d) ? profitCockpit.value.source_leaderboard_7d : [])
     .slice(0, 3)
     .map(item => ({
-      label: String(item.source || "未知来源"),
-      value: Number(item.realized_net_profit || 0),
+      label: String(item.source || "Unknown"),
+      value: Math.max(Number(item.realized_net_profit || 0), 0),
     })),
 );
-
-const sellerLeaders = computed(() =>
-  (Array.isArray(profitCockpit.value?.seller_leaderboard_7d) ? profitCockpit.value.seller_leaderboard_7d : [])
-    .slice(0, 3)
-    .map(item => ({
-      label: String(item.seller_id || "未知卖家"),
-      value: Number(item.realized_net_profit || 0),
-    })),
-);
-
-const primaryProfitValue = computed(() => {
-  if (activeRange.value === "1m")
-    return formatMoney(Number(last7d.value?.realized_net_profit || 0) * 2);
-  if (activeRange.value === "3m")
-    return formatMoney(Number(last7d.value?.realized_net_profit || 0) * 4);
-  return formatMoney(last7d.value?.realized_net_profit || 0);
+const selectedRangeDays = computed(() => {
+  if (activeRange.value === "7d")
+    return 7;
+  if (activeRange.value === "90d")
+    return 90;
+  return 30;
+});
+const activeRangeLabel = computed(() => {
+  const matched = rangeTabs.find(item => item.value === activeRange.value);
+  return matched?.label || "Last 30 Days";
+});
+const refreshing = computed(() => loading.value || priceHistoryLoading.value || reportLoading.value);
+const marketSnapshot = computed(() => reportSummary.value?.data_layer?.market_snapshot || {});
+const canOperate = computed(() => {
+  if (authStore.userInfo?.isAdmin)
+    return true;
+  const roles = Array.isArray(authStore.userInfo?.roleKeys) ? authStore.userInfo.roleKeys : [];
+  return roles.map(item => String(item || "").toLowerCase()).includes("ops");
 });
 
-const profitDeltaLabel = computed(() => {
-  const profit = Number(last7d.value?.realized_net_profit || 0);
-  if (profit > 0)
-    return "+";
-  if (profit < 0)
-    return "-";
-  return "0";
-});
-
-const profitHitWidth = computed(() => percentWidth(profitability.value?.profit_hit_rate || 0));
-
-const activeTradeBars = computed(() => {
-  const active = Number(profitability.value?.active_trades_count || 0);
-  return [35, 55, 78, 62, 86].map(value => Math.max(Math.min(value + active * 2, 100), 18));
-});
-
-const serverLoadText = computed(() => {
-  const services = runtime.value?.services || {};
-  const running = [
-    services.monitor?.is_running,
-    services.autotrade?.running,
-    services.execution_retry?.running,
-  ].filter(Boolean).length;
-  const percent = Math.round((running / 3) * 100);
-  return `${percent}%`;
-});
-
-const signalBars = computed(() => {
-  const base = Math.min(alertCount.value + baselineSignals.value.length + runningServiceCount.value, 9);
-  return [2, 4, 6, 3, 8, 5, 7, 9, base || 1];
-});
-
-const avgHoldingText = computed(() =>
-  `${formatNumber(profitability.value?.avg_holding_days || 0, 1)} days`,
-);
-
-const chartItems = computed(() => {
-  const base = chartMode.value === "risk"
-    ? [
-        { label: "告警", short: "Mon", value: Number(alertCount.value || 0) },
-        { label: "待审", short: "Tue", value: Number(profitability.value?.pending_review_count || 0) },
-        { label: "服务", short: "Wed", value: Math.max(4 - runningServiceCount.value, 0) },
-        { label: "基线", short: "Thu", value: baselineSignals.value.length },
-        { label: "进行", short: "Fri", value: Number(profitability.value?.active_trades_count || 0) },
-        { label: "挂售", short: "Sat", value: Number(inventory.value?.listed_trade_count || 0) },
-        { label: "卖出", short: "Sun", value: Number(profitability.value?.sold_count || 0) },
-      ]
-    : [
-        { label: "待审", short: "Mon", value: Number(profitability.value?.pending_review_count || 0) },
-        { label: "进行", short: "Tue", value: Number(profitability.value?.active_trades_count || 0) },
-        { label: "卖出", short: "Wed", value: Number(profitability.value?.sold_count || 0) },
-        { label: "挂售", short: "Thu", value: Number(inventory.value?.listed_trade_count || 0) },
-        { label: "来源", short: "Fri", value: Number(sourceLeaders.value.length || 0) },
-        { label: "卖家", short: "Sat", value: Number(sellerLeaders.value.length || 0) },
-        { label: "服务", short: "Sun", value: Number(runningServiceCount.value || 0) },
-      ];
-
-  const maxValue = Math.max(...base.map(item => item.value), 1);
-  return base.map(item => ({
-    ...item,
-    height: `${Math.max((item.value / maxValue) * 100, 14)}%`,
-  }));
-});
+const metricCards = computed(() => [
+  {
+    label: "Profit Margin",
+    value: formatPercent(profitability.value?.avg_realized_roi || 0),
+    trailing: "vs realized trades",
+    tone: "accent",
+  },
+  {
+    label: "Avg Holding Days",
+    value: formatNumber(profitability.value?.avg_holding_days || 0, 1),
+    trailing: "days",
+    tone: "",
+  },
+  {
+    label: "Target Exit Value",
+    value: formatMoney(inventory.value?.target_exit_value || 0),
+    trailing: "",
+    tone: "",
+  },
+  {
+    label: "Expected Exit Spread",
+    value: formatMoney(inventory.value?.expected_exit_spread || 0),
+    trailing: "",
+    tone: "",
+  },
+]);
 
 const donutSlices = computed(() => {
-  const rows = sourceLeaders.value.length
-    ? sourceLeaders.value
-    : [
-        { label: "来源 A", value: 1 },
-        { label: "来源 B", value: 1 },
-        { label: "来源 C", value: 1 },
-      ];
-  const total = rows.reduce((sum, item) => sum + Math.max(item.value, 0), 0) || 1;
-  const colors = ["#0051d5", "#495c94", "#c64f0a"];
+  const fallback = [
+    { label: "Sports Cards", value: 1 },
+    { label: "TCG Items", value: 1 },
+    { label: "Collectibles", value: 1 },
+  ];
+  const rows = sourceLeaders.value.length ? sourceLeaders.value : fallback;
+  const colors = ["#0071e3", "#abc7ff", "#ffffff"];
+  const total = rows.reduce((sum, item) => sum + item.value, 0) || 1;
+
   return rows.map((item, index) => {
-    const percent = (Math.max(item.value, 0) / total) * 100;
+    const percent = (item.value / total) * 100;
     return {
       ...item,
       color: colors[index % colors.length],
@@ -433,411 +607,1062 @@ const donutSlices = computed(() => {
 
 const donutGradient = computed(() => {
   let cursor = 0;
-  const segments = donutSlices.value.map((item) => {
+  return `conic-gradient(${donutSlices.value.map((item) => {
     const start = cursor;
     const end = cursor + item.percent;
     cursor = end;
     return `${item.color} ${start}% ${end}%`;
+  }).join(", ")})`;
+});
+
+const donutTotalLabel = computed(() => {
+  const total = donutSlices.value.reduce((sum, item) => sum + item.percent, 0);
+  return `${Math.round(total)}%`;
+});
+
+const sampledPriceHistory = computed(() => {
+  const sorted = [...priceHistory.value]
+    .map(item => ({
+      ...item,
+      atValue: new Date(String(item.at || "")).getTime(),
+      price: Number(item.price || 0),
+    }))
+    .filter(item => Number.isFinite(item.atValue) && item.price > 0)
+    .sort((a, b) => a.atValue - b.atValue);
+
+  if (sorted.length <= 20)
+    return sorted;
+
+  const step = (sorted.length - 1) / 19;
+  return Array.from({ length: 20 }, (_value, index) => sorted[Math.round(step * index)]);
+});
+
+const priceChart = computed(() => {
+  const rows = sampledPriceHistory.value;
+  if (!rows.length) {
+    return {
+      points: [],
+      linePath: "",
+      areaPath: "",
+      lastPoint: null,
+      maxLabel: "--",
+    };
+  }
+
+  const width = 1000;
+  const height = 220;
+  const values = rows.map(item => item.price);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const valueRange = Math.max(maxValue - minValue, 1);
+
+  const points = rows.map((item, index) => {
+    const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * width;
+    const y = height - (((item.price - minValue) / valueRange) * 170 + 20);
+    return {
+      x: Number(x.toFixed(2)),
+      y: Number(y.toFixed(2)),
+      price: item.price,
+      label: item.at,
+    };
   });
-  return `conic-gradient(${segments.join(", ")})`;
-});
 
-const donutCenterValue = computed(() => formatMoney(last7d.value?.realized_net_profit || 0));
-const donutCenterLabel = computed(() => "7D");
+  const linePath = points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
+    .join(" ");
+  const areaPath = `${linePath} L${points[points.length - 1].x},${height} L${points[0].x},${height} Z`;
 
-const efficiencyItems = computed(() => {
-  const serviceRatio = serviceSnapshot.value.length
-    ? runningServiceCount.value / serviceSnapshot.value.length
-    : 0;
-  const baselineRatio = validationBaseline.value?.ready_for_scale
-    ? 1
-    : validationBaseline.value?.ready_for_tune ? 0.65 : 0.3;
-
-  return [
-    {
-      label: "利润命中率",
-      value: formatPercent(profitability.value?.profit_hit_rate || 0),
-      progress: percentWidth(profitability.value?.profit_hit_rate || 0),
-    },
-    {
-      label: "服务在线率",
-      value: `${runningServiceCount.value}/${serviceSnapshot.value.length}`,
-      progress: percentWidth(serviceRatio),
-    },
-    {
-      label: "基线完成度",
-      value: baselineStatusText.value,
-      progress: percentWidth(baselineRatio),
-    },
-  ];
-});
-
-const recentRows = computed(() => {
-  const rows = [];
-  for (const item of alertItems.value.slice(0, 3)) {
-    rows.push({
-      name: item.title,
-      type: "告警",
-      status: severityText(item.effective_severity || item.severity),
-      tone: severityTone(item.effective_severity || item.severity),
-      time: generatedAt.value,
-    });
-  }
-  for (const item of sourceLeaders.value) {
-    rows.push({
-      name: item.label,
-      type: "来源",
-      status: formatMoney(item.value),
-      tone: "positive",
-      time: generatedAt.value,
-    });
-  }
-  for (const item of sellerLeaders.value) {
-    rows.push({
-      name: item.label,
-      type: "卖家",
-      status: formatMoney(item.value),
-      tone: "neutral",
-      time: generatedAt.value,
-    });
-  }
-  return rows;
-});
-
-const matrixColumns = computed(() => {
-  const countScale = (value) => {
-    const numeric = Number(value || 0);
-    if (numeric >= 10)
-      return 4;
-    if (numeric >= 5)
-      return 3;
-    if (numeric >= 1)
-      return 2;
-    return 1;
+  return {
+    points,
+    linePath,
+    areaPath,
+    lastPoint: points[points.length - 1],
+    maxLabel: formatMoney(maxValue),
   };
-
-  return [
-    { short: "待", score: countScale(profitability.value?.pending_review_count) },
-    { short: "进", score: countScale(profitability.value?.active_trades_count) },
-    { short: "卖", score: countScale(profitability.value?.sold_count) },
-    { short: "警", score: countScale(alertCount.value) },
-    { short: "服", score: Math.max(runningServiceCount.value, 1) },
-    { short: "基", score: validationBaseline.value?.ready_for_scale ? 4 : validationBaseline.value?.ready_for_tune ? 3 : 1 },
-    { short: "源", score: countScale(sourceLeaders.value.length) },
-  ];
 });
 
-const severityText = (severity) => {
-  const value = String(severity || "").toLowerCase();
-  if (value === "error")
-    return "严重";
-  if (value === "warning")
-    return "预警";
-  return "提示";
+const chartAxisLabels = computed(() => {
+  const rows = sampledPriceHistory.value;
+  if (!rows.length)
+    return [{ label: "Start" }, { label: "Mid" }, { label: "Now" }];
+
+  const indexes = [0, Math.max(Math.floor((rows.length - 1) / 2), 0), rows.length - 1];
+  return [...new Set(indexes)].map((index) => ({
+    label: formatAxisDate(rows[index]?.at),
+  }));
+});
+
+const serviceRows = computed(() => {
+  const services = runtime.value?.services || {};
+  const automation = runtime.value?.automation || {};
+  const executionReadiness = runtime.value?.execution_readiness || {};
+  const autotradeRunning = Boolean(services.autotrade?.running);
+  const retryRunning = Boolean(services.execution_retry?.running);
+  const monitorRunning = Boolean(services.monitor?.is_running);
+  const anyAutomationRunning = autotradeRunning || retryRunning;
+
+  const automationBadge = autotradeRunning && retryRunning
+    ? "Running"
+    : anyAutomationRunning ? "Partial Running" : "Idle";
+
+  const automationLoad = (autotradeRunning ? 2 : 0) + (retryRunning ? 1 : 0);
+  const monitorLoad = (monitorRunning ? 0 : 2) + (services.monitor?.circuit_open ? 2 : 0);
+
+  return [
+    {
+      id: "automation",
+      title: "Automation Console",
+      badge: automationBadge,
+      statusText: anyAutomationRunning ? "Automation loops active" : "Idle",
+      tone: anyAutomationRunning ? "warning" : "neutral",
+      running: anyAutomationRunning,
+      loadRank: automationLoad,
+      uptimeRank: new Date(String(automation.last_run_at || "")).getTime() || 0,
+      layout: "metrics",
+      metrics: [
+        { label: "Auto Approvals", value: formatInteger(services.autotrade?.total_approved || 0) },
+        { label: "Retries", value: formatInteger(services.execution_retry?.total_retried || 0) },
+        { label: "Last Run", value: compactTime(automation.last_run_at) },
+      ],
+      sideTitle: "Details",
+      sideValue: executionReadiness.live_ready ? "Webhook Ready" : "None",
+      sideIcon: InformationCircleOutline,
+      actionLabel: "Configure Service",
+      drawerDescription: "Inspect automation readiness, current runtime flags, and webhook state before changing the service posture.",
+      drawerItems: [
+        { label: "Auto trade running", value: autotradeRunning ? "Yes" : "No" },
+        { label: "Retry worker running", value: retryRunning ? "Yes" : "No" },
+        { label: "Last automation run", value: compactTime(automation.last_run_at) },
+        { label: "Webhook ready", value: executionReadiness.live_ready ? "Ready" : "Not ready" },
+      ],
+      controlActions: [
+        { key: "automation-start", label: "Start", primary: !anyAutomationRunning },
+        { key: "automation-stop", label: "Stop", primary: false },
+        { key: "automation-run", label: "Run Once", primary: false },
+      ],
+    },
+    {
+      id: "monitor",
+      title: "Market Monitoring",
+      badge: monitorRunning ? "Running" : "Stopped / Idle",
+      statusText: services.monitor?.circuit_open ? "Recovery mode" : monitorRunning ? "Normal" : "Stopped",
+      tone: monitorRunning ? "positive" : "neutral",
+      running: monitorRunning,
+      loadRank: monitorLoad,
+      uptimeRank: new Date(String(services.monitor?.last_run_at || "")).getTime() || 0,
+      layout: "metrics",
+      metrics: [
+        { label: "Health", value: compactHealth(services.monitor?.health) },
+        { label: "Circuit", value: services.monitor?.circuit_open ? "Open" : "Normal" },
+        { label: "Last Run", value: compactTime(services.monitor?.last_run_at) },
+      ],
+      sideTitle: "Metrics",
+      sideValue: compactHealth(services.monitor?.health),
+      sideIcon: PulseOutline,
+      actionLabel: monitorRunning ? "View Metrics" : "Start Monitor",
+      drawerDescription: "Review monitor runtime, health state, and last execution details before restarting or observing the listener.",
+      drawerItems: [
+        { label: "Health", value: compactHealth(services.monitor?.health) },
+        { label: "Circuit", value: services.monitor?.circuit_open ? "Open" : "Normal" },
+        { label: "Runs", value: formatInteger(services.monitor?.runs || 0) },
+        { label: "Last run", value: compactTime(services.monitor?.last_run_at) },
+      ],
+      controlActions: [
+        { key: "monitor-start", label: "Start", primary: !monitorRunning },
+        { key: "monitor-stop", label: "Stop", primary: false },
+        { key: "monitor-run", label: "Run Once", primary: false },
+      ],
+    },
+  ];
+});
+const selectedServiceRow = computed(() => serviceRows.value.find(item => item.id === selectedServiceId.value) || null);
+const networkStatCards = computed(() => [
+  {
+    label: "Open Listings",
+    value: formatInteger(marketSnapshot.value?.open_listing_count || 0),
+  },
+  {
+    label: "Tradable Markets",
+    value: formatInteger(marketSnapshot.value?.tradable_market_count || marketSnapshot.value?.strategy_market_count || 0),
+  },
+]);
+
+const arbitrageAssumptions = computed(() => ({
+  limit: 5,
+  window_hours: 72,
+  min_platforms: 2,
+}));
+const arbitrageDataModeLabel = computed(() =>
+  arbitrageAssumptionsState.value?.data_mode === "marketplace_offers"
+    ? "Offers Layer"
+    : "Read Only",
+);
+const marketplacePlatformOptions = [
+  { label: "Taobao", value: "taobao" },
+  { label: "JD", value: "jd" },
+  { label: "Pinduoduo", value: "pinduoduo" },
+];
+const TAOBAO_SNAPSHOT_EXAMPLE = JSON.stringify({
+  items: [
+    {
+      num_iid: "tb-example-1",
+      title: "Pokemon Card Charizard PSA 10",
+      seller_id: "tb-seller",
+      price: 2388.0,
+      item_url: "https://example.com/tb-example-1",
+      listed_at: new Date().toISOString(),
+    },
+  ],
+}, null, 2);
+const PINDUODUO_SNAPSHOT_EXAMPLE = JSON.stringify({
+  goods_search_response: {
+    goods_list: [
+      {
+        goods_id: "pdd-example-1",
+        goods_name: "Pokemon Card Charizard PSA 10",
+        mall_id: "pdd-mall",
+        min_group_price: 228800,
+        goods_link: "https://example.com/pdd-example-1",
+        listed_at: new Date().toISOString(),
+      },
+    ],
+  },
+}, null, 2);
+const JD_SNAPSHOT_EXAMPLE = JSON.stringify({
+  jd_union_open_goods_query_response: {
+    queryResult: {
+      goodsList: [
+        {
+          skuId: "jd-example-1",
+          skuName: "Pokemon Card Charizard PSA 10",
+          owner: "jd-shop",
+          price: 2499.0,
+          materialUrl: "https://example.com/jd-example-1",
+          listed_at: new Date().toISOString(),
+        },
+      ],
+    },
+  },
+}, null, 2);
+const marketplaceHealthSummary = computed(() => {
+  const sourceCount = marketplaceHealthRows.value.length;
+  const offerCount = marketplaceHealthRows.value.reduce((sum, item) => sum + Number(item.listing_count || 0), 0);
+  return `${formatInteger(sourceCount)} platforms, ${formatInteger(offerCount)} active offers in the dedicated marketplace layer.`;
+});
+const marketplaceReadinessSummary = computed(() => {
+  const readyCount = marketplaceProviderRows.value.filter(item => item.backfill_ready || Number(item.offer_count || 0) > 0).length;
+  return `${formatInteger(readyCount)} providers have either imported offers or legacy data ready for backfill.`;
+});
+const marketplaceShadowSummary = computed(() => {
+  const status = marketplaceShadowStatus.value || {};
+  const lastRun = status.last_run || {};
+  if (!Object.keys(status).length)
+    return "Shadow automation status not loaded yet.";
+  if (!Object.keys(lastRun).length)
+    return `Dry-run only. Thresholds: ${formatMoney(status.min_net_profit || 0)} / ${formatPercent(status.min_roi || 0)} / confidence ${formatPercent(status.min_confidence || 0)}.`;
+  return `Last run accepted ${formatInteger(lastRun.accepted_count || 0)} of ${formatInteger(lastRun.candidate_count || 0)} candidates. Cooldown ${formatInteger(status.cooldown_minutes || 0)} minutes.`;
+});
+const taobaoStatusSummary = computed(() => {
+  if (!Object.keys(taobaoProviderStatus.value || {}).length)
+    return "Status not loaded yet.";
+  if (taobaoProviderStatus.value.configured)
+    return `Configured via ${taobaoProviderStatus.value.method || "TOP API"} on ${taobaoProviderStatus.value.gateway_url || "gateway"}.`;
+  return "Taobao TOP config missing. Set app key, secret, and query_string before sync.";
+});
+const pinduoduoStatusSummary = computed(() => {
+  if (!Object.keys(pinduoduoProviderStatus.value || {}).length)
+    return "Status not loaded yet.";
+  if (pinduoduoProviderStatus.value.active_mode === "cookie")
+    return "Cookie mode active. High-risk and unstable. Fill the snapshot bridge URL below, then run Sync Pinduoduo API.";
+  if (pinduoduoProviderStatus.value.configured)
+    return `Configured via ${pinduoduoProviderStatus.value.type || "DDK API"} on ${pinduoduoProviderStatus.value.api_url || "gateway"}.`;
+  return "Pinduoduo API config missing. Set client_id, client_secret, and params_json before sync.";
+});
+const jdStatusSummary = computed(() => {
+  if (!Object.keys(jdProviderStatus.value || {}).length)
+    return "Status not loaded yet.";
+  if (jdProviderStatus.value.active_mode === "cookie")
+    return "Cookie mode active. High-risk and unstable. Fill the snapshot bridge URL below, then run Sync JD API.";
+  if (jdProviderStatus.value.configured)
+    return `Configured via ${jdProviderStatus.value.method || "JD API"} on ${jdProviderStatus.value.api_url || "gateway"}.`;
+  return "JD API config missing. Set app key, secret, and param_json before sync.";
+});
+
+const filteredServiceRows = computed(() => {
+  const rows = serviceRows.value.filter((item) => {
+    if (activeServiceFilter.value === "running")
+      return item.running;
+    if (activeServiceFilter.value === "stopped")
+      return !item.running;
+    return true;
+  });
+
+  const sorted = [...rows];
+  if (serviceSort.value === "name") {
+    sorted.sort((a, b) => a.title.localeCompare(b.title));
+    return sorted;
+  }
+  if (serviceSort.value === "uptime") {
+    sorted.sort((a, b) => b.uptimeRank - a.uptimeRank);
+    return sorted;
+  }
+  sorted.sort((a, b) => b.loadRank - a.loadRank);
+  return sorted;
+});
+
+const loadPriceHistory = async () => {
+  priceHistoryLoading.value = true;
+  try {
+    const response = await cardFlipApi.getPriceHistory({ limit: selectedRangeDays.value });
+    priceHistory.value = Array.isArray(response?.items) ? response.items : [];
+  } catch {
+    priceHistory.value = [];
+  } finally {
+    priceHistoryLoading.value = false;
+  }
 };
 
-const severityTone = (severity) => {
-  const value = String(severity || "").toLowerCase();
-  if (value === "error")
-    return "danger";
-  if (value === "warning")
-    return "warning";
-  return "positive";
+const loadReportData = async () => {
+  reportLoading.value = true;
+  try {
+    reportSummary.value = await cardFlipApi.getAnalysisReport({ limit: 50 });
+  } catch {
+    reportSummary.value = {};
+  } finally {
+    reportLoading.value = false;
+  }
 };
 
-const toneByNumber = value =>
-  Number(value || 0) > 0 ? "positive" : Number(value || 0) < 0 ? "warning" : "neutral";
-const percentWidth = value => `${Math.max(Math.min(Number(value || 0) * 100, 100), 8)}%`;
-const formatMoney = value =>
-  new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: 2 }).format(Number(value || 0));
-const formatPercent = value => `${formatNumber(Number(value || 0) * 100, 1)}%`;
-const formatInteger = value =>
-  new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(Number(value || 0));
-const formatNumber = (value, digits = 2) =>
-  new Intl.NumberFormat("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value || 0));
+const loadArbitrageData = async () => {
+  arbitrageLoading.value = true;
+  try {
+    const [response, matchingResponse] = await Promise.all([
+      cardFlipApi.getArbitrageOpportunities(arbitrageAssumptions.value),
+      cardFlipApi.getArbitrageMatchingPreview({ ...arbitrageAssumptions.value, limit: 6 }),
+    ]);
+    arbitrageSummary.value = response?.summary || {};
+    arbitrageRows.value = Array.isArray(response?.items) ? response.items : [];
+    arbitrageAssumptionsState.value = response?.assumptions || {};
+    arbitrageMatchingRows.value = Array.isArray(matchingResponse?.items) ? matchingResponse.items : [];
+  } catch {
+    arbitrageSummary.value = {};
+    arbitrageRows.value = [];
+    arbitrageAssumptionsState.value = {};
+    arbitrageMatchingRows.value = [];
+  } finally {
+    arbitrageLoading.value = false;
+  }
+};
+
+const loadMarketplaceHealth = async () => {
+  try {
+    const response = await cardFlipApi.getMarketplacePlatformHealth({ listing_hours: 72 });
+    marketplaceHealthRows.value = Array.isArray(response?.items) ? response.items : [];
+  } catch {
+    marketplaceHealthRows.value = [];
+  }
+};
+
+const loadMarketplaceProviderStatus = async () => {
+  try {
+    const response = await cardFlipApi.getMarketplaceProviderStatus({ listing_hours: 72 });
+    marketplaceProviderRows.value = Array.isArray(response?.items) ? response.items : [];
+  } catch {
+    marketplaceProviderRows.value = [];
+  }
+};
+
+const loadMarketplaceShadow = async () => {
+  try {
+    const [status, intents, runs] = await Promise.all([
+      cardFlipApi.getMarketplaceShadowStatus(),
+      cardFlipApi.listMarketplaceShadowIntents({ limit: 6 }),
+      cardFlipApi.listMarketplaceShadowRuns({ limit: 6 }),
+    ]);
+    marketplaceShadowStatus.value = status || {};
+    marketplaceShadowIntents.value = Array.isArray(intents?.items) ? intents.items : [];
+    marketplaceShadowRuns.value = Array.isArray(runs?.items) ? runs.items : [];
+  } catch {
+    marketplaceShadowStatus.value = {};
+    marketplaceShadowIntents.value = [];
+    marketplaceShadowRuns.value = [];
+  }
+};
+
+const loadTaobaoProviderStatus = async () => {
+  try {
+    taobaoProviderStatus.value = await cardFlipApi.getTaobaoProviderStatus();
+  } catch {
+    taobaoProviderStatus.value = {};
+  }
+};
+
+const loadPinduoduoProviderStatus = async () => {
+  try {
+    pinduoduoProviderStatus.value = await cardFlipApi.getPinduoduoProviderStatus();
+    if (!pinduoduoSnapshotBridgeUrl.value && pinduoduoProviderStatus.value?.snapshot_provider_url_configured) {
+      pinduoduoSnapshotBridgeUrl.value = pinduoduoProviderStatus.value.snapshot_provider_url || "";
+    }
+  } catch {
+    pinduoduoProviderStatus.value = {};
+  }
+};
+
+const loadJdProviderStatus = async () => {
+  try {
+    jdProviderStatus.value = await cardFlipApi.getJdProviderStatus();
+    if (!jdSnapshotBridgeUrl.value && jdProviderStatus.value?.snapshot_provider_url_configured) {
+      jdSnapshotBridgeUrl.value = jdProviderStatus.value.snapshot_provider_url || "";
+    }
+  } catch {
+    jdProviderStatus.value = {};
+  }
+};
+
+const refreshMarketplaceLayer = async () => {
+  await Promise.all([
+    loadMarketplaceHealth(),
+    loadMarketplaceProviderStatus(),
+    loadMarketplaceShadow(),
+    loadTaobaoProviderStatus(),
+    loadPinduoduoProviderStatus(),
+    loadJdProviderStatus(),
+    loadArbitrageData(),
+  ]);
+};
+
+const openMarketplaceDrawer = async () => {
+  showMarketplaceDrawer.value = true;
+  await refreshMarketplaceLayer();
+};
+
+const importMarketplaceOffers = async () => {
+  marketplaceImportLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const parsed = JSON.parse(marketplaceOffersJson.value || "[]");
+    if (!Array.isArray(parsed) || !parsed.length)
+      throw new Error("Paste a non-empty JSON array of marketplace offers.");
+
+    const normalized = parsed.map((item, index) => ({
+      platform: String(item?.platform || marketplacePlatform.value),
+      offer_id: item?.offer_id ? String(item.offer_id) : `${marketplacePlatform.value}-${Date.now()}-${index}`,
+      seller_id: item?.seller_id ? String(item.seller_id) : null,
+      title: String(item?.title || "").trim(),
+      canonical_key: String(item?.canonical_key || item?.title || "").trim(),
+      item_type: String(item?.item_type || "generic"),
+      list_price: Number(item?.list_price || 0),
+      shipping_cost: Number(item?.shipping_cost || 0),
+      fee_rate: Number(item?.fee_rate || 0),
+      currency: String(item?.currency || "CNY"),
+      listed_at: String(item?.listed_at || new Date().toISOString()),
+      status: String(item?.status || "open"),
+      listing_url: String(item?.listing_url || ""),
+      raw: item?.raw && typeof item.raw === "object" ? item.raw : item,
+    }));
+
+    if (normalized.some(item => !item.title || !Number.isFinite(item.list_price) || item.list_price <= 0))
+      throw new Error("Each marketplace offer must include a title and positive list_price.");
+
+    const result = await cardFlipApi.ingestMarketplaceOffers(normalized);
+    marketplaceImportResult.value = `Imported ${formatInteger(result?.inserted || 0)} marketplace offers.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "Marketplace import failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    marketplaceImportLoading.value = false;
+  }
+};
+
+const importTaobaoSnapshot = async () => {
+  taobaoSnapshotLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const parsed = JSON.parse(taobaoSnapshotJson.value || "{}");
+    const result = await cardFlipApi.ingestTaobaoSnapshot(parsed);
+    marketplaceImportResult.value = `Imported ${formatInteger(result?.inserted || 0)} taobao offers from snapshot.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "Taobao snapshot import failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    taobaoSnapshotLoading.value = false;
+  }
+};
+
+const syncTaobaoOnce = async () => {
+  taobaoSyncLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const result = await cardFlipApi.syncTaobaoOnce();
+    marketplaceImportResult.value = `Synced ${formatInteger(result?.inserted || 0)} taobao offers via TOP gateway.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "Taobao sync failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    taobaoSyncLoading.value = false;
+  }
+};
+
+const importPinduoduoSnapshot = async () => {
+  pinduoduoSnapshotLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const parsed = JSON.parse(pinduoduoSnapshotJson.value || "{}");
+    const result = await cardFlipApi.ingestPinduoduoSnapshot(parsed);
+    marketplaceImportResult.value = `Imported ${formatInteger(result?.inserted || 0)} pinduoduo offers from snapshot.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "Pinduoduo snapshot import failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    pinduoduoSnapshotLoading.value = false;
+  }
+};
+
+const syncPinduoduoOnce = async () => {
+  pinduoduoSyncLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const result = await cardFlipApi.syncPinduoduoOnce({
+      snapshot_url: pinduoduoSnapshotBridgeUrl.value || undefined,
+    });
+    marketplaceImportResult.value = `Synced ${formatInteger(result?.inserted || 0)} pinduoduo offers via open API.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "Pinduoduo sync failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    pinduoduoSyncLoading.value = false;
+  }
+};
+
+const importJdSnapshot = async () => {
+  jdSnapshotLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const parsed = JSON.parse(jdSnapshotJson.value || "{}");
+    const result = await cardFlipApi.ingestJdSnapshot(parsed);
+    marketplaceImportResult.value = `Imported ${formatInteger(result?.inserted || 0)} jd offers from snapshot.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "JD snapshot import failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    jdSnapshotLoading.value = false;
+  }
+};
+
+const syncJdOnce = async () => {
+  jdSyncLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const result = await cardFlipApi.syncJdOnce({
+      snapshot_url: jdSnapshotBridgeUrl.value || undefined,
+    });
+    marketplaceImportResult.value = `Synced ${formatInteger(result?.inserted || 0)} jd offers via open API.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "JD sync failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    jdSyncLoading.value = false;
+  }
+};
+
+const backfillMarketplaceOffers = async () => {
+  marketplaceBackfillLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const result = await cardFlipApi.backfillMarketplaceOffers({
+      sources: "xianyu_monitor",
+      limit: 500,
+      listing_hours: 24 * 30,
+    });
+    marketplaceImportResult.value = `Backfilled ${formatInteger(result?.inserted || 0)} xianyu offers into marketplace_offers.`;
+    await Promise.all([refreshMarketplaceLayer(), loadReportData()]);
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "Marketplace backfill failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    marketplaceBackfillLoading.value = false;
+  }
+};
+
+const runMarketplaceShadowOnce = async () => {
+  marketplaceShadowLoading.value = true;
+  marketplaceImportResult.value = "";
+  try {
+    const result = await cardFlipApi.runMarketplaceShadowOnce();
+    marketplaceImportResult.value = `Shadow run accepted ${formatInteger(result?.accepted_count || 0)} of ${formatInteger(result?.candidate_count || 0)} candidates.`;
+    await refreshMarketplaceLayer();
+    message.success(marketplaceImportResult.value);
+  } catch (requestError) {
+    const text = requestError instanceof Error ? requestError.message : "Marketplace shadow run failed.";
+    marketplaceImportResult.value = text;
+    message.error(text);
+  } finally {
+    marketplaceShadowLoading.value = false;
+  }
+};
+
+const handleRefresh = async () => {
+  await Promise.all([
+    loadOverview(),
+    loadPriceHistory(),
+    loadReportData(),
+    loadArbitrageData(),
+  ]);
+};
+
+const openTradingWorkspace = () => {
+  router.push("/admin/card-flip-ops");
+};
+
+const openServiceDrawer = (serviceId) => {
+  selectedServiceId.value = serviceId;
+  showServiceDrawer.value = true;
+};
+
+const runDashboardAction = async (action) => {
+  if (!canOperate.value) {
+    message.warning("Current account cannot operate services.");
+    return;
+  }
+
+  actionLoading.value = action;
+  try {
+    if (action === "automation-start")
+      await cardFlipApi.startAutomation();
+    else if (action === "automation-stop")
+      await cardFlipApi.stopAutomation();
+    else if (action === "automation-run")
+      await cardFlipApi.runAutomationOnce();
+    else if (action === "monitor-start")
+      await cardFlipApi.startMonitor();
+    else if (action === "monitor-stop")
+      await cardFlipApi.stopMonitor();
+    else if (action === "monitor-run")
+      await cardFlipApi.runMonitorOnce();
+
+    await handleRefresh();
+    message.success("Dashboard service action completed.");
+  } catch (requestError) {
+    message.error(requestError instanceof Error ? requestError.message : "Dashboard service action failed.");
+  } finally {
+    actionLoading.value = "";
+  }
+};
+
+watch(activeRange, () => {
+  void loadPriceHistory();
+});
+
+onMounted(() => {
+  void loadPriceHistory();
+  void loadReportData();
+  void loadArbitrageData();
+  void loadMarketplaceHealth();
+  void loadMarketplaceProviderStatus();
+  void loadMarketplaceShadow();
+  void loadTaobaoProviderStatus();
+  void loadPinduoduoProviderStatus();
+  void loadJdProviderStatus();
+});
+
+function formatMoney(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function formatInteger(value) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function formatPercent(value) {
+  return `${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(Number(value || 0) * 100)}%`;
+}
+
+function formatNumber(value, digits = 1) {
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(Number(value || 0));
+}
+
+function formatAxisDate(value) {
+  const parsed = new Date(String(value || ""));
+  if (Number.isNaN(parsed.getTime()))
+    return "Now";
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function compactTime(value) {
+  const text = String(value || "").trim();
+  if (!text)
+    return "--";
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime()))
+    return text;
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function compactHealth(value) {
+  if (!value)
+    return "None";
+  if (typeof value === "string")
+    return value;
+  if (typeof value === "object") {
+    const first = Object.entries(value).find(([_key, item]) => item !== null && item !== undefined);
+    if (!first)
+      return "None";
+    return `${first[0]}:${first[1]}`;
+  }
+  return String(value);
+}
 </script>
 
 <style scoped lang="scss">
 .dashboard-page {
   display: grid;
-  gap: 24px;
+  gap: 28px;
 }
 
-.header-row,
-.stats-grid,
-.analytics-grid,
-.middle-grid,
-.bottom-grid {
-  display: grid;
+.hero-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
   gap: 20px;
 }
 
-.header-row {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-}
-
-.header-row h1 {
+.hero-row h1 {
   color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 30px;
+  font-size: 40px;
   font-weight: 800;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.05em;
 }
 
-.header-row p {
-  margin-top: 4px;
+.hero-row p {
+  margin-top: 8px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 17px;
 }
 
-.header-actions {
+.hero-actions {
   display: flex;
-  gap: 10px;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.header-chip {
-  padding: 10px 16px;
-  border: 1px solid var(--surface-line);
+.hero-chip {
+  height: 40px;
+  padding: 0 16px;
   border-radius: var(--radius-full);
-  background: var(--surface-soft);
+  border: 1px solid var(--surface-line);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.header-chip.active {
+.hero-chip.active {
   color: #fff;
-  background: var(--primary-color);
-  border-color: var(--primary-color);
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.stats-grid {
+.metrics-grid {
+  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
 }
 
-.analytics-grid {
-  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
-}
-
-.middle-grid {
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr);
-}
-
-.hero-card,
-.stat-card,
+.metric-card,
 .panel,
-.insight-card,
-.table-panel {
+.service-row-card,
+.network-panel,
+.services-toolbar {
   border-radius: var(--radius-lg);
   background: var(--surface-card);
   border: 1px solid var(--surface-line);
   box-shadow: var(--shadow-medium);
 }
 
-.hero-card,
-.stat-card,
+.metric-card,
 .panel,
-.insight-card,
-.table-panel {
+.services-toolbar {
   padding: 24px;
 }
 
-.card-head,
-.panel-head,
-.stat-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 22px;
-}
-
-.card-label,
-.section-label,
-.stat-label {
+.metric-card p {
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-.card-value,
-.stat-value {
-  margin: 14px 0 8px;
+.metric-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.metric-value {
   color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 42px;
+  font-size: 36px;
   font-weight: 800;
   letter-spacing: -0.05em;
 }
 
-.card-chip,
-.stat-chip,
-.efficiency-badge {
-  padding: 6px 10px;
-  border-radius: var(--radius-full);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+.metric-value.accent {
+  color: #5eb2ff;
+}
+
+.metric-trailing {
+  color: rgba(171, 199, 255, 0.55);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 20px;
+}
+
+.arbitrage-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.arbitrage-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.arbitrage-stat,
+.arbitrage-row {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.arbitrage-stat {
+  padding: 16px 18px;
+}
+
+.arbitrage-stat span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.card-chip.positive,
-.stat-chip.positive {
-  color: var(--success-color);
-  background: rgba(22, 163, 74, 0.08);
+.arbitrage-stat strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 800;
 }
 
-.card-chip.warning,
-.stat-chip.warm,
-.efficiency-badge {
-  color: var(--warning-color);
-  background: rgba(217, 119, 6, 0.08);
+.arbitrage-list {
+  display: grid;
+  gap: 14px;
 }
 
-.card-chip.neutral,
-.stat-chip.neutral {
-  color: var(--text-secondary);
-  background: var(--surface-soft);
+.arbitrage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 1fr);
+  gap: 20px;
+  padding: 18px 20px;
 }
 
-.mini-progress {
-  margin-top: 22px;
+.arbitrage-main h4 {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
 }
 
-.mini-progress-meta,
-.efficiency-meta {
+.arbitrage-main p {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.arbitrage-side {
+  display: grid;
+  gap: 10px;
+}
+
+.arbitrage-price-line {
   display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 8px;
   color: var(--text-secondary);
   font-size: 13px;
 }
 
-.mini-progress-meta strong,
-.efficiency-meta strong,
-.metric-row strong,
-.legend-row strong {
+.arbitrage-price-line strong {
   color: var(--text-primary);
-  font-weight: 800;
+  font-size: 14px;
 }
 
-.progress-track,
-.mini-progress-track {
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--surface-soft);
-  overflow: hidden;
+.arbitrage-price-line.emphasis strong {
+  color: #5eb2ff;
 }
 
-.progress-track.subtle {
-  height: 6px;
-}
-
-.progress-fill,
-.mini-progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #306bf3, #0051d5);
-}
-
-.metric-foot {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.toggle-shell {
-  display: flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 12px;
-  background: var(--surface-soft);
-}
-
-.toggle-button {
-  padding: 7px 12px;
-  border-radius: 10px;
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.toggle-button.active {
-  color: var(--primary-color);
-  background: #fff;
-  box-shadow: var(--shadow-light);
-}
-
-.bar-chart {
-  display: flex;
-  align-items: end;
-  gap: 10px;
-  height: 260px;
-}
-
-.bar-column {
+.arbitrage-empty {
   display: grid;
-  flex: 1;
-  justify-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
 }
 
-.bar-box {
+.arbitrage-empty strong {
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.arbitrage-empty span {
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+.panel-head {
   display: flex;
-  align-items: end;
-  width: 100%;
-  height: 220px;
-  border-radius: 12px 12px 6px 6px;
-  background: var(--surface-soft);
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.panel-head h3 {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.panel-head p {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.panel-tag {
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  color: #5eb2ff;
+  background: rgba(0, 113, 227, 0.12);
+  border: 1px solid rgba(0, 113, 227, 0.22);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chart-shell {
+  position: relative;
+  height: 280px;
+  margin-top: 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
 }
 
-.bar-fill {
-  width: 100%;
-  border-radius: 12px 12px 0 0;
-  background: linear-gradient(180deg, #4f7df6, #0051d5);
+.chart-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 72px 56px;
 }
 
-.bar-column span {
+.chart-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   color: var(--text-muted);
+  font-size: 14px;
+}
+
+.chart-corner {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  color: rgba(245, 247, 251, 0.55);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chart-axis {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(245, 247, 251, 0.22);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.panel h2,
-.card-head h2,
-.panel-head h2 {
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.panel p,
-.card-head p,
-.panel-head p,
-.insight-card p {
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
 .donut-wrap {
   display: flex;
   justify-content: center;
-  margin-bottom: 24px;
+  margin: 28px 0;
 }
 
 .donut-chart {
-  width: 176px;
-  height: 176px;
+  width: 180px;
+  height: 180px;
   padding: 16px;
   border-radius: 50%;
   display: flex;
@@ -848,17 +1673,16 @@ const formatNumber = (value, digits = 2) =>
 .donut-hole {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
-  background: var(--surface-card);
   display: grid;
   place-items: center;
   text-align: center;
+  border-radius: 50%;
+  background: #161719;
 }
 
 .donut-hole strong {
   color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 800;
 }
 
@@ -870,32 +1694,18 @@ const formatNumber = (value, digits = 2) =>
   text-transform: uppercase;
 }
 
-.legend-list,
-.efficiency-list,
-.metric-list,
-.service-list,
-.alert-list {
+.legend-list {
   display: grid;
   gap: 12px;
 }
 
-.legend-row,
-.metric-row,
-.service-row,
-.alert-row {
-  padding: 14px 16px;
-  border: 1px solid var(--surface-line);
-  border-radius: 12px;
-  background: var(--surface-soft);
-}
-
-.legend-row,
-.metric-row {
+.legend-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .legend-left {
@@ -905,219 +1715,496 @@ const formatNumber = (value, digits = 2) =>
 }
 
 .legend-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  flex: 0 0 auto;
 }
 
-.service-row,
-.alert-row {
+.legend-row strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.services-section {
   display: grid;
-  gap: 8px;
+  gap: 20px;
 }
 
-.service-side,
-.alert-top {
+.services-toolbar {
+  position: sticky;
+  top: 80px;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
+  background: rgba(27, 27, 27, 0.92);
+  backdrop-filter: blur(16px);
 }
 
-.service-row strong,
-.alert-row strong {
+.services-title {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.services-title h2 {
   color: var(--text-primary);
-  font-weight: 800;
+  font-size: 28px;
+  font-weight: 700;
 }
 
-.service-note,
-.service-time,
-.alert-row p {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.insight-card {
-  color: #fff;
-  background: linear-gradient(135deg, #1f5fe2, #0051d5);
-  border-color: transparent;
-}
-
-.insight-card h2,
-.insight-card p {
-  color: #fff;
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-.activity-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.activity-table th,
-.activity-table td {
-  padding: 16px 8px;
-  text-align: left;
-}
-
-.activity-table thead th {
+.services-title span {
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--surface-line);
+  font-size: 17px;
+  margin-bottom: 2px;
 }
 
-.activity-table tbody tr + tr td {
-  border-top: 1px solid rgba(195, 198, 215, 0.35);
+.services-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
-.activity-table tbody td {
-  color: var(--text-secondary);
-  font-size: 14px;
+.segmented-control {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.segmented-button {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 12px;
   font-weight: 600;
 }
 
-.status-pill {
-  display: inline-flex;
+.segmented-button.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sort-shell {
+  display: flex;
   align-items: center;
-  padding: 6px 10px;
+  gap: 10px;
+  min-width: 200px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.sort-shell :deep(.n-base-selection) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.sort-shell :deep(.n-base-selection-label) {
+  color: rgba(245, 247, 251, 0.82) !important;
+}
+
+.sort-shell :deep(.n-base-selection-placeholder) {
+  color: rgba(245, 247, 251, 0.42) !important;
+}
+
+.service-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.service-row-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  overflow: hidden;
+}
+
+.service-main {
+  padding: 28px;
+  border-right: 1px solid var(--surface-line);
+}
+
+.service-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.service-title-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.service-title-line h3 {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.service-badge {
+  padding: 4px 8px;
   border-radius: var(--radius-full);
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.status-pill.positive {
+.service-badge.positive {
   color: var(--success-color);
-  background: rgba(22, 163, 74, 0.08);
+  background: rgba(52, 211, 153, 0.12);
 }
 
-.status-pill.warning {
+.service-badge.warning {
   color: var(--warning-color);
-  background: rgba(217, 119, 6, 0.08);
+  background: rgba(245, 158, 11, 0.12);
 }
 
-.status-pill.danger {
-  color: var(--error-color);
-  background: rgba(220, 38, 38, 0.08);
+.service-badge.neutral {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.link-button {
-  color: var(--primary-color);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.matrix-labels {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+.service-status-line {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 
-.matrix-labels span {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.service-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
-.matrix-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
+.service-dot.positive {
+  background: var(--success-color);
 }
 
-.matrix-cell {
-  height: 32px;
-  border-radius: 8px;
-  background: rgba(0, 81, 213, 0.06);
+.service-dot.warning {
+  background: var(--warning-color);
 }
 
-.matrix-cell.active {
-  background: linear-gradient(180deg, rgba(79, 125, 246, 0.65), rgba(0, 81, 213, 0.95));
+.service-dot.neutral {
+  background: rgba(255, 255, 255, 0.2);
 }
 
-.matrix-stats {
+.service-round-button {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.service-mini-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 20px;
+  margin-top: 24px;
 }
 
-.matrix-stat span {
-  color: var(--text-muted);
+.mini-metric {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mini-metric p {
+  color: rgba(245, 247, 251, 0.3);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.matrix-stat strong {
+.mini-metric strong {
   display: block;
-  margin-top: 6px;
+  margin-top: 10px;
   color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.service-placeholder-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  margin-top: 24px;
+  border-radius: 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  color: rgba(245, 247, 251, 0.24);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.service-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.side-icon-shell {
+  width: 60px;
+  height: 60px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: rgba(245, 247, 251, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.side-label {
+  color: rgba(245, 247, 251, 0.58);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.side-value {
+  color: rgba(245, 247, 251, 0.22);
+  font-size: 12px;
+}
+
+.side-link {
+  color: #5eb2ff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.network-panel {
+  position: relative;
+  overflow: hidden;
+  min-height: 380px;
+  padding: 32px;
+  background: linear-gradient(180deg, rgba(8, 9, 11, 0.88), rgba(10, 11, 14, 0.98));
+}
+
+.network-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0.34;
+  background:
+    radial-gradient(circle at 30% 60%, rgba(0, 113, 227, 0.22), transparent 35%),
+    repeating-linear-gradient(
+      165deg,
+      transparent 0 18px,
+      rgba(0, 113, 227, 0.09) 18px 20px,
+      transparent 20px 42px
+    );
+  transform: scale(1.05);
+}
+
+.network-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.network-content h2 {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.network-content p {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.network-stats {
+  display: flex;
+  gap: 32px;
+  margin-top: 220px;
+}
+
+.network-stat {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.network-stat::before {
+  content: "";
+  width: 4px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #0071e3, #34d399);
+}
+
+.network-stat span {
+  display: block;
+  color: rgba(245, 247, 251, 0.36);
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.network-stat strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.drawer-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.drawer-hero {
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.drawer-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.drawer-status-dot.positive {
+  background: var(--success-color);
+}
+
+.drawer-status-dot.warning {
+  background: var(--warning-color);
+}
+
+.drawer-status-dot.neutral {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.drawer-hero p {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.drawer-list {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.drawer-row span {
+  color: var(--text-secondary);
+}
+
+.drawer-row strong {
+  color: var(--text-primary);
+}
+
+.drawer-actions {
+  display: flex;
+  gap: 10px;
 }
 
 @media (max-width: 1200px) {
-  .header-row,
-  .stats-grid,
-  .analytics-grid,
-  .middle-grid,
-  .bottom-grid {
+  .metrics-grid,
+  .analytics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .service-row-card {
+    grid-template-columns: 1fr;
+  }
+
+  .service-main {
+    border-right: none;
+    border-bottom: 1px solid var(--surface-line);
   }
 }
 
-@media (max-width: 768px) {
-  .header-row {
+@media (max-width: 900px) {
+  .hero-row,
+  .services-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .arbitrage-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .arbitrage-row {
     grid-template-columns: 1fr;
   }
 
-  .hero-card,
-  .stat-card,
-  .panel,
-  .insight-card,
-  .table-panel {
-    padding: 20px;
-  }
-
-  .header-actions {
-    flex-wrap: wrap;
-  }
-
-  .hero-value,
-  .card-value,
-  .stat-value {
-    font-size: 36px;
-  }
-
-  .bar-chart {
-    gap: 8px;
-  }
-
-  .summary-grid,
-  .matrix-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .service-mini-grid {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 640px) {
-  .summary-grid,
-  .matrix-stats {
+  .hero-row h1 {
+    font-size: 32px;
+  }
+
+  .metrics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .services-title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .network-stats {
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 180px;
   }
 }
 </style>

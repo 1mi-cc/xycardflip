@@ -137,7 +137,11 @@ def _allocate_source_scan_budget(
 async def scan_open_listings(limit: int = 50) -> dict[str, Any]:
     requested_limit = max(1, min(500, int(limit)))
     candidate_limit = min(500, max(requested_limit, requested_limit * 3))
-    raw_open_listings = repo.get_open_listings(limit=candidate_limit, include_noise_filtered=True)
+    raw_open_listings = repo.get_open_listings(
+        limit=candidate_limit,
+        include_noise_filtered=True,
+        include_simulation=False,
+    )
     try:
         dashboard_metrics = repo.get_dashboard_metrics()
     except Exception:

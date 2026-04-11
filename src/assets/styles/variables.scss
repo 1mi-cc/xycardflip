@@ -1,46 +1,46 @@
 :root {
-  --primary-color: #0051d5;
-  --primary-color-hover: #306bf3;
-  --primary-color-light: rgba(0, 81, 213, 0.08);
+  --primary-color: #0071e3;
+  --primary-color-hover: #2890ff;
+  --primary-color-light: rgba(0, 113, 227, 0.12);
 
-  --secondary-color: #495c94;
-  --secondary-light: #dbe1ff;
-  --tertiary-color: #c64f0a;
-  --success-color: #16a34a;
-  --warning-color: #d97706;
-  --error-color: #dc2626;
-  --info-color: #737686;
+  --secondary-color: #a7b0c2;
+  --secondary-light: #d7e2ff;
+  --tertiary-color: #f59e0b;
+  --success-color: #34d399;
+  --warning-color: #f59e0b;
+  --error-color: #fb7185;
+  --info-color: #8b919f;
 
-  --text-primary: #191b24;
-  --text-secondary: #434655;
-  --text-muted: #737686;
-  --text-disabled: #a1a4b3;
+  --text-primary: #f5f7fb;
+  --text-secondary: rgba(245, 247, 251, 0.74);
+  --text-muted: rgba(245, 247, 251, 0.42);
+  --text-disabled: rgba(245, 247, 251, 0.24);
 
-  --bg-primary: #faf8ff;
-  --bg-secondary: #f3f2ff;
-  --bg-tertiary: #ffffff;
-  --surface-card: #ffffff;
-  --surface-soft: #f3f2ff;
-  --surface-soft-2: #ededf9;
-  --surface-line: #e2e1ee;
+  --bg-primary: #131313;
+  --bg-secondary: #0f1012;
+  --bg-tertiary: #17181c;
+  --surface-card: #1b1b1b;
+  --surface-soft: #232427;
+  --surface-soft-2: #2b2d33;
+  --surface-line: rgba(255, 255, 255, 0.08);
 
-  --sidebar-bg: #ffffff;
-  --sidebar-text: #5d6476;
-  --sidebar-active-bg: #edf3ff;
-  --sidebar-active-text: #0051d5;
-  --header-bg: rgba(255, 255, 255, 0.78);
+  --sidebar-bg: #0d0e11;
+  --sidebar-text: rgba(245, 247, 251, 0.42);
+  --sidebar-active-bg: rgba(255, 255, 255, 0.1);
+  --sidebar-active-text: #ffffff;
+  --header-bg: rgba(0, 0, 0, 0.78);
 
-  --border-light: #e2e1ee;
-  --border-medium: #c3c6d7;
+  --border-light: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.14);
 
-  --shadow-light: 0 12px 32px rgba(23, 28, 31, 0.04);
-  --shadow-medium: 0 12px 32px rgba(23, 28, 31, 0.06);
-  --shadow-heavy: 0 18px 40px rgba(23, 28, 31, 0.08);
+  --shadow-light: 0 12px 32px rgba(0, 0, 0, 0.18);
+  --shadow-medium: 0 20px 40px rgba(0, 0, 0, 0.24);
+  --shadow-heavy: 0 28px 56px rgba(0, 0, 0, 0.32);
 
-  --radius-sm: 6px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
   --radius-full: 999px;
 
   --font-display: "Manrope", "PingFang SC", "Microsoft YaHei", sans-serif;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -10,10 +11,12 @@ from typing import Any
 from .config import settings
 from .database import get_conn
 from .database import record_batch_write_status
-from .schemas import FeatureData, ListingIn, SaleIn, ValuationOut
+from .schemas import FeatureData, ListingIn, MarketplaceOfferIn, SaleIn, ValuationOut
 from .services.listing_normalizer import ListingNormalization
 from .services.listing_normalizer import TRADABLE_ITEM_TYPES
 from .services.listing_normalizer import normalize_listing
+from .services.marketplace_normalizer import explain_marketplace_match
+from .services.marketplace_normalizer import normalize_marketplace_canonical_key
 
 
 def _normalize_optional_id(raw: str | None) -> str | None:
@@ -66,6 +69,13 @@ def _load_existing_pairs(
 def _normalize_text_key(raw: str | None) -> str:
     text = str(raw or "").strip().lower()
     return " ".join(text.split())
+
+
+def _normalize_marketplace_platform(raw: str | None) -> str:
+    text = _normalize_text_key(raw)
+    if text in {"xianyu_monitor", "market_monitor", "goofish"}:
+        return "xianyu"
+    return text
 
 
 def _normalize_price_key(raw: float | int | str | None) -> float:
@@ -402,6 +412,939 @@ def insert_listings(rows: list[ListingIn]) -> int:
     return len(values)
 
 
+def _normalize_marketplace_canonical_key(raw_key: str | None, title: str) -> str:
+    explicit = normalize_marketplace_canonical_key(raw_key=raw_key, title=title)
+    if explicit:
+        return explicit[:160]
+    return normalize_marketplace_canonical_key(title=title)[:160]
+
+
+def insert_marketplace_offers(rows: list[MarketplaceOfferIn]) -> int:
+    sql = """
+    INSERT INTO marketplace_offers(
+        platform, offer_id, seller_id, title, canonical_key, item_type,
+        list_price, shipping_cost, fee_rate, currency, listed_at, status, listing_url, raw_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(platform, offer_id) DO UPDATE SET
+        seller_id=excluded.seller_id,
+        title=excluded.title,
+        canonical_key=excluded.canonical_key,
+        item_type=excluded.item_type,
+        list_price=excluded.list_price,
+        shipping_cost=excluded.shipping_cost,
+        fee_rate=excluded.fee_rate,
+        currency=excluded.currency,
+        listed_at=excluded.listed_at,
+        status=excluded.status,
+        listing_url=excluded.listing_url,
+        raw_json=excluded.raw_json,
+        updated_at=CURRENT_TIMESTAMP
+    """
+    values: list[tuple[Any, ...]] = []
+    for row in rows:
+        platform = _normalize_marketplace_platform(row.platform)
+        if not platform:
+            continue
+        offer_id = _normalize_optional_id(row.offer_id)
+        if not offer_id:
+            offer_id = f"{platform}:{_normalize_marketplace_canonical_key(row.canonical_key, row.title)}:{_normalize_price_key(row.list_price)}"
+        values.append(
+            (
+                platform,
+                offer_id,
+                _normalize_optional_id(row.seller_id),
+                row.title.strip(),
+                _normalize_marketplace_canonical_key(row.canonical_key, row.title),
+                _normalize_text_key(row.item_type) or "generic",
+                float(row.list_price),
+                float(row.shipping_cost),
+                float(row.fee_rate),
+                str(row.currency or "CNY").strip().upper() or "CNY",
+                row.listed_at.isoformat(),
+                str(row.status or "open").strip() or "open",
+                str(row.listing_url or "").strip(),
+                json.dumps(row.raw, ensure_ascii=True),
+            )
+        )
+    if not values:
+        return 0
+    with get_conn() as conn:
+        conn.executemany(sql, values)
+    return len(values)
+
+
+def list_marketplace_offers(
+    *,
+    platform: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[sqlite3.Row]:
+    sql = """
+    SELECT *
+    FROM marketplace_offers
+    """
+    where: list[str] = []
+    params: list[Any] = []
+    if platform:
+        where.append("platform = ?")
+        params.append(_normalize_marketplace_platform(platform))
+    if status:
+        where.append("status = ?")
+        params.append(str(status).strip())
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY listed_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    with get_conn() as conn:
+        return conn.execute(sql, tuple(params)).fetchall()
+
+
+def backfill_marketplace_offers_from_listings(
+    *,
+    sources: tuple[str, ...] = ("xianyu_monitor",),
+    limit: int = 500,
+    listing_hours: int = 24 * 30,
+) -> int:
+    source_values = [str(item or "").strip() for item in sources if str(item or "").strip()]
+    if not source_values:
+        return 0
+    listed_after = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(listing_hours)))).isoformat()
+    placeholders = ",".join("?" for _ in source_values)
+    sql = f"""
+    SELECT source, listing_id, seller_id, title, normalized_key, item_type, list_price, listed_at, status, raw_json
+    FROM listings_raw
+    WHERE status = 'open'
+      AND COALESCE(source, '') IN ({placeholders})
+      AND listed_at >= ?
+    ORDER BY listed_at DESC
+    LIMIT ?
+    """
+    params: list[Any] = [*source_values, listed_after, max(1, int(limit))]
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    payload = [
+        MarketplaceOfferIn(
+            platform=_normalize_marketplace_platform(row["source"]),
+            offer_id=_normalize_optional_id(row["listing_id"]),
+            seller_id=_normalize_optional_id(row["seller_id"]),
+            title=str(row["title"] or "").strip(),
+            canonical_key=str(row["normalized_key"] or "").strip(),
+            item_type=str(row["item_type"] or "generic").strip() or "generic",
+            list_price=float(row["list_price"] or 0.0),
+            shipping_cost=0.0,
+            fee_rate=0.0,
+            currency="CNY",
+            listed_at=_parse_event_timestamp(str(row["listed_at"] or "")).astimezone(timezone.utc),
+            status="open",
+            listing_url="",
+            raw=_parse_json_object(row["raw_json"]),
+        )
+        for row in rows
+    ]
+    return insert_marketplace_offers(payload)
+
+
+def get_marketplace_provider_status(
+    *,
+    listing_hours: int = 24 * 30,
+    providers: tuple[str, ...] = ("xianyu", "taobao", "jd", "pinduoduo"),
+) -> list[dict[str, Any]]:
+    normalized_providers = [_normalize_marketplace_platform(item) for item in providers if str(item or "").strip()]
+    listed_after = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(listing_hours)))).isoformat()
+    with get_conn() as conn:
+        offer_rows = conn.execute(
+            """
+            SELECT platform, COUNT(*) AS c, MAX(listed_at) AS latest_listed_at
+            FROM marketplace_offers
+            WHERE status = 'open' AND listed_at >= ?
+            GROUP BY platform
+            """,
+            (listed_after,),
+        ).fetchall()
+        legacy_rows = conn.execute(
+            """
+            SELECT source, COUNT(*) AS c, MAX(listed_at) AS latest_listed_at
+            FROM listings_raw
+            WHERE status = 'open'
+              AND COALESCE(source, '') != 'simulation_seed'
+              AND listed_at >= ?
+            GROUP BY source
+            """,
+            (listed_after,),
+        ).fetchall()
+    offer_map = {
+        str(row["platform"] or "").strip().lower(): {
+            "offer_count": int(row["c"] or 0),
+            "latest_offer_at": str(row["latest_listed_at"] or ""),
+        }
+        for row in offer_rows
+    }
+    legacy_map: dict[str, dict[str, Any]] = {}
+    for row in legacy_rows:
+        provider = _normalize_marketplace_platform(row["source"])
+        bucket = legacy_map.setdefault(
+            provider,
+            {"legacy_open_listing_count": 0, "latest_legacy_at": ""},
+        )
+        bucket["legacy_open_listing_count"] += int(row["c"] or 0)
+        bucket["latest_legacy_at"] = max(
+            str(bucket["latest_legacy_at"] or ""),
+            str(row["latest_listed_at"] or ""),
+        )
+    items: list[dict[str, Any]] = []
+    for provider in normalized_providers:
+        offer_info = offer_map.get(provider, {})
+        legacy_info = legacy_map.get(provider, {})
+        items.append(
+            {
+                "provider": provider,
+                "offer_count": int(offer_info.get("offer_count") or 0),
+                "latest_offer_at": str(offer_info.get("latest_offer_at") or ""),
+                "legacy_open_listing_count": int(legacy_info.get("legacy_open_listing_count") or 0),
+                "latest_legacy_at": str(legacy_info.get("latest_legacy_at") or ""),
+                "backfill_ready": int(legacy_info.get("legacy_open_listing_count") or 0) > 0,
+            }
+        )
+    return items
+
+
+def create_marketplace_shadow_run(
+    *,
+    trigger_source: str,
+    status: str,
+    candidate_count: int,
+    accepted_count: int,
+    blocked_count: int,
+    error_count: int,
+    config: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO marketplace_shadow_runs(
+                trigger_source,
+                status,
+                candidate_count,
+                accepted_count,
+                blocked_count,
+                error_count,
+                config_json,
+                summary_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(trigger_source or "").strip() or "operator",
+                str(status or "").strip() or "completed",
+                max(0, int(candidate_count)),
+                max(0, int(accepted_count)),
+                max(0, int(blocked_count)),
+                max(0, int(error_count)),
+                json.dumps(config or {}, ensure_ascii=True),
+                json.dumps(summary or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM marketplace_shadow_runs WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_run(row)
+
+
+def update_marketplace_shadow_run(
+    run_id: int,
+    *,
+    status: str,
+    candidate_count: int,
+    accepted_count: int,
+    blocked_count: int,
+    error_count: int,
+    config: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE marketplace_shadow_runs
+            SET status = ?,
+                candidate_count = ?,
+                accepted_count = ?,
+                blocked_count = ?,
+                error_count = ?,
+                config_json = ?,
+                summary_json = ?
+            WHERE id = ?
+            """,
+            (
+                str(status or "").strip() or "completed",
+                max(0, int(candidate_count)),
+                max(0, int(accepted_count)),
+                max(0, int(blocked_count)),
+                max(0, int(error_count)),
+                json.dumps(config or {}, ensure_ascii=True),
+                json.dumps(summary or {}, ensure_ascii=True),
+                int(run_id),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM marketplace_shadow_runs WHERE id = ?",
+            (int(run_id),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_run(row)
+
+
+def create_marketplace_shadow_intent(
+    *,
+    run_id: int | None,
+    intent_key: str,
+    arbitrage_key: str,
+    reference_title: str,
+    buy_platform: str,
+    sell_platform: str,
+    buy_listing_id: str,
+    sell_listing_id: str,
+    platform_count: int,
+    listing_count: int,
+    estimated_net_profit: float,
+    estimated_roi: float,
+    confidence_score: float,
+    decision_status: str,
+    blocked_reason: str = "",
+    snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO marketplace_shadow_intents(
+                run_id,
+                intent_key,
+                arbitrage_key,
+                reference_title,
+                buy_platform,
+                sell_platform,
+                buy_listing_id,
+                sell_listing_id,
+                platform_count,
+                listing_count,
+                estimated_net_profit,
+                estimated_roi,
+                confidence_score,
+                decision_status,
+                blocked_reason,
+                snapshot_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(run_id) if run_id is not None else None,
+                str(intent_key or "").strip(),
+                str(arbitrage_key or "").strip(),
+                str(reference_title or "").strip(),
+                str(buy_platform or "").strip(),
+                str(sell_platform or "").strip(),
+                str(buy_listing_id or "").strip(),
+                str(sell_listing_id or "").strip(),
+                max(0, int(platform_count)),
+                max(0, int(listing_count)),
+                float(estimated_net_profit or 0.0),
+                float(estimated_roi or 0.0),
+                float(confidence_score or 0.0),
+                str(decision_status or "").strip() or "blocked",
+                str(blocked_reason or "").strip(),
+                json.dumps(snapshot or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM marketplace_shadow_intents WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_intent(row)
+
+
+def list_marketplace_shadow_runs(limit: int = 50) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_runs
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, int(limit)),),
+        ).fetchall()
+    return [_serialize_marketplace_shadow_run(row) for row in rows]
+
+
+def list_marketplace_shadow_intents(
+    *,
+    limit: int = 100,
+    decision_status: str | None = None,
+) -> list[dict[str, Any]]:
+    sql = """
+    SELECT *
+    FROM marketplace_shadow_intents
+    """
+    params: list[Any] = []
+    if decision_status:
+        sql += " WHERE decision_status = ?"
+        params.append(str(decision_status).strip())
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(max(1, int(limit)))
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    return [_serialize_marketplace_shadow_intent(row) for row in rows]
+
+
+def get_recent_marketplace_shadow_accept(
+    *,
+    intent_key: str,
+    cooldown_minutes: int,
+) -> dict[str, Any] | None:
+    normalized_key = str(intent_key or "").strip()
+    if not normalized_key:
+        return None
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max(1, int(cooldown_minutes)))
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_intents
+            WHERE intent_key = ?
+              AND decision_status = 'accepted'
+            ORDER BY id DESC
+            LIMIT 20
+            """,
+            (normalized_key,),
+        ).fetchall()
+    for row in rows:
+        if _parse_matching_sample_time(row["created_at"]) >= cutoff:
+            return _serialize_marketplace_shadow_intent(row)
+    return None
+
+
+def get_marketplace_shadow_status() -> dict[str, Any]:
+    runs = list_marketplace_shadow_runs(limit=1)
+    intents = list_marketplace_shadow_intents(limit=20)
+    accepted_recent = sum(1 for item in intents if str(item.get("decision_status") or "") == "accepted")
+    blocked_recent = sum(1 for item in intents if str(item.get("decision_status") or "") == "blocked")
+    return {
+        "last_run": runs[0] if runs else {},
+        "recent_intent_count": len(intents),
+        "recent_accepted_count": accepted_recent,
+        "recent_blocked_count": blocked_recent,
+    }
+
+
+def _serialize_marketplace_shadow_run(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    return {
+        "id": int(row["id"]),
+        "trigger_source": str(row["trigger_source"] or ""),
+        "status": str(row["status"] or ""),
+        "candidate_count": int(row["candidate_count"] or 0),
+        "accepted_count": int(row["accepted_count"] or 0),
+        "blocked_count": int(row["blocked_count"] or 0),
+        "error_count": int(row["error_count"] or 0),
+        "config": _parse_json_object(row["config_json"]),
+        "summary": _parse_json_object(row["summary_json"]),
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
+def _serialize_marketplace_shadow_intent(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    return {
+        "id": int(row["id"]),
+        "run_id": int(row["run_id"]) if row["run_id"] is not None else None,
+        "intent_key": str(row["intent_key"] or ""),
+        "arbitrage_key": str(row["arbitrage_key"] or ""),
+        "reference_title": str(row["reference_title"] or ""),
+        "buy_platform": str(row["buy_platform"] or ""),
+        "sell_platform": str(row["sell_platform"] or ""),
+        "buy_listing_id": str(row["buy_listing_id"] or ""),
+        "sell_listing_id": str(row["sell_listing_id"] or ""),
+        "platform_count": int(row["platform_count"] or 0),
+        "listing_count": int(row["listing_count"] or 0),
+        "estimated_net_profit": float(row["estimated_net_profit"] or 0.0),
+        "estimated_roi": float(row["estimated_roi"] or 0.0),
+        "confidence_score": float(row["confidence_score"] or 0.0),
+        "decision_status": str(row["decision_status"] or ""),
+        "blocked_reason": str(row["blocked_reason"] or ""),
+        "snapshot": _parse_json_object(row["snapshot_json"]),
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
+def create_matching_lab_sample(
+    *,
+    left_title: str,
+    right_title: str,
+    left_key: str = "",
+    right_key: str = "",
+    expected_verdict: str = "",
+    note: str = "",
+    result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO matching_lab_samples(
+                left_title, right_title, left_key, right_key, expected_verdict, note, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(left_title or "").strip(),
+                str(right_title or "").strip(),
+                str(left_key or "").strip(),
+                str(right_key or "").strip(),
+                str(expected_verdict or "").strip(),
+                str(note or "").strip(),
+                json.dumps(result or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM matching_lab_samples WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_matching_lab_sample_row(row) if row else {}
+
+
+def _serialize_matching_lab_sample_row(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    try:
+        result_json = json.loads(str(row["result_json"] or "{}"))
+    except json.JSONDecodeError:
+        result_json = {}
+    return {
+        "id": int(row["id"]),
+        "left_title": str(row["left_title"] or ""),
+        "right_title": str(row["right_title"] or ""),
+        "left_key": str(row["left_key"] or ""),
+        "right_key": str(row["right_key"] or ""),
+        "expected_verdict": str(row["expected_verdict"] or ""),
+        "note": str(row["note"] or ""),
+        "result": result_json,
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
+def list_matching_lab_samples(limit: int = 100) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM matching_lab_samples
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, int(limit)),),
+        ).fetchall()
+    return [_serialize_matching_lab_sample_row(row) for row in rows]
+
+
+def _parse_matching_sample_time(raw: Any) -> datetime:
+    text = str(raw or "").strip()
+    if not text:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    normalized = text.replace("Z", "+00:00")
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def build_matching_lab_report(
+    *,
+    days: int = 30,
+    limit: int = 2000,
+    accuracy_threshold: float = 0.8,
+    min_scored_samples: int = 10,
+) -> dict[str, Any]:
+    rows = list_matching_lab_samples(limit=max(1, int(limit)))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))
+    recent_rows = [
+        row
+        for row in rows
+        if _parse_matching_sample_time(row.get("created_at")) >= cutoff
+    ]
+
+    verdict_counts = {"same_group": 0, "close_match": 0, "different_group": 0}
+    expected_counts = {"same_group": 0, "close_match": 0, "different_group": 0}
+    scored_rows: list[dict[str, Any]] = []
+    mismatches: list[dict[str, Any]] = []
+
+    for row in recent_rows:
+        result = row.get("result") if isinstance(row.get("result"), dict) else {}
+        actual_verdict = str(result.get("verdict") or "").strip()
+        expected_verdict = str(row.get("expected_verdict") or "").strip()
+        if actual_verdict in verdict_counts:
+            verdict_counts[actual_verdict] += 1
+        if expected_verdict in expected_counts:
+            expected_counts[expected_verdict] += 1
+            scored_rows.append(row)
+            if actual_verdict != expected_verdict:
+                mismatches.append(
+                    {
+                        "id": row["id"],
+                        "left_title": row["left_title"],
+                        "right_title": row["right_title"],
+                        "expected_verdict": expected_verdict,
+                        "actual_verdict": actual_verdict,
+                        "note": row.get("note") or "",
+                        "created_at": row["created_at"],
+                    }
+                )
+
+    scored_count = len(scored_rows)
+    mismatch_count = len(mismatches)
+    correct_count = max(0, scored_count - mismatch_count)
+    accuracy = (correct_count / scored_count) if scored_count > 0 else 0.0
+    gate_ready = scored_count >= max(1, int(min_scored_samples))
+    gate_passed = gate_ready and accuracy >= float(accuracy_threshold)
+
+    distribution = [
+        {
+            "verdict": key,
+            "count": int(value),
+            "ratio": round((value / max(1, len(recent_rows))), 4),
+        }
+        for key, value in verdict_counts.items()
+    ]
+    expected_distribution = [
+        {
+            "verdict": key,
+            "count": int(value),
+            "ratio": round((value / max(1, scored_count)), 4) if scored_count else 0.0,
+        }
+        for key, value in expected_counts.items()
+    ]
+    mismatches.sort(key=lambda item: item["created_at"], reverse=True)
+    return {
+        "window_days": int(days),
+        "sample_limit": int(limit),
+        "summary": {
+            "total_samples": len(recent_rows),
+            "scored_samples": scored_count,
+            "correct_samples": correct_count,
+            "mismatch_samples": mismatch_count,
+            "accuracy": round(accuracy, 4),
+        },
+        "gate": {
+            "accuracy_threshold": float(accuracy_threshold),
+            "min_scored_samples": int(min_scored_samples),
+            "ready": gate_ready,
+            "passed": gate_passed,
+        },
+        "actual_distribution": distribution,
+        "expected_distribution": expected_distribution,
+        "mismatches": mismatches[:20],
+    }
+
+
+def _build_matching_sample_signature(
+    *,
+    left_title: str,
+    right_title: str,
+    left_key: str = "",
+    right_key: str = "",
+    pair_signature: str = "",
+    semantic_signature: str = "",
+) -> str:
+    explicit_pair = str(pair_signature or "").strip()
+    if explicit_pair:
+        return explicit_pair
+
+    explicit_semantic = str(semantic_signature or "").strip()
+    if explicit_semantic:
+        return explicit_semantic
+
+    left_canonical = normalize_marketplace_canonical_key(raw_key=left_key, title=left_title)
+    right_canonical = normalize_marketplace_canonical_key(raw_key=right_key, title=right_title)
+    parts = sorted(
+        [
+            f"{left_canonical}|{_normalize_text_key(left_title)}",
+            f"{right_canonical}|{_normalize_text_key(right_title)}",
+        ]
+    )
+    digest = hashlib.sha1("||".join(parts).encode("utf-8")).hexdigest()
+    return f"titlepair:{digest}"
+
+
+def _collect_existing_matching_sample_signatures(limit: int = 5000) -> set[str]:
+    signatures: set[str] = set()
+    for row in list_matching_lab_samples(limit=max(1, int(limit))):
+        result = row.get("result") if isinstance(row.get("result"), dict) else {}
+        for key in ("pair_signature", "semantic_signature"):
+            value = str(result.get(key) or "").strip()
+            if value:
+                signatures.add(value)
+        signatures.add(
+            _build_matching_sample_signature(
+                left_title=str(row.get("left_title") or ""),
+                right_title=str(row.get("right_title") or ""),
+                left_key=str(row.get("left_key") or ""),
+                right_key=str(row.get("right_key") or ""),
+                pair_signature=str(result.get("pair_signature") or ""),
+                semantic_signature=str(result.get("semantic_signature") or ""),
+            )
+        )
+    return signatures
+
+
+def _serialize_review_offer(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "platform": str(row["platform"] or "").strip(),
+        "offer_id": str(row["offer_id"] or "").strip(),
+        "seller_id": str(row["seller_id"] or "").strip(),
+        "title": str(row["title"] or "").strip(),
+        "canonical_key": str(row["canonical_key"] or "").strip(),
+        "item_type": str(row["item_type"] or "").strip(),
+        "list_price": float(row["list_price"] or 0.0),
+        "shipping_cost": float(row["shipping_cost"] or 0.0),
+        "fee_rate": float(row["fee_rate"] or 0.0),
+        "currency": str(row["currency"] or "CNY").strip().upper() or "CNY",
+        "listed_at": str(row["listed_at"] or ""),
+        "listing_url": str(row["listing_url"] or "").strip(),
+    }
+
+
+def _matching_review_pair_signature(left: dict[str, Any], right: dict[str, Any]) -> str:
+    parts = sorted(
+        [
+            f"{left['platform']}:{left['offer_id']}",
+            f"{right['platform']}:{right['offer_id']}",
+        ]
+    )
+    return "offerpair:" + "||".join(parts)
+
+
+def _matching_review_semantic_signature(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    comparison: dict[str, Any],
+) -> str:
+    left_key = str(comparison.get("left_canonical_key") or left.get("canonical_key") or "").strip()
+    right_key = str(comparison.get("right_canonical_key") or right.get("canonical_key") or "").strip()
+    parts = sorted(
+        [
+            f"{left['platform']}:{left_key or _normalize_text_key(left['title'])}",
+            f"{right['platform']}:{right_key or _normalize_text_key(right['title'])}",
+        ]
+    )
+    digest = hashlib.sha1("||".join(parts).encode("utf-8")).hexdigest()
+    return f"semantic:{digest}"
+
+
+def _matching_review_price_gap_ratio(left_price: float, right_price: float) -> float:
+    high = max(float(left_price or 0.0), float(right_price or 0.0), 1.0)
+    low = min(float(left_price or 0.0), float(right_price or 0.0))
+    return round((high - low) / high, 4)
+
+
+def _matching_review_price_band(price_gap_ratio: float) -> str:
+    if price_gap_ratio <= 0.15:
+        return "tight"
+    if price_gap_ratio <= 0.35:
+        return "medium"
+    return "wide"
+
+
+def _matching_review_priority(
+    *,
+    comparison: dict[str, Any],
+    left: dict[str, Any],
+    right: dict[str, Any],
+) -> float:
+    overlap_ratio = float(comparison.get("token_overlap_ratio") or 0.0)
+    overlap_tokens = comparison.get("overlap_tokens") or []
+    verdict = str(comparison.get("verdict") or "").strip()
+    price_gap_ratio = _matching_review_price_gap_ratio(left["list_price"], right["list_price"])
+    price_band = _matching_review_price_band(price_gap_ratio)
+
+    verdict_bonus = {
+        "close_match": 0.22,
+        "same_group": 0.14,
+        "different_group": 0.04,
+    }.get(verdict, 0.0)
+    price_bonus = {
+        "tight": 0.16,
+        "medium": 0.08,
+        "wide": 0.0,
+    }[price_band]
+    cross_platform_bonus = 0.12 if "xianyu" in {left["platform"], right["platform"]} else 0.06
+    overlap_bonus = min(len(overlap_tokens), 4) * 0.03
+    return round(overlap_ratio + verdict_bonus + price_bonus + cross_platform_bonus + overlap_bonus, 4)
+
+
+def _build_matching_review_queue_items(
+    *,
+    listing_hours: int = 24 * 30,
+    candidate_pool: int = 300,
+    min_token_overlap: float = 0.35,
+) -> list[dict[str, Any]]:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, int(listing_hours)))
+    rows = list_marketplace_offers(status="open", limit=max(20, min(1000, int(candidate_pool))))
+    offers = [
+        _serialize_review_offer(row)
+        for row in rows
+        if _parse_matching_sample_time(row["listed_at"]) >= cutoff
+    ]
+    existing_signatures = _collect_existing_matching_sample_signatures(
+        limit=max(1000, min(10000, int(candidate_pool) * 10))
+    )
+
+    candidate_map: dict[str, dict[str, Any]] = {}
+    for index, left in enumerate(offers):
+        for right in offers[index + 1 :]:
+            if left["platform"] == right["platform"]:
+                continue
+
+            comparison = explain_marketplace_match(
+                left_title=left["title"],
+                right_title=right["title"],
+                left_key=left["canonical_key"],
+                right_key=right["canonical_key"],
+            )
+            overlap_ratio = float(comparison.get("token_overlap_ratio") or 0.0)
+            overlap_tokens = list(comparison.get("overlap_tokens") or [])
+            if not bool(comparison.get("exact_match")) and overlap_ratio < float(min_token_overlap) and len(overlap_tokens) < 2:
+                continue
+
+            pair_signature = _matching_review_pair_signature(left, right)
+            semantic_signature = _matching_review_semantic_signature(left, right, comparison)
+            fallback_signature = _build_matching_sample_signature(
+                left_title=left["title"],
+                right_title=right["title"],
+                left_key=left["canonical_key"],
+                right_key=right["canonical_key"],
+            )
+            if (
+                pair_signature in existing_signatures
+                or semantic_signature in existing_signatures
+                or fallback_signature in existing_signatures
+            ):
+                continue
+
+            price_gap_ratio = _matching_review_price_gap_ratio(left["list_price"], right["list_price"])
+            price_band = _matching_review_price_band(price_gap_ratio)
+            priority_score = _matching_review_priority(comparison=comparison, left=left, right=right)
+            review_id = hashlib.sha1(pair_signature.encode("utf-8")).hexdigest()[:16]
+            item = {
+                "review_id": review_id,
+                "pair_signature": pair_signature,
+                "semantic_signature": semantic_signature,
+                "priority_score": priority_score,
+                "predicted_verdict": str(comparison.get("verdict") or "").strip(),
+                "reason": str(comparison.get("reason") or "").strip(),
+                "token_overlap_ratio": overlap_ratio,
+                "overlap_tokens": overlap_tokens,
+                "left_only_tokens": list(comparison.get("left_only_tokens") or []),
+                "right_only_tokens": list(comparison.get("right_only_tokens") or []),
+                "exact_match": bool(comparison.get("exact_match")),
+                "price_gap_ratio": price_gap_ratio,
+                "price_band": price_band,
+                "platforms": sorted({left["platform"], right["platform"]}),
+                "left": left,
+                "right": right,
+                "comparison": comparison,
+            }
+            current = candidate_map.get(semantic_signature)
+            if current is None or float(item["priority_score"]) > float(current["priority_score"]):
+                candidate_map[semantic_signature] = item
+
+    items = sorted(
+        candidate_map.values(),
+        key=lambda item: (
+            -float(item["priority_score"]),
+            str(item["predicted_verdict"]) != "close_match",
+            float(item["price_gap_ratio"]),
+            str(item["left"]["listed_at"]),
+            str(item["right"]["listed_at"]),
+        ),
+    )
+    return items
+
+
+def build_matching_review_queue(
+    *,
+    limit: int = 20,
+    listing_hours: int = 24 * 30,
+    candidate_pool: int = 300,
+    min_token_overlap: float = 0.35,
+) -> dict[str, Any]:
+    items = _build_matching_review_queue_items(
+        listing_hours=listing_hours,
+        candidate_pool=candidate_pool,
+        min_token_overlap=min_token_overlap,
+    )[: max(1, int(limit))]
+    return {
+        "items": items,
+        "count": len(items),
+        "listing_hours": int(listing_hours),
+        "candidate_pool": int(candidate_pool),
+        "min_token_overlap": float(min_token_overlap),
+    }
+
+
+def label_matching_review_queue_item(
+    *,
+    review_id: str,
+    expected_verdict: str,
+    note: str = "",
+    listing_hours: int = 24 * 30,
+    candidate_pool: int = 300,
+    min_token_overlap: float = 0.35,
+) -> dict[str, Any]:
+    review_key = str(review_id or "").strip()
+    if not review_key:
+        raise KeyError("review_id is required")
+
+    items = _build_matching_review_queue_items(
+        listing_hours=listing_hours,
+        candidate_pool=candidate_pool,
+        min_token_overlap=min_token_overlap,
+    )
+    match = next((item for item in items if str(item["review_id"]) == review_key), None)
+    if match is None:
+        raise KeyError(review_key)
+
+    result_payload = dict(match["comparison"])
+    result_payload.update(
+        {
+            "review_id": match["review_id"],
+            "pair_signature": match["pair_signature"],
+            "semantic_signature": match["semantic_signature"],
+            "price_gap_ratio": match["price_gap_ratio"],
+            "price_band": match["price_band"],
+            "platforms": match["platforms"],
+            "priority_score": match["priority_score"],
+            "left_offer": match["left"],
+            "right_offer": match["right"],
+        }
+    )
+    sample = create_matching_lab_sample(
+        left_title=str(match["left"]["title"] or ""),
+        right_title=str(match["right"]["title"] or ""),
+        left_key=str(match["left"]["canonical_key"] or ""),
+        right_key=str(match["right"]["canonical_key"] or ""),
+        expected_verdict=str(expected_verdict or "").strip(),
+        note=str(note or "").strip(),
+        result=result_payload,
+    )
+    return {
+        "review_id": match["review_id"],
+        "sample": sample,
+    }
+
+
 def get_listing_by_source_listing_id(source: str, listing_id: str) -> sqlite3.Row | None:
     normalized_id = _normalize_optional_id(listing_id)
     if not normalized_id:
@@ -541,12 +1484,21 @@ def _backfill_listing_normalization(row_ids: list[int]) -> None:
             )
 
 
-def get_open_listings(limit: int = 50, *, include_noise_filtered: bool = False) -> list[sqlite3.Row]:
+def get_open_listings(
+    limit: int = 50,
+    *,
+    include_noise_filtered: bool = False,
+    include_simulation: bool = False,
+) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM listings_raw WHERE status = 'open'"
+    params: list[Any] = []
+    if not include_simulation:
+        sql += " AND COALESCE(source, '') != ?"
+        params.append("simulation_seed")
+    sql += " ORDER BY listed_at DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        cur = conn.execute(
-            "SELECT * FROM listings_raw WHERE status = 'open' ORDER BY listed_at DESC LIMIT ?",
-            (limit,),
-        )
+        cur = conn.execute(sql, tuple(params))
         rows = cur.fetchall()
     stale_ids = [
         int(row["id"])
@@ -566,6 +1518,58 @@ def get_open_listings(limit: int = 50, *, include_noise_filtered: bool = False) 
     if include_noise_filtered:
         return rows
     return [row for row in rows if not bool(row["normalization_blocked"])]
+
+
+def list_open_listings_for_arbitrage(
+    *,
+    listing_hours: int = 72,
+    limit: int = 2000,
+    include_sources: tuple[str, ...] = (),
+    include_simulation: bool = False,
+) -> list[sqlite3.Row]:
+    listing_window_hours = max(1, min(24 * 30, int(listing_hours)))
+    row_limit = max(1, min(5000, int(limit)))
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=listing_window_hours)).isoformat()
+    sql = """
+    SELECT
+        id,
+        source,
+        listing_id,
+        seller_id,
+        title,
+        description,
+        list_price,
+        listed_at,
+        status,
+        normalized_title,
+        normalized_key,
+        item_type,
+        normalization_confidence,
+        normalization_blocked
+    FROM listings_raw
+    WHERE status = 'open'
+      AND listed_at >= ?
+      AND COALESCE(normalization_blocked, 0) = 0
+      AND COALESCE(normalized_key, '') != ''
+    """
+    params: list[Any] = [cutoff]
+    if not include_simulation:
+        sql += " AND COALESCE(source, '') != ?"
+        params.append("simulation_seed")
+    normalized_sources = tuple(
+        token.strip()
+        for token in include_sources
+        if str(token or "").strip()
+    )
+    if normalized_sources:
+        placeholders = ",".join("?" for _ in normalized_sources)
+        sql += f" AND source IN ({placeholders})"
+        params.extend(normalized_sources)
+    sql += " ORDER BY listed_at DESC LIMIT ?"
+    params.append(row_limit)
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    return rows
 
 
 def get_opportunity_status_map_by_listing_rows(
@@ -956,23 +1960,35 @@ def persist_scan_batch(batch_items: list[dict[str, Any]]) -> dict[str, int]:
         raise
 
 
-def list_opportunities(status: str | None = None, limit: int = 100) -> list[sqlite3.Row]:
+def list_opportunities(
+    status: str | None = None,
+    limit: int = 100,
+    *,
+    include_simulation: bool = False,
+) -> list[sqlite3.Row]:
     base_sql = """
-    SELECT o.*, l.title, l.source, l.seller_id, l.list_price, l.item_type, l.normalized_key,
+    SELECT o.*, l.listing_id, l.title, l.source, l.seller_id, l.list_price, l.item_type, l.normalized_key,
            v.expected_sale_price, v.suggested_list_price
     FROM opportunities o
     JOIN listings_raw l ON l.id = o.listing_row_id
     JOIN valuation_records v ON v.id = o.valuation_id
     """
-    params: tuple[Any, ...]
+    where_parts: list[str] = []
+    params: list[Any] = []
     if status:
-        sql = f"{base_sql} WHERE o.status = ? ORDER BY o.score DESC LIMIT ?"
-        params = (status, limit)
-    else:
-        sql = f"{base_sql} ORDER BY o.score DESC LIMIT ?"
-        params = (limit,)
+        where_parts.append("o.status = ?")
+        params.append(status)
+    if not include_simulation:
+        where_parts.append("COALESCE(l.source, '') != ?")
+        params.append("simulation_seed")
+
+    sql = base_sql
+    if where_parts:
+        sql += f" WHERE {' AND '.join(where_parts)}"
+    sql += " ORDER BY o.score DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        cur = conn.execute(sql, params)
+        cur = conn.execute(sql, tuple(params))
         return cur.fetchall()
 
 
@@ -1112,6 +2128,83 @@ def list_opportunity_reject_logs(
     with get_conn() as conn:
         cur = conn.execute(sql, tuple(params))
         return cur.fetchall()
+
+
+def cleanup_simulation_seed_data(
+    *,
+    note: str = "simulation seed archived from live workflow",
+) -> dict[str, int]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                l.id AS listing_row_id,
+                l.status AS listing_status,
+                o.id AS opportunity_id,
+                o.status AS opportunity_status
+            FROM listings_raw l
+            LEFT JOIN opportunities o ON o.listing_row_id = l.id
+            WHERE COALESCE(l.source, '') = 'simulation_seed'
+            ORDER BY l.id ASC
+            """
+        ).fetchall()
+
+    listing_ids = [int(row["listing_row_id"]) for row in rows]
+    queued_rows = [
+        row
+        for row in rows
+        if row["opportunity_id"] is not None
+        and str(row["opportunity_status"] or "") in {"pending_review", "blocked_risk"}
+    ]
+
+    reject_log_count = 0
+    for row in queued_rows:
+        log_id = create_opportunity_reject_log(
+            int(row["opportunity_id"]),
+            note=note,
+            reject_mode="simulation_cleanup",
+        )
+        if log_id is not None:
+            reject_log_count += 1
+
+    with get_conn() as conn:
+        archived_listing_count = 0
+        if listing_ids:
+            archived_listing_count = conn.execute(
+                """
+                UPDATE listings_raw
+                SET status = 'archived'
+                WHERE COALESCE(source, '') = 'simulation_seed'
+                  AND status != 'archived'
+                """
+            ).rowcount
+
+        queued_opportunity_count = 0
+        if queued_rows:
+            opportunity_ids = [int(row["opportunity_id"]) for row in queued_rows]
+            placeholders = ",".join("?" for _ in opportunity_ids)
+            queued_opportunity_count = conn.execute(
+                f"""
+                UPDATE opportunities
+                SET status = 'rejected',
+                    review_note = ?,
+                    reviewed_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders})
+                """,
+                (note, *opportunity_ids),
+            ).rowcount
+
+    pending_review_count = sum(1 for row in queued_rows if str(row["opportunity_status"] or "") == "pending_review")
+    blocked_risk_count = sum(1 for row in queued_rows if str(row["opportunity_status"] or "") == "blocked_risk")
+    return {
+        "simulation_listing_count": len(listing_ids),
+        "archived_listing_count": int(archived_listing_count),
+        "queued_simulation_opportunity_count": len(queued_rows),
+        "pending_review_rejected_count": pending_review_count,
+        "blocked_risk_rejected_count": blocked_risk_count,
+        "updated_opportunity_count": int(queued_opportunity_count),
+        "reject_log_count": int(reject_log_count),
+    }
 
 
 def get_opportunity(opportunity_id: int) -> sqlite3.Row | None:
@@ -4438,20 +5531,20 @@ def list_open_trade_ids(limit: int = 100) -> list[int]:
 
 def list_trades(status: str | None = None, limit: int = 100) -> list[sqlite3.Row]:
     base_sql = """
-    SELECT t.*, o.listing_row_id, l.title, l.list_price
+    SELECT t.*, o.listing_row_id, l.title, l.list_price, l.source AS listing_source
     FROM trades t
     JOIN opportunities o ON o.id = t.opportunity_id
     JOIN listings_raw l ON l.id = o.listing_row_id
     """
-    params: tuple[Any, ...]
+    where_parts: list[str] = ["COALESCE(l.source, '') != ?"]
+    params: list[Any] = ["simulation_seed"]
     if status:
-        sql = f"{base_sql} WHERE t.status = ? ORDER BY t.updated_at DESC LIMIT ?"
-        params = (status, limit)
-    else:
-        sql = f"{base_sql} ORDER BY t.updated_at DESC LIMIT ?"
-        params = (limit,)
+        where_parts.append("t.status = ?")
+        params.append(status)
+    sql = f"{base_sql} WHERE {' AND '.join(where_parts)} ORDER BY t.updated_at DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        cur = conn.execute(sql, params)
+        cur = conn.execute(sql, tuple(params))
         return cur.fetchall()
 
 
@@ -5730,7 +6823,13 @@ def _list_forward_validation_trade_rows_with_conn(
 def get_trade_performance_report() -> dict[str, Any]:
     with get_conn() as conn:
         pending = conn.execute(
-            "SELECT COUNT(*) AS c FROM opportunities WHERE status = 'pending_review'"
+            """
+            SELECT COUNT(*) AS c
+            FROM opportunities o
+            JOIN listings_raw l ON l.id = o.listing_row_id
+            WHERE o.status = 'pending_review'
+              AND COALESCE(l.source, '') != 'simulation_seed'
+            """
         ).fetchone()["c"]
         trade_rows = conn.execute(
             """
@@ -5748,6 +6847,7 @@ def get_trade_performance_report() -> dict[str, Any]:
             FROM trades t
             JOIN opportunities o ON o.id = t.opportunity_id
             JOIN listings_raw l ON l.id = o.listing_row_id
+            WHERE COALESCE(l.source, '') != 'simulation_seed'
             ORDER BY t.id DESC
             """
         ).fetchall()
@@ -5768,6 +6868,7 @@ def get_trade_performance_report() -> dict[str, Any]:
             JOIN opportunities o ON o.id = t.opportunity_id
             JOIN listings_raw l ON l.id = o.listing_row_id
             WHERE e.created_at >= ? AND e.dry_run = 0
+              AND COALESCE(l.source, '') != 'simulation_seed'
             ORDER BY e.id DESC
             """,
             (last_7d_start.isoformat(),),
@@ -5918,12 +7019,14 @@ def list_execution_logs(
     limit: int = 100,
 ) -> list[sqlite3.Row]:
     base_sql = """
-    SELECT e.*, t.status AS trade_status, t.approved_buy_price, t.target_sell_price
+    SELECT e.*, t.status AS trade_status, t.approved_buy_price, t.target_sell_price, l.source AS listing_source
     FROM execution_logs e
     JOIN trades t ON t.id = e.trade_id
+    JOIN opportunities o ON o.id = t.opportunity_id
+    JOIN listings_raw l ON l.id = o.listing_row_id
     """
-    params: list[Any] = []
-    where: list[str] = []
+    params: list[Any] = ["simulation_seed"]
+    where: list[str] = ["COALESCE(l.source, '') != ?"]
     if trade_id is not None:
         where.append("e.trade_id = ?")
         params.append(trade_id)
@@ -6091,6 +7194,7 @@ def list_latest_failed_execution_candidates(
     JOIN opportunities o ON o.id = t.opportunity_id
     JOIN listings_raw l ON l.id = o.listing_row_id
     WHERE e.success = 0
+      AND COALESCE(l.source, '') != 'simulation_seed'
       AND NOT EXISTS (
           SELECT 1
           FROM execution_logs newer

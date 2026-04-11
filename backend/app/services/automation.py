@@ -451,12 +451,25 @@ class AutomationService:
             if created:
                 seeded += 1
 
-        pending_review = len(repo.list_opportunities(status="pending_review", limit=200))
+        pending_review = len(
+            repo.list_opportunities(
+                status="pending_review",
+                limit=200,
+                include_simulation=True,
+            )
+        )
         return {
             "seeded": seeded,
             "requested": normalized_count,
             "pending_review": pending_review,
         }
+
+    def cleanup_simulation_seed_data(
+        self,
+        *,
+        note: str = "simulation seed archived from live workflow",
+    ) -> dict[str, Any]:
+        return repo.cleanup_simulation_seed_data(note=note)
 
 
 automation_service = AutomationService()

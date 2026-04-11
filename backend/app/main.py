@@ -23,6 +23,8 @@ from .services.supabase_sync import supabase_sync_service
 from .routers.auth import router as auth_router
 from .routers.health import router as health_router
 from .routers.ingest import router as ingest_router
+from .routers.arbitrage import router as arbitrage_router
+from .routers.marketplace import router as marketplace_router
 from .routers.monitor import router as monitor_router
 from .routers.opportunities import router as opportunities_router
 from .routers.listings import router as listings_router
@@ -75,6 +77,8 @@ def _include_core_routers(app: FastAPI, prefix: str = "") -> None:
     app.include_router(auth_router, prefix=prefix)
     app.include_router(health_router, prefix=prefix)
     app.include_router(ingest_router, prefix=prefix)
+    app.include_router(arbitrage_router, prefix=prefix)
+    app.include_router(marketplace_router, prefix=prefix)
     app.include_router(valuation_router, prefix=prefix)
     app.include_router(listings_router, prefix=prefix)
     app.include_router(opportunities_router, prefix=prefix)

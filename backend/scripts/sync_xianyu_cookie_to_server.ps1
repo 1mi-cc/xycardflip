@@ -139,10 +139,14 @@ PY
 "@
 
   if (-not $SkipMonitorStatus) {
+    $remoteScript += "`n"
     $remoteScript += @"
 curl -s http://127.0.0.1:8000/monitor/status
 "@
   }
+
+  $remoteScript = $remoteScript -replace "`r`n", "`n"
+  $remoteScript = $remoteScript -replace "curl -s http://127.0.0.1:8000/monitor/status", "curl -s http://127.0.0.1:8000/monitor/status || true"
 
   Write-Utf8File -Path $tempRemoteScriptPath -Content $remoteScript
 

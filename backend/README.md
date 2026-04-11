@@ -443,3 +443,275 @@ API controls:
 - `POST /supabase/stop`
 - `POST /supabase/run-once?force=true`
 - `POST /supabase/reset-cursors?table=sales_raw` (optional `table`; empty means reset all)
+
+## 12. Marketplace provider templates
+
+The read-only arbitrage layer uses `marketplace_offers` and does **not** write into
+`pending_review`, `trades`, or `execution`.
+
+### Taobao TOP
+
+Set in `.env`:
+
+```env
+TAOBAO_TOP_GATEWAY_URL=https://eco.taobao.com/router/rest
+TAOBAO_TOP_APP_KEY=
+TAOBAO_TOP_APP_SECRET=
+TAOBAO_TOP_METHOD=alibaba.tuike.offer.get
+TAOBAO_TOP_SIGN_METHOD=hmac
+TAOBAO_TOP_ISV_CODE=
+TAOBAO_TOP_SESSION=
+TAOBAO_TOP_QUERY_STRING={"filter_param":{"price_range":{"price_range_max":5000,"price_range_min":50},"start_order_num":1},"query_param":{"offer_name":["Pokemon Card PSA 10"],"top_category_id":0,"top_category_name":"","company_name":["",""],"owner_id":null,"category_id":null,"user_tags":[]},"sort_param":{"price":"+"}}
+TAOBAO_TOP_TIMEOUT_SEC=15
+```
+
+Runtime paths:
+- `GET /marketplace/providers/taobao/status`
+- `POST /marketplace/providers/taobao/sync-once`
+- `POST /marketplace/providers/taobao/ingest-snapshot`
+- `python scripts/taobao_sync_once.py`
+
+### Pinduoduo
+
+Set in `.env`:
+
+```env
+PINDUODUO_API_URL=https://gw-api.pinduoduo.com/api/router
+PINDUODUO_CLIENT_ID=
+PINDUODUO_CLIENT_SECRET=
+PINDUODUO_TYPE=pdd.ddk.goods.search
+PINDUODUO_ACCESS_TOKEN=
+PINDUODUO_DATA_TYPE=JSON
+PINDUODUO_PARAMS_JSON={"keyword":"Pokemon Card PSA 10","page":1,"page_size":30,"sort_type":0,"with_coupon":false}
+PINDUODUO_TIMEOUT_SEC=15
+```
+
+Runtime paths:
+- `GET /marketplace/providers/pinduoduo/status`
+- `POST /marketplace/providers/pinduoduo/sync-once`
+- `POST /marketplace/providers/pinduoduo/ingest-snapshot`
+
+### JD
+
+Set in `.env`:
+
+```env
+JD_API_URL=https://router.jd.com/api
+JD_APP_KEY=
+JD_APP_SECRET=
+JD_METHOD=jd.union.open.goods.query
+JD_ACCESS_TOKEN=
+JD_SIGN_METHOD=md5
+JD_VERSION=1.0
+JD_FORMAT=json
+JD_PARAM_JSON={"goodsReq":{"keyword":"Pokemon Card PSA 10","pageIndex":1,"pageSize":20,"sortName":"price","sort":"asc"}}
+JD_TIMEOUT_SEC=15
+```
+
+Runtime paths:
+- `GET /marketplace/providers/jd/status`
+- `POST /marketplace/providers/jd/sync-once`
+- `POST /marketplace/providers/jd/ingest-snapshot`
+
+### Snapshot examples
+
+You can validate the arbitrage layer before credential approval by importing snapshot JSON manually:
+
+- `Import Taobao Snapshot`
+- `Import Pinduoduo Snapshot`
+- `Import JD Snapshot`
+
+Those actions only write to `marketplace_offers`.
+
+### Generic cookie refresh
+
+For cookie-first providers, use the generic browser cookie refresher instead of maintaining
+one script per marketplace:
+
+```powershell
+python backend/scripts/refresh_marketplace_cookie.py --provider xianyu --kill-browsers
+python backend/scripts/refresh_marketplace_cookie.py --provider jd --kill-browsers
+python backend/scripts/refresh_marketplace_cookie.py --provider pinduoduo --kill-browsers
+```
+
+Compatibility wrappers are also available:
+
+```powershell
+python backend/scripts/refresh_xianyu_cookie.py --kill-browsers
+python backend/scripts/refresh_jd_cookie.py --kill-browsers
+python backend/scripts/refresh_pinduoduo_cookie.py --kill-browsers
+```
+
+To sync the refreshed cookie to the server `.env` for the active release:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_cookie_to_server.ps1 -Provider xianyu
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_cookie_to_server.ps1 -Provider jd
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_cookie_to_server.ps1 -Provider pinduoduo
+```
+
+To keep a provider cookie synced in a loop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_cookie_bridge.ps1 -Provider xianyu -IntervalMinutes 20 -RemoteAction run-once
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_cookie_bridge.ps1 -Provider jd -IntervalMinutes 20
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_cookie_bridge.ps1 -Provider pinduoduo -IntervalMinutes 20
+```
+
+Convenience launchers:
+
+```cmd
+start_cookie_bridge.cmd
+start_jd_cookie_bridge.cmd
+start_pinduoduo_cookie_bridge.cmd
+```
+
+Notes:
+- The refresher only updates the target provider env key.
+- It never prints the full cookie value.
+- `xianyu` still validates `_m_h5_tk` and `_m_h5_tk_enc`.
+- `jd` and `pinduoduo` are cookie-mode first, but still high-risk and unstable until a real
+  snapshot bridge is proven against live pages.
+
+### Cookie-mode snapshot bridge
+
+`JD` and `Pinduoduo` cookie-mode `sync-once` can now take a bridge URL override instead of
+requiring only env-configured provider URLs.
+
+Examples:
+
+```http
+POST /card-api/marketplace/providers/jd/sync-once?snapshot_url=https://bridge.example/jd/snapshot
+POST /card-api/marketplace/providers/pinduoduo/sync-once?snapshot_url=https://bridge.example/pinduoduo/snapshot
+```
+
+The bridge only needs to return standard JSON snapshot payloads already accepted by:
+- `POST /marketplace/providers/jd/ingest-snapshot`
+- `POST /marketplace/providers/pinduoduo/ingest-snapshot`
+
+### Local snapshot bridge
+
+You can now run a local cookie-backed snapshot bridge for `JD` or `Pinduoduo`.
+The bridge listens only on `127.0.0.1`, injects the locally refreshed cookie, and
+returns JSON from the upstream source URL without writing to the database.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_snapshot_bridge.ps1 `
+  -Provider jd `
+  -SourceUrl "https://your-local-or-discovered-json-endpoint.example/jd" `
+  -UpstreamMethod GET `
+  -Port 8765
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_snapshot_bridge.ps1 `
+  -Provider pinduoduo `
+  -SourceUrl "https://your-local-or-discovered-json-endpoint.example/pdd" `
+  -UpstreamMethod GET `
+  -Port 8766
+```
+
+Provider-specific wrappers:
+
+```powershell
+python backend/scripts/jd_snapshot_bridge.py --source-url "https://example/jd" --port 8765
+python backend/scripts/pinduoduo_snapshot_bridge.py --source-url "https://example/pdd" --port 8766
+```
+
+Once running, use these bridge URLs in the dashboard:
+
+- `http://127.0.0.1:8765/snapshot`
+- `http://127.0.0.1:8766/snapshot`
+
+Health endpoints:
+
+- `http://127.0.0.1:8765/health`
+- `http://127.0.0.1:8766/health`
+
+Constraints:
+- The bridge never prints the full cookie.
+- It is `cookie-mode / high-risk / unstable`.
+- It expects the upstream source URL to already return JSON.
+- It does not implement general-purpose webpage parsing.
+
+### Local upstream capture
+
+If you do not know the upstream JSON URL yet, use the local capture helper. It connects to
+your logged-in Edge session through CDP, watches `Fetch/XHR` traffic, and prints candidate
+JSON request URLs without exposing cookies or full headers.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_upstream_capture.ps1 -Provider jd -WatchSeconds 25
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_upstream_capture.ps1 -Provider pinduoduo -WatchSeconds 25
+```
+
+Wrappers:
+
+```powershell
+python backend/scripts/capture_jd_upstream.py --watch-seconds 25
+python backend/scripts/capture_pinduoduo_upstream.py --watch-seconds 25
+```
+
+Expected workflow:
+1. Start capture.
+2. During the watch window, use the opened browser page to search the product you care about.
+3. Review the printed candidate JSON URLs.
+4. Pick one and feed it into the local snapshot bridge or dashboard `snapshot bridge URL` input.
+
+### Browser snapshot bridge
+
+If no stable upstream JSON URL is available, use the browser snapshot bridge instead.
+It extracts product cards directly from the rendered page in your logged-in Edge session and
+returns standard snapshot JSON for `sync-once`.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 `
+  -Provider jd `
+  -Keyword "Pokemon Card PSA 10" `
+  -Port 8785
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 `
+  -Provider pinduoduo `
+  -Keyword "Pokemon Card PSA 10" `
+  -Port 8786
+```
+
+Wrappers:
+
+```powershell
+python backend/scripts/jd_browser_snapshot.py --keyword "Pokemon Card PSA 10" --port 8785
+python backend/scripts/pinduoduo_browser_snapshot.py --keyword "Pokemon Card PSA 10" --port 8786
+```
+
+Use these bridge URLs in the dashboard:
+
+- `http://127.0.0.1:8785/snapshot`
+- `http://127.0.0.1:8786/snapshot`
+
+Notes:
+- This is still `cookie-mode / high-risk / unstable`.
+- It extracts visible browser results, not a formal API.
+- It does not print cookies or raw response bodies.
+
+### Push local browser snapshot to remote server
+
+Because the remote backend cannot reach your local `127.0.0.1` bridge directly, use the
+push helper to fetch from the local browser bridge and then call the remote ingest endpoint.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_snapshot_to_server.ps1 `
+  -Provider jd `
+  -BridgeUrl "http://127.0.0.1:8785/snapshot" `
+  -Limit 20
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_snapshot_to_server.ps1 `
+  -Provider pinduoduo `
+  -BridgeUrl "http://127.0.0.1:8786/snapshot" `
+  -Limit 20
+```

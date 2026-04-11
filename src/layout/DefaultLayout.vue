@@ -2,14 +2,14 @@
   <div class="app-shell">
     <aside class="sidebar" :class="{ collapsed: isCollapsed }">
       <div class="brand">
+        <div class="brand-copy" v-if="!isCollapsed">
+          <strong>Console Admin</strong>
+          <span>Trading Manager</span>
+        </div>
         <div class="brand-mark">
           <n-icon size="18">
             <BarChartOutline></BarChartOutline>
           </n-icon>
-        </div>
-        <div v-if="!isCollapsed" class="brand-copy">
-          <strong>交易中枢</strong>
-          <span>Card Trading Console</span>
         </div>
       </div>
 
@@ -21,7 +21,6 @@
           class="nav-item"
           active-class="is-active"
         >
-          <span class="nav-indicator"></span>
           <n-icon class="nav-icon" size="18">
             <component :is="item.icon"></component>
           </n-icon>
@@ -30,9 +29,30 @@
       </nav>
 
       <div v-if="!isCollapsed" class="sidebar-footer">
-        <div class="footer-label">当前角色</div>
+        <div class="footer-links">
+          <button class="footer-link" type="button" @click="openUtilityPanel('settings')">
+            <n-icon size="16"><SettingsOutline></SettingsOutline></n-icon>
+            <span>Settings</span>
+          </button>
+          <button class="footer-link" type="button" @click="openUtilityPanel('support')">
+            <n-icon size="16"><HelpCircleOutline></HelpCircleOutline></n-icon>
+            <span>Support</span>
+          </button>
+        </div>
+
+        <div class="profile-card">
+          <n-avatar round size="small" class="sidebar-avatar">
+            {{ displayName.slice(0, 1).toUpperCase() }}
+          </n-avatar>
+          <div class="profile-copy">
+            <strong>{{ displayName }}</strong>
+            <span>{{ currentRoleLabel }}</span>
+          </div>
+        </div>
+
+        <div class="footer-label">Access</div>
         <div class="footer-value">{{ currentRoleLabel }}</div>
-        <div class="footer-bar">
+        <div class="footer-progress">
           <span></span>
         </div>
       </div>
@@ -44,29 +64,28 @@
           <button class="icon-button" type="button" @click="toggleSidebar">
             <n-icon size="20"><MenuOutline></MenuOutline></n-icon>
           </button>
-          <div class="topbar-title">{{ currentTitle }}</div>
+          <div class="title-group">
+            <div class="topbar-title">{{ currentTitle }}</div>
+            <div class="topbar-subtitle">XYZW Card Trading Console</div>
+          </div>
         </div>
 
         <div class="topbar-right">
-          <button class="icon-button desktop-only" type="button">
-            <n-icon size="18"><SearchOutline></SearchOutline></n-icon>
+          <button class="quick-search desktop-only" type="button" @click="focusPrimarySearch">
+            <n-icon size="16"><SearchOutline></SearchOutline></n-icon>
+            <span>Search operations...</span>
           </button>
-          <button class="icon-button desktop-only" type="button">
+          <button class="icon-button desktop-only" type="button" @click="openUtilityPanel('alerts')">
             <n-icon size="18"><NotificationsOutline></NotificationsOutline></n-icon>
           </button>
-          <div class="divider desktop-only"></div>
           <n-dropdown :options="userMenuOptions" @select="handleUserAction">
             <button class="user-chip" type="button">
               <div class="user-meta desktop-only">
                 <div class="user-name">{{ displayName }}</div>
                 <div class="user-role">{{ currentRoleLabel }}</div>
               </div>
-              <n-avatar
-                round
-                size="medium"
-                :style="{ backgroundColor: '#e8edf7', color: '#495c94' }"
-              >
-                {{ displayName.slice(0, 1) }}
+              <n-avatar round size="medium" class="avatar-chip">
+                {{ displayName.slice(0, 1).toUpperCase() }}
               </n-avatar>
               <n-icon size="18"><ChevronDownOutline></ChevronDownOutline></n-icon>
             </button>
@@ -82,14 +101,14 @@
     <n-drawer v-model:show="showMobileMenu" placement="left" :width="248">
       <div class="mobile-drawer">
         <div class="brand mobile-brand">
+          <div class="brand-copy">
+            <strong>Console Admin</strong>
+            <span>Trading Manager</span>
+          </div>
           <div class="brand-mark">
             <n-icon size="18">
               <BarChartOutline></BarChartOutline>
             </n-icon>
-          </div>
-          <div class="brand-copy">
-            <strong>交易中枢</strong>
-            <span>Card Trading Console</span>
           </div>
         </div>
 
@@ -102,7 +121,6 @@
             active-class="is-active"
             @click="showMobileMenu = false"
           >
-            <span class="nav-indicator"></span>
             <n-icon class="nav-icon" size="18">
               <component :is="item.icon"></component>
             </n-icon>
@@ -111,6 +129,66 @@
         </nav>
       </div>
     </n-drawer>
+
+    <n-drawer v-model:show="showUtilityDrawer" placement="right" :width="420">
+      <n-drawer-content :title="utilityTitle" closable>
+        <div class="utility-stack">
+          <div class="utility-hero">
+            <strong>{{ utilityTitle }}</strong>
+            <p>{{ utilityDescription }}</p>
+          </div>
+
+          <div class="utility-section">
+            <h4>Quick Actions</h4>
+            <div class="utility-actions">
+              <button class="utility-action" type="button" @click="router.push('/admin/dashboard')">Open Overview</button>
+              <button class="utility-action" type="button" @click="router.push('/admin/card-flip-ops')">Open Card Trading</button>
+              <button class="utility-action" type="button" @click="focusPrimarySearch">Focus Search</button>
+              <button class="utility-action" type="button" @click="router.go(0)">Refresh Page</button>
+            </div>
+          </div>
+
+          <div class="utility-section">
+            <h4>Current Context</h4>
+            <div class="utility-list">
+              <div class="utility-row">
+                <span>User</span>
+                <strong>{{ displayName }}</strong>
+              </div>
+              <div class="utility-row">
+                <span>Role</span>
+                <strong>{{ currentRoleLabel }}</strong>
+              </div>
+              <div class="utility-row">
+                <span>Page</span>
+                <strong>{{ currentTitle }}</strong>
+              </div>
+              <div class="utility-row">
+                <span>Route</span>
+                <strong>{{ route.fullPath }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="utility-section" v-if="activeUtilityPanel === 'support'">
+            <h4>Support Notes</h4>
+            <ul class="utility-notes">
+              <li>Use the page search to filter visible rows without leaving the console.</li>
+              <li>Transaction exports respect the active filters on the current page.</li>
+              <li>Service buttons open live detail drawers instead of placeholder links.</li>
+            </ul>
+          </div>
+
+          <div class="utility-section" v-if="activeUtilityPanel === 'alerts'">
+            <h4>Notification State</h4>
+            <ul class="utility-notes">
+              <li>The bell is now wired to this alert panel instead of a dead button.</li>
+              <li>Use it as a quick entry point before drilling into a specific page section.</li>
+            </ul>
+          </div>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
@@ -118,10 +196,13 @@
 import {
   BarChartOutline,
   ChevronDownOutline,
+  HelpCircleOutline,
   MenuOutline,
   NotificationsOutline,
   PieChartOutline,
+  SearchOutline as SearchNavOutline,
   SearchOutline,
+  SettingsOutline,
 } from "@vicons/ionicons5";
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -134,25 +215,33 @@ const router = useRouter();
 
 const isCollapsed = ref(false);
 const showMobileMenu = ref(false);
+const showUtilityDrawer = ref(false);
+const activeUtilityPanel = ref("settings");
 
 const navItems = [
   {
-    label: "总览",
+    label: "Overview",
     path: "/admin/dashboard",
     icon: BarChartOutline,
     permission: "dashboard:view",
     adminOnly: true,
   },
   {
-    label: "卡片交易",
+    label: "Card Trading",
     path: "/admin/card-flip-ops",
     icon: PieChartOutline,
+    permission: "cardflip:view",
+  },
+  {
+    label: "Matching Lab",
+    path: "/admin/matching-lab",
+    icon: SearchNavOutline,
     permission: "cardflip:view",
   },
 ];
 
 const userMenuOptions = [
-  { label: "退出登录", key: "logout" },
+  { label: "Sign Out", key: "logout" },
 ];
 
 const visibleNavItems = computed(() =>
@@ -163,33 +252,51 @@ const visibleNavItems = computed(() =>
   }),
 );
 
-const currentTitle = computed(() => String(route.meta?.title || "卡片交易"));
+const currentTitle = computed(() => String(route.meta?.title || "Card Trading"));
 const currentRoleLabel = computed(() => {
   const role = String(authStore.userInfo?.roleKeys?.[0] || "viewer").toLowerCase();
   if (role === "admin")
-    return "管理员";
+    return "Admin";
   if (role === "ops")
-    return "运营";
-  return "查看";
+    return "Ops Manager";
+  return "Viewer";
 });
 
 const displayName = computed(() => {
   const username = String(authStore.userInfo?.username || "").trim();
   const nickname = String(authStore.userInfo?.nickname || "").trim();
   const genericNames = new Set([
-    "服务器操作员",
-    "本地操作员",
-    "Local Admin",
-    "System Admin",
+    "server operator",
+    "local operator",
+    "local admin",
+    "system admin",
     "operator",
     "admin",
+    "管理员",
+    "服务器操作员",
   ]);
 
-  if (nickname && !genericNames.has(nickname))
+  if (nickname && !genericNames.has(nickname.toLowerCase()))
     return nickname;
-  if (username && !genericNames.has(username))
+  if (username && !genericNames.has(username.toLowerCase()))
     return username;
   return currentRoleLabel.value;
+});
+
+const utilityTitle = computed(() => {
+  if (activeUtilityPanel.value === "support")
+    return "Support";
+  if (activeUtilityPanel.value === "alerts")
+    return "Notifications";
+  return "Settings";
+});
+
+const utilityDescription = computed(() => {
+  if (activeUtilityPanel.value === "support")
+    return "Quick help, navigation shortcuts, and page-level operating notes.";
+  if (activeUtilityPanel.value === "alerts")
+    return "Topbar notification access for the current console session.";
+  return "Interface controls and fast navigation for the current console session.";
 });
 
 const toggleSidebar = () => {
@@ -198,6 +305,21 @@ const toggleSidebar = () => {
     return;
   }
   isCollapsed.value = !isCollapsed.value;
+};
+
+const openUtilityPanel = (panel) => {
+  activeUtilityPanel.value = panel;
+  showUtilityDrawer.value = true;
+};
+
+const focusPrimarySearch = () => {
+  if (route.path.includes("/card-flip-ops")) {
+    window.dispatchEvent(new CustomEvent("focus-card-trading-search"));
+    showUtilityDrawer.value = false;
+    return;
+  }
+  router.push("/admin/card-flip-ops");
+  showUtilityDrawer.value = false;
 };
 
 const handleUserAction = async (key) => {
@@ -221,33 +343,35 @@ const handleUserAction = async (key) => {
   width: 248px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 18px 16px;
+  gap: 24px;
+  padding: 24px 16px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--surface-line);
 }
 
 .sidebar.collapsed {
-  width: 88px;
+  width: 92px;
 }
 
 .brand {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 4px 4px 12px;
+  padding: 0 8px;
 }
 
 .brand-mark {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  flex: 0 0 auto;
+  border-radius: 14px;
   color: #fff;
-  background: linear-gradient(180deg, #306bf3, #0051d5);
-  box-shadow: 0 10px 22px rgba(0, 81, 213, 0.24);
+  background: linear-gradient(180deg, #2890ff, #0071e3);
+  box-shadow: 0 16px 32px rgba(0, 113, 227, 0.26);
 }
 
 .brand-copy {
@@ -261,79 +385,113 @@ const handleUserAction = async (key) => {
   font-family: var(--font-display);
   font-size: 20px;
   font-weight: 800;
-  letter-spacing: -0.03em;
-  white-space: nowrap;
+  letter-spacing: -0.04em;
 }
 
 .brand-copy span {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .sidebar-nav {
   display: grid;
-  gap: 4px;
+  gap: 8px;
 }
 
 .nav-item {
-  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   min-height: 48px;
   padding: 0 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-full);
   color: var(--sidebar-text);
-  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease;
 }
 
 .nav-item:hover {
-  background: rgba(0, 81, 213, 0.04);
-  color: var(--text-primary);
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .nav-item.is-active {
-  background: var(--sidebar-active-bg);
   color: var(--sidebar-active-text);
-}
-
-.nav-indicator {
-  position: absolute;
-  left: -16px;
-  top: 10px;
-  bottom: 10px;
-  width: 4px;
-  border-radius: 999px;
-  background: transparent;
-}
-
-.nav-item.is-active .nav-indicator {
-  background: var(--primary-color);
+  background: var(--sidebar-active-bg);
 }
 
 .nav-label {
-  font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .sidebar-footer {
   margin-top: auto;
-  padding: 16px;
-  border-radius: 14px;
-  background: var(--surface-soft);
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--surface-line);
+}
+
+.footer-links {
+  display: grid;
+  gap: 6px;
+}
+
+.footer-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 12px;
+  color: var(--text-secondary);
+}
+
+.footer-link:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sidebar-avatar {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.profile-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.profile-copy strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-copy span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .footer-label {
   color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -345,20 +503,20 @@ const handleUserAction = async (key) => {
   font-weight: 800;
 }
 
-.footer-bar {
+.footer-progress {
   height: 6px;
-  margin-top: 12px;
-  border-radius: 999px;
-  background: rgba(73, 92, 148, 0.12);
+  margin-top: 14px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
-.footer-bar span {
+.footer-progress span {
   display: block;
-  width: 78%;
+  width: 76%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #306bf3, #0051d5);
+  background: linear-gradient(90deg, #2890ff, #0071e3);
 }
 
 .main-shell {
@@ -367,7 +525,7 @@ const handleUserAction = async (key) => {
 }
 
 .main-shell.expanded {
-  margin-left: 88px;
+  margin-left: 92px;
 }
 
 .topbar {
@@ -380,7 +538,7 @@ const handleUserAction = async (key) => {
   height: 64px;
   padding: 0 28px;
   background: var(--header-bg);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--surface-line);
 }
 
@@ -391,6 +549,11 @@ const handleUserAction = async (key) => {
   gap: 14px;
 }
 
+.title-group {
+  display: grid;
+  gap: 2px;
+}
+
 .topbar-title {
   color: var(--text-primary);
   font-family: var(--font-display);
@@ -399,27 +562,46 @@ const handleUserAction = async (key) => {
   letter-spacing: -0.03em;
 }
 
+.topbar-subtitle {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .icon-button {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--text-secondary);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
   transition: background 0.18s ease, color 0.18s ease;
 }
 
 .icon-button:hover {
-  background: rgba(0, 81, 213, 0.06);
-  color: var(--primary-color);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.divider {
-  width: 1px;
-  height: 28px;
-  background: var(--surface-line);
+.quick-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quick-search span {
+  font-size: 13px;
 }
 
 .user-chip {
@@ -448,17 +630,103 @@ const handleUserAction = async (key) => {
   text-transform: uppercase;
 }
 
-.page-shell {
-  padding: 28px;
+.avatar-chip {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
 }
 
-.mobile-drawer {
+.page-shell {
+  width: min(1440px, 100%);
+  padding: 32px 28px 40px;
+  margin: 0 auto;
+}
+
+.utility-stack {
   display: grid;
   gap: 20px;
 }
 
-.mobile-brand {
-  padding-bottom: 4px;
+.utility-hero {
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.utility-hero strong {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.utility-hero p {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.utility-section h4 {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.utility-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.utility-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border-radius: 12px;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.utility-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.utility-list {
+  display: grid;
+  gap: 10px;
+}
+
+.utility-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.utility-row span {
+  color: var(--text-secondary);
+}
+
+.utility-row strong {
+  color: var(--text-primary);
+}
+
+.utility-notes {
+  display: grid;
+  gap: 10px;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.utility-notes li {
+  line-height: 1.6;
+}
+
+.mobile-drawer {
+  display: grid;
+  gap: 24px;
 }
 
 @media (max-width: 992px) {
@@ -476,7 +744,7 @@ const handleUserAction = async (key) => {
   }
 
   .page-shell {
-    padding: 20px 16px 28px;
+    padding: 24px 16px 32px;
   }
 }
 

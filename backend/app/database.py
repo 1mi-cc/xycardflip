@@ -585,6 +585,62 @@ def init_db() -> None:
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS marketplace_offers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT NOT NULL,
+        offer_id TEXT,
+        seller_id TEXT,
+        title TEXT NOT NULL,
+        canonical_key TEXT NOT NULL DEFAULT '',
+        item_type TEXT NOT NULL DEFAULT 'generic',
+        list_price REAL NOT NULL,
+        shipping_cost REAL NOT NULL DEFAULT 0,
+        fee_rate REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'CNY',
+        listed_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        listing_url TEXT NOT NULL DEFAULT '',
+        raw_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(platform, offer_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS marketplace_shadow_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trigger_source TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'completed',
+        candidate_count INTEGER NOT NULL DEFAULT 0,
+        accepted_count INTEGER NOT NULL DEFAULT 0,
+        blocked_count INTEGER NOT NULL DEFAULT 0,
+        error_count INTEGER NOT NULL DEFAULT 0,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        summary_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS marketplace_shadow_intents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER,
+        intent_key TEXT NOT NULL DEFAULT '',
+        arbitrage_key TEXT NOT NULL DEFAULT '',
+        reference_title TEXT NOT NULL DEFAULT '',
+        buy_platform TEXT NOT NULL DEFAULT '',
+        sell_platform TEXT NOT NULL DEFAULT '',
+        buy_listing_id TEXT NOT NULL DEFAULT '',
+        sell_listing_id TEXT NOT NULL DEFAULT '',
+        platform_count INTEGER NOT NULL DEFAULT 0,
+        listing_count INTEGER NOT NULL DEFAULT 0,
+        estimated_net_profit REAL NOT NULL DEFAULT 0,
+        estimated_roi REAL NOT NULL DEFAULT 0,
+        confidence_score REAL NOT NULL DEFAULT 0,
+        decision_status TEXT NOT NULL DEFAULT 'blocked',
+        blocked_reason TEXT NOT NULL DEFAULT '',
+        snapshot_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(run_id) REFERENCES marketplace_shadow_runs(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS item_features (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ref_type TEXT NOT NULL,
@@ -930,12 +986,38 @@ def init_db() -> None:
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS matching_lab_samples (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        left_title TEXT NOT NULL DEFAULT '',
+        right_title TEXT NOT NULL DEFAULT '',
+        left_key TEXT NOT NULL DEFAULT '',
+        right_key TEXT NOT NULL DEFAULT '',
+        expected_verdict TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        result_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sales_title ON sales_raw(title);
     DROP INDEX IF EXISTS idx_listings_status;
     CREATE INDEX IF NOT EXISTS idx_listings_status_listed_at
         ON listings_raw(status, listed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_listings_source_seller_status_price
         ON listings_raw(source, COALESCE(seller_id, ''), status, ROUND(list_price, 2));
+    CREATE INDEX IF NOT EXISTS idx_marketplace_offers_status_listed
+        ON marketplace_offers(status, listed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_offers_platform_status
+        ON marketplace_offers(platform, status, listed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_offers_canonical_status
+        ON marketplace_offers(canonical_key, status, listed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_runs_created
+        ON marketplace_shadow_runs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_intents_created
+        ON marketplace_shadow_intents(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_intents_intent_key_created
+        ON marketplace_shadow_intents(intent_key, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_intents_status_created
+        ON marketplace_shadow_intents(decision_status, created_at DESC);
     DROP INDEX IF EXISTS idx_opp_status;
     CREATE INDEX IF NOT EXISTS idx_opportunities_status_score
         ON opportunities(status, score DESC);
@@ -995,6 +1077,8 @@ def init_db() -> None:
         ON seller_control_preset_runs(preset_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_matching_lab_samples_created
+        ON matching_lab_samples(created_at DESC);
     """
     with get_conn() as conn:
         conn.executescript(ddl)

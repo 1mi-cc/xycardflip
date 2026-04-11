@@ -8,25 +8,25 @@
           </n-icon>
         </div>
         <div>
-          <p class="brand-kicker">Card Trading Console</p>
-          <h1>登录后台</h1>
+          <p class="brand-kicker">XYZW</p>
+          <h1>Sign In</h1>
         </div>
       </div>
 
       <n-form ref="loginFormRef" label-placement="top" :model="loginForm" :rules="loginRules">
-        <n-form-item label="账号" path="username">
+        <n-form-item label="Username" path="username">
           <n-input
             v-model:value="loginForm.username"
-            placeholder="请输入账号"
+            placeholder="Enter username"
             @keydown.enter="handleLogin"
           ></n-input>
         </n-form-item>
-        <n-form-item label="密码" path="password">
+        <n-form-item label="Password" path="password">
           <n-input
             v-model:value="loginForm.password"
             type="password"
             show-password-on="click"
-            placeholder="请输入密码"
+            placeholder="Enter password"
             @keydown.enter="handleLogin"
           ></n-input>
         </n-form-item>
@@ -37,7 +37,7 @@
           :loading="authStore.isLoading"
           @click="handleLogin"
         >
-          登录
+          Enter Console
         </n-button>
       </n-form>
     </section>
@@ -66,12 +66,12 @@ const loginForm = reactive({
 const loginRules = {
   username: {
     required: true,
-    message: "请输入账号",
+    message: "Enter username",
     trigger: ["blur", "input"],
   },
   password: {
     required: true,
-    message: "请输入密码",
+    message: "Enter password",
     trigger: ["blur", "input"],
   },
 };
@@ -83,7 +83,7 @@ const handleLogin = async () => {
     await loginFormRef.value.validate();
     const result = await authStore.login(loginForm);
     if (!result.success) {
-      message.error(result.message || "登录失败");
+      message.error(result.message || "Sign in failed");
       return;
     }
     const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
@@ -108,17 +108,18 @@ onMounted(async () => {
   justify-content: center;
   padding: 24px;
   background:
-    radial-gradient(circle at top left, rgba(0, 81, 213, 0.08), transparent 24rem),
-    var(--bg-primary);
+    radial-gradient(circle at top right, rgba(0, 113, 227, 0.18), transparent 22rem),
+    radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.04), transparent 28rem),
+    #131313;
 }
 
 .login-card {
   width: min(440px, 100%);
   padding: 36px;
-  border-radius: var(--radius-lg);
-  background: var(--surface-card);
-  border: 1px solid var(--surface-line);
-  box-shadow: var(--shadow-medium);
+  border-radius: 24px;
+  background: rgba(20, 21, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 28px 56px rgba(0, 0, 0, 0.32);
 }
 
 .login-brand {
@@ -129,15 +130,15 @@ onMounted(async () => {
 }
 
 .brand-mark {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 16px;
   color: #fff;
-  background: linear-gradient(180deg, #306bf3, #0051d5);
-  box-shadow: 0 10px 22px rgba(0, 81, 213, 0.2);
+  background: linear-gradient(180deg, #2890ff, #0071e3);
+  box-shadow: 0 18px 36px rgba(0, 113, 227, 0.26);
 }
 
 .brand-kicker {
@@ -152,7 +153,6 @@ onMounted(async () => {
 h1 {
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-display);
   font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -161,13 +161,6 @@ h1 {
 :deep(.n-form-item-label__text) {
   color: var(--text-secondary) !important;
   font-weight: 700;
-}
-
-:deep(.n-input) {
-  --n-border: 1px solid var(--surface-line) !important;
-  --n-border-hover: 1px solid #b4c5ff !important;
-  --n-border-focus: 1px solid var(--primary-color) !important;
-  --n-box-shadow-focus: 0 0 0 2px rgba(0, 81, 213, 0.12) !important;
 }
 
 @media (max-width: 640px) {
