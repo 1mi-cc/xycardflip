@@ -168,6 +168,103 @@ def _detect_login_page(provider: str, body_text: str) -> bool:
     return bool(markers) and all(marker in text for marker in markers[:2])
 
 
+def _detect_page_state(
+    provider: str,
+    *,
+    raw_item_count: int,
+    accepted_item_count: int,
+    login_required: bool,
+) -> str:
+    if login_required:
+        return "login"
+    if accepted_item_count > 0 or raw_item_count > 0:
+        return "search_results"
+    return "unknown"
+
+
+def _build_snapshot_state(
+    *,
+    provider: str,
+    raw_items: list[dict[str, Any]],
+    filtered_items: list[dict[str, Any]],
+    diagnostics: list[dict[str, Any]],
+    login_required: bool,
+) -> dict[str, Any]:
+    accepted_item_count = len(filtered_items)
+    raw_item_count = len(raw_items)
+    confidence_score = (
+        round(
+            min(0.98, max((item["score"] for item in diagnostics if item.get("accepted")), default=0.0)),
+            4,
+        )
+        if filtered_items
+        else 0.0
+    )
+    low_confidence = login_required or accepted_item_count == 0
+    page_state = _detect_page_state(
+        provider,
+        raw_item_count=raw_item_count,
+        accepted_item_count=accepted_item_count,
+        login_required=login_required,
+    )
+    ready_for_push = (not login_required) and (not low_confidence) and accepted_item_count > 0
+    warnings: list[str] = []
+    if login_required:
+        warnings.append("Browser page looks like a login screen. Keep the provider logged in and retry.")
+    elif low_confidence:
+        warnings.append("No strongly keyword-matching items were found in the visible browser results.")
+    return {
+        "provider": provider,
+        "raw_item_count": raw_item_count,
+        "accepted_item_count": accepted_item_count,
+        "confidence_score": confidence_score,
+        "low_confidence": low_confidence,
+        "login_required": login_required,
+        "page_state": page_state,
+        "ready_for_push": ready_for_push,
+        "warnings": warnings,
+    }
+
+
+def _page_match_score(provider: str, page: dict[str, Any], search_url: str) -> int:
+    url = _normalize_text(page.get("url"))
+    title = _normalize_text(page.get("title"))
+    if not url:
+        return -1
+    score = 0
+    if page.get("type") == "page":
+        score += 1
+    target_netloc = _normalize_text(urlparse(search_url).netloc).lower()
+    page_netloc = _normalize_text(urlparse(url).netloc).lower()
+    if target_netloc and page_netloc == target_netloc:
+        score += 4
+    provider_hosts = {
+        "jd": ("jd.com",),
+        "pinduoduo": ("yangkeduo.com", "pinduoduo.com"),
+    }.get(provider, ())
+    if any(host in page_netloc for host in provider_hosts):
+        score += 3
+    if "search" in url.lower():
+        score += 2
+    if title:
+        score += 1
+    return score
+
+
+def _select_debug_page(provider: str, pages: list[dict[str, Any]], search_url: str) -> dict[str, Any] | None:
+    candidates = [page for page in pages if page.get("webSocketDebuggerUrl")]
+    if not candidates:
+        return None
+    ranked = sorted(
+        candidates,
+        key=lambda page: (_page_match_score(provider, page, search_url), page.get("id", "")),
+        reverse=True,
+    )
+    if _page_match_score(provider, ranked[0], search_url) < 0:
+        return None
+    return ranked[0]
+
+
 def _build_extract_expression(provider: str, limit: int) -> str:
     cfg = PROVIDER_CONFIG[provider]
     id_key = cfg["id_key"]
@@ -365,14 +462,8 @@ def _connect_browser(provider: str, remote_debug_port: int, reuse_browser: bool,
         f"http://127.0.0.1:{int(remote_debug_port)}/json/list",
         timeout=3,
     ).json()
-    ws_url = next(
-        (
-            page.get("webSocketDebuggerUrl")
-            for page in pages
-            if page.get("type") == "page" and page.get("webSocketDebuggerUrl")
-        ),
-        "",
-    )
+    selected_page = _select_debug_page(provider, pages if isinstance(pages, list) else [], search_url) or {}
+    ws_url = _normalize_text(selected_page.get("webSocketDebuggerUrl"))
     if not ws_url:
         if proc is not None:
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], check=False, capture_output=True, text=True)
@@ -430,11 +521,13 @@ def _capture_snapshot(
         body_text = str(value.get("bodyText") or "") if isinstance(value, dict) else ""
         login_required = _detect_login_page(provider, body_text)
         filtered_items, diagnostics = _coerce_bridge_items(provider, raw_items, body_text, keyword, limit)
-        confidence_score = round(
-            min(0.98, max((item["score"] for item in diagnostics if item.get("accepted")), default=0.0)),
-            4,
-        ) if filtered_items else 0.0
-        low_confidence = login_required or len(filtered_items) == 0
+        snapshot_state = _build_snapshot_state(
+            provider=provider,
+            raw_items=raw_items,
+            filtered_items=filtered_items,
+            diagnostics=diagnostics,
+            login_required=login_required,
+        )
 
         cfg = PROVIDER_CONFIG[provider]
         if provider == "jd":
@@ -448,15 +541,7 @@ def _capture_snapshot(
             "page": int(page),
             "captured_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "item_count": len(filtered_items),
-            "raw_item_count": len(raw_items),
-            "confidence_score": confidence_score,
-            "low_confidence": low_confidence,
-            "login_required": login_required,
-            "warnings": (
-                ["Browser page looks like a login screen. Keep the provider logged in and retry."]
-                if login_required
-                else ["No strongly keyword-matching items were found in the visible browser results."]
-            ) if low_confidence else [],
+            **snapshot_state,
             "diagnostics": diagnostics[:20],
             "payload": payload,
             "risk_level": "high-risk-unstable",

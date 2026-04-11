@@ -5,7 +5,8 @@ param(
   [string]$Keyword = "Pokemon Card PSA 10",
   [int]$RemoteDebugPort = 0,
   [string]$ProfileDirectory = "Default",
-  [switch]$ReuseIfRunning
+  [switch]$ReuseIfRunning,
+  [switch]$CheckOnly
 )
 
 Set-StrictMode -Version Latest
@@ -49,6 +50,9 @@ if ($RemoteDebugPort -gt 0) {
 }
 if ($ReuseIfRunning) {
   $args += "--reuse-if-running"
+}
+if ($CheckOnly) {
+  $args += "--check-only"
 }
 
 Write-Host ("Starting browser session keeper for {0}..." -f $Provider) -ForegroundColor Cyan

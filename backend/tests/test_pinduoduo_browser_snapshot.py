@@ -11,27 +11,27 @@ if str(SCRIPTS_DIR) not in sys.path:
 import browser_snapshot_bridge as bridge  # noqa: E402
 
 
-def test_pinduoduo_keyword_variants_include_core_aliases() -> None:
+def test_pinduoduo_keyword_variants_include_ascii_terms() -> None:
     variants = bridge._keyword_variants("Pokemon Card PSA 10")
     lowered = {item.lower() for item in variants}
     assert "pokemon" in lowered
+    assert "card" in lowered
     assert "psa" in lowered
-    assert "宝可梦" in lowered
 
 
-def test_pinduoduo_coerce_bridge_items_stays_empty_for_login_like_page() -> None:
+def test_pinduoduo_coerce_bridge_items_stays_empty_for_irrelevant_candidates() -> None:
     accepted, diagnostics = bridge._coerce_bridge_items(
         "pinduoduo",
-        raw_items=[],
-        body_text="\n".join(
-            [
-                "手机登录",
-                "扫码登录",
-                "发送验证码",
-                "同意协议并登录",
-                "返回",
-            ]
-        ),
+        raw_items=[
+            {
+                "goods_id": "pdd-x",
+                "goods_name": "Running shoes lightweight men",
+                "goods_link": "https://mobile.yangkeduo.com/goods.html?goods_id=654321",
+                "priceText": "Price 89.00",
+                "listed_at": "2026-04-11T00:00:00Z",
+            }
+        ],
+        body_text="search results",
         keyword="Pokemon Card PSA 10",
         limit=5,
     )
@@ -41,19 +41,57 @@ def test_pinduoduo_coerce_bridge_items_stays_empty_for_login_like_page() -> None
     assert all(not item["accepted"] for item in diagnostics)
 
 
-def test_pinduoduo_coerce_bridge_items_accepts_relevant_candidate() -> None:
-    accepted, diagnostics = bridge._coerce_bridge_items(
-        "pinduoduo",
+def test_pinduoduo_snapshot_state_marks_login_page_not_ready_for_push() -> None:
+    snapshot_state = bridge._build_snapshot_state(
+        provider="pinduoduo",
+        raw_items=[],
+        filtered_items=[],
+        diagnostics=[],
+        login_required=True,
+    )
+
+    assert snapshot_state["page_state"] == "login"
+    assert snapshot_state["login_required"] is True
+    assert snapshot_state["accepted_item_count"] == 0
+    assert snapshot_state["ready_for_push"] is False
+
+
+def test_pinduoduo_snapshot_state_marks_search_results_without_matches_not_ready_for_push() -> None:
+    snapshot_state = bridge._build_snapshot_state(
+        provider="pinduoduo",
         raw_items=[
             {
-                "goods_id": "pdd-1",
-                "goods_name": "宝可梦 快龙 ex PSA10 收藏卡",
-                "goods_link": "https://mobile.yangkeduo.com/goods.html?goods_id=123456",
-                "priceText": "宝可梦 快龙 ex PSA10 收藏卡 到手价 ¥63.00",
-                "listed_at": "2026-04-11T00:00:00Z",
+                "goods_id": "pdd-x",
+                "goods_name": "Running shoes lightweight men",
+                "goods_link": "https://mobile.yangkeduo.com/goods.html?goods_id=654321",
+                "priceText": "Price 89.00",
             }
         ],
-        body_text="",
+        filtered_items=[],
+        diagnostics=[],
+        login_required=False,
+    )
+
+    assert snapshot_state["page_state"] == "search_results"
+    assert snapshot_state["low_confidence"] is True
+    assert snapshot_state["accepted_item_count"] == 0
+    assert snapshot_state["ready_for_push"] is False
+
+
+def test_pinduoduo_coerce_bridge_items_accepts_relevant_candidate() -> None:
+    raw_items = [
+        {
+            "goods_id": "pdd-1",
+            "goods_name": "Pokemon Card Charizard ex PSA10 collector card",
+            "goods_link": "https://mobile.yangkeduo.com/goods.html?goods_id=123456",
+            "priceText": "Pokemon Card Charizard ex PSA10 collector card Price 63.00",
+            "listed_at": "2026-04-11T00:00:00Z",
+        }
+    ]
+    accepted, diagnostics = bridge._coerce_bridge_items(
+        "pinduoduo",
+        raw_items=raw_items,
+        body_text="search results",
         keyword="Pokemon Card PSA 10",
         limit=5,
     )
@@ -61,3 +99,15 @@ def test_pinduoduo_coerce_bridge_items_accepts_relevant_candidate() -> None:
     assert len(accepted) == 1
     assert accepted[0]["goods_id"] == "pdd-1"
     assert any(item["accepted"] for item in diagnostics)
+
+    snapshot_state = bridge._build_snapshot_state(
+        provider="pinduoduo",
+        raw_items=raw_items,
+        filtered_items=accepted,
+        diagnostics=diagnostics,
+        login_required=False,
+    )
+
+    assert snapshot_state["page_state"] == "search_results"
+    assert snapshot_state["accepted_item_count"] == 1
+    assert snapshot_state["ready_for_push"] is True

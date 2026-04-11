@@ -42,8 +42,10 @@ $resolvedPassword = Resolve-AuthValue -Explicit $Password -EnvKey "CARD_FLIP_PAS
 
 Write-Host ("Fetching snapshot from {0}..." -f $targetBridgeUrl) -ForegroundColor Cyan
 $snapshot = Invoke-RestMethod -UseBasicParsing -Method Get -Uri "${targetBridgeUrl}?limit=${Limit}"
-if (($snapshot.low_confidence -eq $true) -or [int]($snapshot.item_count | ForEach-Object { $_ }) -le 0) {
-  throw ("Snapshot is low confidence or empty. item_count={0}" -f ([int]($snapshot.item_count | ForEach-Object { $_ })))
+if ($snapshot.ready_for_push -ne $true) {
+  $acceptedCount = [int]($snapshot.accepted_item_count | ForEach-Object { $_ })
+  $pageState = [string]($snapshot.page_state | ForEach-Object { $_ })
+  throw ("Snapshot is not ready for push. page_state={0} accepted_item_count={1}" -f $pageState, $acceptedCount)
 }
 
 $loginBody = @{ username = $resolvedUsername; password = $resolvedPassword } | ConvertTo-Json

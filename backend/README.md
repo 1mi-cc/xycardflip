@@ -716,6 +716,21 @@ powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_kee
   -ReuseIfRunning
 ```
 
+Probe the current keeper session without launching a new browser:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
+  -Provider pinduoduo `
+  -CheckOnly
+```
+
+The probe returns:
+
+- `current_url`
+- `page_title`
+- `page_state = login | search_results | unknown`
+- `login_required`
+
 Convenience launchers:
 
 ```cmd
@@ -747,3 +762,11 @@ powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_snapsh
   -BridgeUrl "http://127.0.0.1:8786/snapshot" `
   -Limit 20
 ```
+
+Push is fail-closed:
+
+- The local snapshot must return `ready_for_push = true`
+- `ready_for_push` only becomes true when:
+  - `login_required = false`
+  - `low_confidence = false`
+  - `accepted_item_count > 0`
