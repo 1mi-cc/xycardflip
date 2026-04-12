@@ -20,6 +20,11 @@ PROVIDER_CONFIG = {
         "default_debug_port": 9446,
         "start_url": "https://mobile.yangkeduo.com/search_result.html?search_key={keyword}",
     },
+    "xianyu": {
+        "default_keyword": "Q coin auto recharge",
+        "default_debug_port": 9447,
+        "start_url": "https://www.goofish.com/search?keyword={keyword}",
+    },
 }
 
 
@@ -82,6 +87,7 @@ def _provider_hosts(provider: str) -> tuple[str, ...]:
     return {
         "jd": ("jd.com",),
         "pinduoduo": ("yangkeduo.com", "pinduoduo.com"),
+        "xianyu": ("goofish.com", "xianyu.com", "taobao.com"),
     }.get(provider, ())
 
 
@@ -97,6 +103,14 @@ def _infer_page_state(provider: str, *, current_url: str, page_title: str) -> st
         if path.endswith("/login.html") or path.endswith("/login") or ("login" in path and "search_result" not in path):
             return "login"
         if title == "登录" or "登录 -" in title:
+            return "login"
+        return "unknown"
+    if provider == "xianyu":
+        if "login" in path:
+            return "login"
+        if any(host in netloc for host in ("goofish.com", "xianyu.com")) and "search" in path:
+            return "search_results"
+        if title == "登录" or "登录" in title:
             return "login"
         return "unknown"
     if provider == "jd":

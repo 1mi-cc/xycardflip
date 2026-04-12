@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("jd", "pinduoduo")]
+  [ValidateSet("jd", "pinduoduo", "xianyu")]
   [string]$Provider,
   [string]$Keyword = "",
   [int]$RemoteDebugPort = 0,

@@ -57,3 +57,23 @@ def test_probe_state_treats_search_result_url_as_results_even_with_login_referre
     )
 
     assert state == "search_results"
+
+
+def test_probe_state_detects_xianyu_login_page() -> None:
+    state = keeper._infer_page_state(
+        "xianyu",
+        current_url="https://www.goofish.com/login",
+        page_title="登录",
+    )
+
+    assert state == "login"
+
+
+def test_probe_state_detects_xianyu_search_results() -> None:
+    state = keeper._infer_page_state(
+        "xianyu",
+        current_url="https://www.goofish.com/search?keyword=Q%E5%B8%81%20%E8%87%AA%E5%8A%A8%E5%85%85%E5%80%BC",
+        page_title="Q币 自动充值",
+    )
+
+    assert state == "search_results"
