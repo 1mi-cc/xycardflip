@@ -5,6 +5,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -163,30 +164,15 @@ def _normalize_execution_action(value: str | None, default: str = "all") -> str:
 
 DEFAULT_UI_MENU_PERMISSIONS: tuple[str, ...] = (
     "dashboard:view",
-    "game:feature:view",
     "cardflip:view",
-    "task:view",
-    "task:batch",
-    "message:test",
-    "token:view",
-    "profile:view",
-    "system:settings",
 )
 
 DEFAULT_UI_ROLE_PERMISSIONS_ADMIN: tuple[str, ...] = DEFAULT_UI_MENU_PERMISSIONS
 DEFAULT_UI_ROLE_PERMISSIONS_OPS: tuple[str, ...] = (
-    "dashboard:view",
     "cardflip:view",
-    "task:view",
-    "task:batch",
-    "message:test",
-    "token:view",
 )
 DEFAULT_UI_ROLE_PERMISSIONS_VIEWER: tuple[str, ...] = (
-    "dashboard:view",
     "cardflip:view",
-    "token:view",
-    "profile:view",
 )
 
 
@@ -306,7 +292,7 @@ class Settings:
     ui_auth_nickname: str = os.getenv("UI_AUTH_NICKNAME", "本地操作员")
     ui_auth_default_role: str = os.getenv("UI_AUTH_DEFAULT_ROLE", "admin").strip().lower() or "admin"
     ui_auth_session_hours: int = _get_int("UI_AUTH_SESSION_HOURS", 72)
-    ui_auth_allow_registration: bool = _get_bool("UI_AUTH_ALLOW_REGISTRATION", True)
+    ui_auth_enforce_permissions: bool = _get_bool("UI_AUTH_ENFORCE_PERMISSIONS", True)
     ui_user_roles: str = os.getenv("UI_USER_ROLES", "")
     ui_menu_roles: tuple[str, ...] = _parse_csv_tokens(
         os.getenv("UI_MENU_ROLES", "admin"),
@@ -364,8 +350,33 @@ class Settings:
         "urgent sale,quick sale,private chat,vx,wechat,prepay,outside platform,offline deal",
     )
 
+    single_account_mode: bool = _get_bool("SINGLE_ACCOUNT_MODE", False)
     strategy_profile: str = _normalize_strategy_profile(os.getenv("STRATEGY_PROFILE", "balanced"))
     strategy_thresholds: StrategyThresholds = get_strategy_thresholds(strategy_profile)
+    single_account_validation_min_sold_count: int = _get_int(
+        "SINGLE_ACCOUNT_VALIDATION_MIN_SOLD_COUNT",
+        6,
+    )
+    single_account_validation_min_source_count: int = _get_int(
+        "SINGLE_ACCOUNT_VALIDATION_MIN_SOURCE_COUNT",
+        2,
+    )
+    single_account_validation_min_profit_hit_rate: float = _get_float(
+        "SINGLE_ACCOUNT_VALIDATION_MIN_PROFIT_HIT_RATE",
+        0.55,
+    )
+    single_account_validation_min_avg_roi: float = _get_float(
+        "SINGLE_ACCOUNT_VALIDATION_MIN_AVG_ROI",
+        0.08,
+    )
+    single_account_validation_max_business_bans: int = _get_int(
+        "SINGLE_ACCOUNT_VALIDATION_MAX_BUSINESS_BANS",
+        0,
+    )
+    single_account_validation_max_source_share: float = _get_float(
+        "SINGLE_ACCOUNT_VALIDATION_MAX_SOURCE_SHARE",
+        0.75,
+    )
 
     pricing_age_discount_per_day: float = _get_float(
         "PRICING_AGE_DISCOUNT_PER_DAY", 0.003
@@ -491,6 +502,66 @@ class Settings:
         "XIAN_YU_COOKIE_REFRESH_MIN_TTL_SEC",
         1800,
     )
+    taobao_top_gateway_url: str = os.getenv(
+        "TAOBAO_TOP_GATEWAY_URL",
+        "https://eco.taobao.com/router/rest",
+    )
+    taobao_top_app_key: str = os.getenv("TAOBAO_TOP_APP_KEY", "")
+    taobao_top_app_secret: str = os.getenv("TAOBAO_TOP_APP_SECRET", "")
+    taobao_top_method: str = os.getenv("TAOBAO_TOP_METHOD", "alibaba.tuike.offer.get")
+    taobao_top_sign_method: str = os.getenv("TAOBAO_TOP_SIGN_METHOD", "hmac")
+    taobao_top_isv_code: str = os.getenv("TAOBAO_TOP_ISV_CODE", "")
+    taobao_top_query_string: str = os.getenv("TAOBAO_TOP_QUERY_STRING", "")
+    taobao_top_session: str = os.getenv("TAOBAO_TOP_SESSION", "")
+    taobao_top_timeout_sec: float = _get_float("TAOBAO_TOP_TIMEOUT_SEC", 15.0)
+    pinduoduo_api_url: str = os.getenv(
+        "PINDUODUO_API_URL",
+        "https://gw-api.pinduoduo.com/api/router",
+    )
+    pinduoduo_client_id: str = os.getenv("PINDUODUO_CLIENT_ID", "")
+    pinduoduo_client_secret: str = os.getenv("PINDUODUO_CLIENT_SECRET", "")
+    pinduoduo_type: str = os.getenv("PINDUODUO_TYPE", "pdd.ddk.goods.search")
+    pinduoduo_access_token: str = os.getenv("PINDUODUO_ACCESS_TOKEN", "")
+    pinduoduo_data_type: str = os.getenv("PINDUODUO_DATA_TYPE", "JSON")
+    pinduoduo_params_json: str = os.getenv("PINDUODUO_PARAMS_JSON", "")
+    pinduoduo_timeout_sec: float = _get_float("PINDUODUO_TIMEOUT_SEC", 15.0)
+    pinduoduo_cookie: str = os.getenv("PINDUODUO_COOKIE", "")
+    pinduoduo_cookie_provider_url: str = os.getenv("PINDUODUO_COOKIE_PROVIDER_URL", "")
+    pinduoduo_cookie_refresh_url: str = os.getenv("PINDUODUO_COOKIE_REFRESH_URL", "")
+    pinduoduo_cookie_refresh_on_start: bool = _get_bool(
+        "PINDUODUO_COOKIE_REFRESH_ON_START", False
+    )
+    pinduoduo_cookie_ttl_sec: int = _get_int("PINDUODUO_COOKIE_TTL_SEC", 540)
+    pinduoduo_cookie_refresh_min_ttl_sec: int = _get_int(
+        "PINDUODUO_COOKIE_REFRESH_MIN_TTL_SEC",
+        1800,
+    )
+    pinduoduo_snapshot_provider_url: str = os.getenv("PINDUODUO_SNAPSHOT_PROVIDER_URL", "")
+    jd_api_url: str = os.getenv(
+        "JD_API_URL",
+        "https://router.jd.com/api",
+    )
+    jd_app_key: str = os.getenv("JD_APP_KEY", "")
+    jd_app_secret: str = os.getenv("JD_APP_SECRET", "")
+    jd_method: str = os.getenv("JD_METHOD", "jd.union.open.goods.query")
+    jd_access_token: str = os.getenv("JD_ACCESS_TOKEN", "")
+    jd_sign_method: str = os.getenv("JD_SIGN_METHOD", "md5")
+    jd_version: str = os.getenv("JD_VERSION", "1.0")
+    jd_format: str = os.getenv("JD_FORMAT", "json")
+    jd_param_json: str = os.getenv("JD_PARAM_JSON", "")
+    jd_timeout_sec: float = _get_float("JD_TIMEOUT_SEC", 15.0)
+    jd_cookie: str = os.getenv("JD_COOKIE", "")
+    jd_cookie_provider_url: str = os.getenv("JD_COOKIE_PROVIDER_URL", "")
+    jd_cookie_refresh_url: str = os.getenv("JD_COOKIE_REFRESH_URL", "")
+    jd_cookie_refresh_on_start: bool = _get_bool(
+        "JD_COOKIE_REFRESH_ON_START", False
+    )
+    jd_cookie_ttl_sec: int = _get_int("JD_COOKIE_TTL_SEC", 540)
+    jd_cookie_refresh_min_ttl_sec: int = _get_int(
+        "JD_COOKIE_REFRESH_MIN_TTL_SEC",
+        1800,
+    )
+    jd_snapshot_provider_url: str = os.getenv("JD_SNAPSHOT_PROVIDER_URL", "")
     monitor_pages: int = _get_int("MONITOR_PAGES", 1)
     monitor_use_proxy_pool: bool = _get_bool("MONITOR_USE_PROXY_POOL", False)
     proxy_pool_api: str = os.getenv("PROXY_POOL_API", "http://127.0.0.1:8899/")
@@ -619,6 +690,20 @@ class Settings:
         "AUTO_EXECUTE_LIST_ON_BUY_SUCCESS", False
     )
     auto_execute_list_dry_run: bool = _get_bool("AUTO_EXECUTE_LIST_DRY_RUN", True)
+    marketplace_shadow_enabled: bool = _get_bool("MARKETPLACE_SHADOW_ENABLED", False)
+    marketplace_shadow_candidate_limit: int = _get_int("MARKETPLACE_SHADOW_CANDIDATE_LIMIT", 20)
+    marketplace_shadow_min_net_profit: float = _get_float("MARKETPLACE_SHADOW_MIN_NET_PROFIT", 100.0)
+    marketplace_shadow_min_roi: float = _get_float("MARKETPLACE_SHADOW_MIN_ROI", 0.12)
+    marketplace_shadow_min_confidence: float = _get_float("MARKETPLACE_SHADOW_MIN_CONFIDENCE", 0.75)
+    marketplace_shadow_virtual_min_net_profit: float = _get_float("MARKETPLACE_SHADOW_VIRTUAL_MIN_NET_PROFIT", 20.0)
+    marketplace_shadow_virtual_min_roi: float = _get_float("MARKETPLACE_SHADOW_VIRTUAL_MIN_ROI", 0.02)
+    marketplace_shadow_virtual_min_confidence: float = _get_float("MARKETPLACE_SHADOW_VIRTUAL_MIN_CONFIDENCE", 0.75)
+    marketplace_shadow_min_platform_count: int = _get_int("MARKETPLACE_SHADOW_MIN_PLATFORM_COUNT", 2)
+    marketplace_shadow_cooldown_minutes: int = _get_int("MARKETPLACE_SHADOW_COOLDOWN_MINUTES", 240)
+    marketplace_shadow_manual_virtual_max_age_hours: int = _get_int(
+        "MARKETPLACE_SHADOW_MANUAL_VIRTUAL_MAX_AGE_HOURS",
+        48,
+    )
     auto_approve_max_consecutive_losses: int = _get_int("AUTO_APPROVE_MAX_CONSECUTIVE_LOSSES", 3)
     auto_approve_daily_loss_limit: float = _get_float("AUTO_APPROVE_DAILY_LOSS_LIMIT", 100.0)
     auto_approve_loss_recovery_enabled: bool = _get_bool("AUTO_APPROVE_LOSS_RECOVERY_ENABLED", True)
@@ -642,6 +727,34 @@ class Settings:
         "AUTO_APPROVE_SELLER_OBSERVE_RELEASE_STREAK",
         3,
     )
+    auto_approve_source_observe_base_multiplier: float = _get_float(
+        "AUTO_APPROVE_SOURCE_OBSERVE_BASE_MULTIPLIER",
+        0.2,
+    )
+    auto_approve_source_observe_release_streak: int = _get_int(
+        "AUTO_APPROVE_SOURCE_OBSERVE_RELEASE_STREAK",
+        3,
+    )
+    auto_approve_source_cashout_max_holding_days: float = _get_float(
+        "AUTO_APPROVE_SOURCE_CASHOUT_MAX_HOLDING_DAYS",
+        5.0,
+    )
+    auto_approve_portfolio_max_deployed_capital: float = _get_float(
+        "AUTO_APPROVE_PORTFOLIO_MAX_DEPLOYED_CAPITAL",
+        0.0,
+    )
+    auto_approve_max_source_capital_share: float = _get_float(
+        "AUTO_APPROVE_MAX_SOURCE_CAPITAL_SHARE",
+        0.6,
+    )
+    auto_approve_max_cluster_batch_share: float = _get_float(
+        "AUTO_APPROVE_MAX_CLUSTER_BATCH_SHARE",
+        0.6,
+    )
+    auto_approve_max_cluster_capital_share: float = _get_float(
+        "AUTO_APPROVE_MAX_CLUSTER_CAPITAL_SHARE",
+        0.6,
+    )
     auto_approve_seller_reputation_decay_days: float = _get_float(
         "AUTO_APPROVE_SELLER_REPUTATION_DECAY_DAYS",
         14.0,
@@ -651,11 +764,179 @@ class Settings:
     auto_tune_min_closed_batches: int = _get_int("AUTO_TUNE_MIN_CLOSED_BATCHES", 2)
     auto_tune_latest_min_sold_count: int = _get_int("AUTO_TUNE_LATEST_MIN_SOLD_COUNT", 5)
     auto_tune_previous_min_sold_count: int = _get_int("AUTO_TUNE_PREVIOUS_MIN_SOLD_COUNT", 3)
+    observation_baseline_min_hit_rate: float = _get_float(
+        "OBSERVATION_BASELINE_MIN_HIT_RATE",
+        0.55,
+    )
+    observation_baseline_min_avg_roi: float = _get_float(
+        "OBSERVATION_BASELINE_MIN_AVG_ROI",
+        0.08,
+    )
+    observation_baseline_max_avg_holding_days: float = _get_float(
+        "OBSERVATION_BASELINE_MAX_AVG_HOLDING_DAYS",
+        7.0,
+    )
+    observation_baseline_min_last_7d_net_profit: float = _get_float(
+        "OBSERVATION_BASELINE_MIN_LAST_7D_NET_PROFIT",
+        0.0,
+    )
+    observation_baseline_min_monitor_success_rate: float = _get_float(
+        "OBSERVATION_BASELINE_MIN_MONITOR_SUCCESS_RATE",
+        0.65,
+    )
+    observation_baseline_min_live_execution_samples: int = _get_int(
+        "OBSERVATION_BASELINE_MIN_LIVE_EXECUTION_SAMPLES",
+        6,
+    )
+    observation_baseline_max_live_execution_failure_rate: float = _get_float(
+        "OBSERVATION_BASELINE_MAX_LIVE_EXECUTION_FAILURE_RATE",
+        0.35,
+    )
+    observation_baseline_max_live_execution_business_bans: int = _get_int(
+        "OBSERVATION_BASELINE_MAX_LIVE_EXECUTION_BUSINESS_BANS",
+        0,
+    )
     auto_start_autotrade: bool = _get_bool("AUTO_START_AUTOTRADE", False)
     auto_start_execution_retry: bool = _get_bool("AUTO_START_EXECUTION_RETRY", False)
+    autotrade_alert_email_auto_enabled: bool = _get_bool(
+        "AUTOTRADE_ALERT_EMAIL_AUTO_ENABLED",
+        False,
+    )
+    autotrade_alert_escalation_minutes: int = _get_int(
+        "AUTOTRADE_ALERT_ESCALATION_MINUTES",
+        60,
+    )
+    autotrade_alert_ack_timeout_minutes: int = _get_int(
+        "AUTOTRADE_ALERT_ACK_TIMEOUT_MINUTES",
+        240,
+    )
+    autotrade_alert_renotify_minutes: int = _get_int(
+        "AUTOTRADE_ALERT_RENOTIFY_MINUTES",
+        180,
+    )
+    autotrade_alert_email_min_severity: str = os.getenv(
+        "AUTOTRADE_ALERT_EMAIL_MIN_SEVERITY",
+        "warning",
+    ).strip().lower() or "warning"
+    autotrade_alert_email_cooldown_minutes: int = _get_int(
+        "AUTOTRADE_ALERT_EMAIL_COOLDOWN_MINUTES",
+        30,
+    )
+    autotrade_alert_webhook_auto_enabled: bool = _get_bool(
+        "AUTOTRADE_ALERT_WEBHOOK_AUTO_ENABLED",
+        False,
+    )
+    autotrade_alert_webhook_min_severity: str = os.getenv(
+        "AUTOTRADE_ALERT_WEBHOOK_MIN_SEVERITY",
+        "error",
+    ).strip().lower() or "error"
+    autotrade_alert_webhook_cooldown_minutes: int = _get_int(
+        "AUTOTRADE_ALERT_WEBHOOK_COOLDOWN_MINUTES",
+        30,
+    )
+    autotrade_alert_slack_auto_enabled: bool = _get_bool(
+        "AUTOTRADE_ALERT_SLACK_AUTO_ENABLED",
+        False,
+    )
+    autotrade_alert_slack_min_severity: str = os.getenv(
+        "AUTOTRADE_ALERT_SLACK_MIN_SEVERITY",
+        "error",
+    ).strip().lower() or "error"
+    autotrade_alert_slack_cooldown_minutes: int = _get_int(
+        "AUTOTRADE_ALERT_SLACK_COOLDOWN_MINUTES",
+        30,
+    )
+    autotrade_alert_slack_min_stage: int = _get_int(
+        "AUTOTRADE_ALERT_SLACK_MIN_STAGE",
+        1,
+    )
+    autotrade_alert_telegram_auto_enabled: bool = _get_bool(
+        "AUTOTRADE_ALERT_TELEGRAM_AUTO_ENABLED",
+        False,
+    )
+    autotrade_alert_telegram_min_severity: str = os.getenv(
+        "AUTOTRADE_ALERT_TELEGRAM_MIN_SEVERITY",
+        "error",
+    ).strip().lower() or "error"
+    autotrade_alert_telegram_cooldown_minutes: int = _get_int(
+        "AUTOTRADE_ALERT_TELEGRAM_COOLDOWN_MINUTES",
+        30,
+    )
+    autotrade_alert_telegram_min_stage: int = _get_int(
+        "AUTOTRADE_ALERT_TELEGRAM_MIN_STAGE",
+        2,
+    )
+    autotrade_incident_auto_assign_enabled: bool = _get_bool(
+        "AUTOTRADE_INCIDENT_AUTO_ASSIGN_ENABLED",
+        True,
+    )
+    autotrade_incident_default_owner: str = os.getenv(
+        "AUTOTRADE_INCIDENT_DEFAULT_OWNER",
+        "ops_default",
+    ).strip()
+    autotrade_incident_rota_timezone: str = os.getenv(
+        "AUTOTRADE_INCIDENT_ROTA_TIMEZONE",
+        "UTC",
+    ).strip() or "UTC"
+    autotrade_incident_default_owner_schedule: str = os.getenv(
+        "AUTOTRADE_INCIDENT_DEFAULT_OWNER_SCHEDULE",
+        "",
+    ).strip()
+    autotrade_incident_high_priority_owner: str = os.getenv(
+        "AUTOTRADE_INCIDENT_HIGH_PRIORITY_OWNER",
+        "ops_high_priority",
+    ).strip()
+    autotrade_incident_high_priority_owner_schedule: str = os.getenv(
+        "AUTOTRADE_INCIDENT_HIGH_PRIORITY_OWNER_SCHEDULE",
+        "",
+    ).strip()
+    autotrade_incident_critical_priority_owner: str = os.getenv(
+        "AUTOTRADE_INCIDENT_CRITICAL_PRIORITY_OWNER",
+        "ops_critical",
+    ).strip()
+    autotrade_incident_critical_priority_owner_schedule: str = os.getenv(
+        "AUTOTRADE_INCIDENT_CRITICAL_PRIORITY_OWNER_SCHEDULE",
+        "",
+    ).strip()
+    autotrade_incident_slack_owner: str = os.getenv(
+        "AUTOTRADE_INCIDENT_SLACK_OWNER",
+        "",
+    ).strip()
+    autotrade_incident_slack_owner_schedule: str = os.getenv(
+        "AUTOTRADE_INCIDENT_SLACK_OWNER_SCHEDULE",
+        "",
+    ).strip()
+    autotrade_incident_telegram_owner: str = os.getenv(
+        "AUTOTRADE_INCIDENT_TELEGRAM_OWNER",
+        "",
+    ).strip()
+    autotrade_incident_telegram_owner_schedule: str = os.getenv(
+        "AUTOTRADE_INCIDENT_TELEGRAM_OWNER_SCHEDULE",
+        "",
+    ).strip()
+    autotrade_incident_auto_escalate_on_sla_breach: bool = _get_bool(
+        "AUTOTRADE_INCIDENT_AUTO_ESCALATE_ON_SLA_BREACH",
+        True,
+    )
+    autotrade_incident_auto_resolve_enabled: bool = _get_bool(
+        "AUTOTRADE_INCIDENT_AUTO_RESOLVE_ENABLED",
+        True,
+    )
 
     alert_email_enabled: bool = _get_bool("ALERT_EMAIL_ENABLED", False)
     alert_email_to: str = os.getenv("ALERT_EMAIL_TO", "")
+    alert_slack_enabled: bool = _get_bool("ALERT_SLACK_ENABLED", False)
+    alert_slack_webhook_url: str = os.getenv("ALERT_SLACK_WEBHOOK_URL", "")
+    alert_telegram_enabled: bool = _get_bool("ALERT_TELEGRAM_ENABLED", False)
+    alert_webhook_enabled: bool = _get_bool("ALERT_WEBHOOK_ENABLED", False)
+    alert_webhook_provider: str = os.getenv(
+        "ALERT_WEBHOOK_PROVIDER",
+        "generic",
+    ).strip().lower() or "generic"
+    alert_webhook_url: str = os.getenv("ALERT_WEBHOOK_URL", "")
+    alert_webhook_secret: str = os.getenv("ALERT_WEBHOOK_SECRET", "")
+    alert_telegram_bot_token: str = os.getenv("ALERT_TELEGRAM_BOT_TOKEN", "")
+    alert_telegram_chat_id: str = os.getenv("ALERT_TELEGRAM_CHAT_ID", "")
     smtp_host: str = os.getenv("SMTP_HOST", "")
     smtp_port: int = _get_int("SMTP_PORT", 465)
     smtp_user: str = os.getenv("SMTP_USER", "")
@@ -668,6 +949,161 @@ class Settings:
 
 
 settings = Settings()
+
+
+def single_account_guardrail_status(current: Settings | None = None) -> dict[str, Any]:
+    cfg = current or settings
+    items: list[dict[str, Any]] = [
+        {
+            "code": "conservative_strategy",
+            "label": "Strategy profile",
+            "ok": cfg.strategy_profile == "conservative",
+            "detail": f"strategy_profile={cfg.strategy_profile}",
+        },
+        {
+            "code": "single_page_monitor",
+            "label": "Monitor page budget",
+            "ok": int(cfg.monitor_pages) <= 1,
+            "detail": f"monitor_pages={cfg.monitor_pages}",
+        },
+        {
+            "code": "slow_monitor_pacing",
+            "label": "Monitor pacing",
+            "ok": bool(
+                float(cfg.monitor_day_delay_min) >= 20.0
+                and float(cfg.monitor_peak_delay_min) >= 8.0
+                and float(cfg.monitor_night_delay_min) >= 30.0
+                and float(cfg.monitor_long_rest_probability) >= 0.10
+            ),
+            "detail": (
+                "day>="
+                f"{cfg.monitor_day_delay_min:.0f}s, peak>={cfg.monitor_peak_delay_min:.0f}s, "
+                f"night>={cfg.monitor_night_delay_min:.0f}s, rest={cfg.monitor_long_rest_probability:.2f}"
+            ),
+        },
+        {
+            "code": "delay_floor_guarded",
+            "label": "Delay floor",
+            "ok": bool(
+                float(cfg.monitor_min_delay_sec) >= 3.0
+                and float(cfg.monitor_max_delay_sec) >= 8.0
+            ),
+            "detail": (
+                "min="
+                f"{cfg.monitor_min_delay_sec:.1f}s, max={cfg.monitor_max_delay_sec:.1f}s"
+            ),
+        },
+        {
+            "code": "defensive_circuit_tripwire",
+            "label": "Circuit tripwire",
+            "ok": bool(
+                int(cfg.monitor_circuit_max_errors) <= 2
+                and int(cfg.monitor_circuit_403_threshold) <= 1
+                and float(cfg.monitor_circuit_cooldown_sec) >= 1800.0
+            ),
+            "detail": (
+                "max_errors="
+                f"{cfg.monitor_circuit_max_errors}, 403_threshold={cfg.monitor_circuit_403_threshold}, "
+                f"cooldown={cfg.monitor_circuit_cooldown_sec:.0f}s"
+            ),
+        },
+        {
+            "code": "manual_service_start",
+            "label": "Auto start",
+            "ok": not bool(
+                cfg.auto_start_monitor
+                or cfg.auto_start_autotrade
+                or cfg.auto_start_execution_retry
+            ),
+            "detail": (
+                "monitor="
+                f"{cfg.auto_start_monitor}, autotrade={cfg.auto_start_autotrade}, "
+                f"retry={cfg.auto_start_execution_retry}"
+            ),
+        },
+        {
+            "code": "manual_automation_defaults",
+            "label": "Automation defaults",
+            "ok": bool(
+                not cfg.automation_default_include_monitor
+                and cfg.automation_default_include_scan
+                and not cfg.automation_default_include_autotrade
+                and not cfg.automation_default_include_execution_retry
+            ),
+            "detail": (
+                "monitor="
+                f"{cfg.automation_default_include_monitor}, scan={cfg.automation_default_include_scan}, "
+                f"autotrade={cfg.automation_default_include_autotrade}, "
+                f"retry={cfg.automation_default_include_execution_retry}"
+            ),
+        },
+        {
+            "code": "mock_execution_only",
+            "label": "Execution mode",
+            "ok": bool(
+                not cfg.execution_live_enabled
+                and str(cfg.execution_provider).strip().lower() in {"mock", "disabled", "none"}
+            ),
+            "detail": (
+                f"provider={cfg.execution_provider}, live_enabled={cfg.execution_live_enabled}"
+            ),
+        },
+        {
+            "code": "no_proxy_evasion",
+            "label": "Proxy posture",
+            "ok": bool(
+                not cfg.monitor_use_proxy_pool
+                and not str(cfg.network_force_proxy_url or "").strip()
+                and not cfg.execution_auto_rotate_proxy_on_ban
+            ),
+            "detail": (
+                "proxy_pool="
+                f"{cfg.monitor_use_proxy_pool}, forced_proxy={bool(str(cfg.network_force_proxy_url or '').strip())}, "
+                f"rotate_on_ban={cfg.execution_auto_rotate_proxy_on_ban}"
+            ),
+        },
+        {
+            "code": "small_scan_budget",
+            "label": "Scan budget",
+            "ok": int(cfg.automation_default_scan_limit) <= 40,
+            "detail": f"automation_default_scan_limit={cfg.automation_default_scan_limit}",
+        },
+        {
+            "code": "portfolio_cap_enabled",
+            "label": "Portfolio cap",
+            "ok": float(cfg.auto_approve_portfolio_max_deployed_capital) > 0.0,
+            "detail": (
+                "auto_approve_portfolio_max_deployed_capital="
+                f"{cfg.auto_approve_portfolio_max_deployed_capital}"
+            ),
+        },
+        {
+            "code": "tight_concentration_caps",
+            "label": "Concentration caps",
+            "ok": bool(
+                float(cfg.auto_approve_max_source_capital_share) <= 0.35
+                and float(cfg.auto_approve_max_cluster_batch_share) <= 0.25
+                and float(cfg.auto_approve_max_cluster_capital_share) <= 0.25
+            ),
+            "detail": (
+                "source="
+                f"{cfg.auto_approve_max_source_capital_share:.2f}, "
+                f"cluster_batch={cfg.auto_approve_max_cluster_batch_share:.2f}, "
+                f"cluster_capital={cfg.auto_approve_max_cluster_capital_share:.2f}"
+            ),
+        },
+    ]
+    failing = [item["code"] for item in items if not bool(item["ok"])]
+    return {
+        "enabled": bool(cfg.single_account_mode),
+        "mode": "single-account-local" if bool(cfg.single_account_mode) else "standard",
+        "mode_label": "单账号观察" if bool(cfg.single_account_mode) else "标准模式",
+        "strategy_profile": cfg.strategy_profile,
+        "aligned": not failing,
+        "failing_count": len(failing),
+        "failing_codes": failing,
+        "items": items,
+    }
 
 
 def resolved_dotenv_path() -> Path:

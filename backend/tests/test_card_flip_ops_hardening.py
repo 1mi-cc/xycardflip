@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app import repositories as repo
 from app.config import settings
+from app.config import single_account_guardrail_status
 from app.database import collect_database_diagnostics
 from app.database import get_conn
 from app.database import get_database_health_snapshot
@@ -93,6 +94,34 @@ def test_autotrade_run_once_busy_returns_conflict(isolated_sqlite: Path) -> None
         assert payload["reason"] == "run_once_in_progress"
     finally:
         auto_trade_service._run_lock.release()
+
+
+def test_monitor_run_once_route_returns_502_with_monitor_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _boom() -> dict[str, object]:
+        raise RuntimeError("upstream xianyu failure")
+
+    monkeypatch.setattr(monitor_service, "run_once", _boom)
+    monkeypatch.setattr(
+        monitor_service,
+        "status",
+        lambda: {
+            "circuit_open": True,
+            "circuit_reason": "proxy_exhausted",
+            "last_error": "upstream xianyu failure",
+        },
+    )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/monitor/run-once")
+
+    assert response.status_code == 502
+    payload = response.json()["detail"]
+    assert payload["message"] == "monitor run failed"
+    assert payload["error"] == "upstream xianyu failure"
+    assert payload["circuit_open"] is True
+    assert payload["circuit_reason"] == "proxy_exhausted"
 
 
 def test_approve_opportunity_idempotent_creates_single_trade(isolated_sqlite: Path) -> None:
@@ -535,6 +564,70 @@ def test_health_route_exposes_integrity_and_guard_status(isolated_sqlite: Path) 
     assert "uptime_kuma_url" not in payload["monitoring"]
 
 
+def test_operating_state_escalates_on_live_buy_failure_pattern(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        monitor_service,
+        "status",
+        lambda: {
+            "circuit_open": False,
+            "health": {
+                "samples": 10,
+                "success_rate": 1.0,
+                "guard_triggered": False,
+            },
+        },
+    )
+    monkeypatch.setattr(auto_trade_service, "status", lambda: {"running": True})
+    monkeypatch.setattr(
+        execution_retry_service,
+        "status",
+        lambda: {"running": True, "last_error": ""},
+    )
+
+    def _execution_summary(*, dry_run=None, **kwargs):
+        if dry_run is False:
+            return {
+                "sample_size": 8,
+                "success_count": 6,
+                "failure_count": 2,
+                "success_rate": 0.75,
+                "failure_rate": 0.25,
+                "business_ban_count": 0,
+                "last_failure_at": "2026-03-01T00:00:00+00:00",
+                "by_action": {
+                    "buy": {
+                        "sample_size": 8,
+                        "success_count": 2,
+                        "failure_count": 6,
+                        "success_rate": 0.25,
+                        "failure_rate": 0.75,
+                        "business_ban_count": 0,
+                        "last_failure_at": "2026-03-01T00:00:00+00:00",
+                    }
+                },
+            }
+        return {
+            "sample_size": 12,
+            "success_count": 10,
+            "failure_count": 2,
+            "success_rate": 0.8333,
+            "failure_rate": 0.1667,
+            "business_ban_count": 0,
+            "last_failure_at": "2026-03-01T00:00:00+00:00",
+            "by_action": {},
+        }
+
+    monkeypatch.setattr(repo, "get_execution_log_summary", _execution_summary)
+
+    status = operating_state_service.status()
+
+    assert status["state"] == "recovery"
+    assert any(str(reason).startswith("execution_action_recovery:buy") for reason in status["reasons"])
+    assert status["signals"]["execution_by_action"]["buy"]["failure_rate"] == 0.75
+
+
 def test_startup_checks_warn_when_gemini_pool_path_missing(
     isolated_sqlite: Path,
 ) -> None:
@@ -550,6 +643,126 @@ def test_startup_checks_warn_when_gemini_pool_path_missing(
 
     codes = {item["code"] for item in checks["items"]}
     assert "gemini_external_source_missing" in codes
+
+
+def test_startup_checks_warn_when_single_account_guardrails_drift(
+    isolated_sqlite: Path,
+) -> None:
+    old_single_account_mode = settings.single_account_mode
+    old_strategy_profile = settings.strategy_profile
+    old_monitor_pages = settings.monitor_pages
+    try:
+        object.__setattr__(settings, "single_account_mode", True)
+        object.__setattr__(settings, "strategy_profile", "balanced")
+        object.__setattr__(settings, "monitor_pages", 2)
+        checks = startup_configuration_checks()
+    finally:
+        object.__setattr__(settings, "single_account_mode", old_single_account_mode)
+        object.__setattr__(settings, "strategy_profile", old_strategy_profile)
+        object.__setattr__(settings, "monitor_pages", old_monitor_pages)
+
+    codes = {item["code"] for item in checks["items"]}
+    assert "single_account_guardrails_drift" in codes
+
+
+def test_single_account_guardrails_align_with_defensive_local_profile(
+    isolated_sqlite: Path,
+) -> None:
+    old_single_account_mode = settings.single_account_mode
+    old_strategy_profile = settings.strategy_profile
+    old_monitor_pages = settings.monitor_pages
+    old_day_delay_min = settings.monitor_day_delay_min
+    old_peak_delay_min = settings.monitor_peak_delay_min
+    old_night_delay_min = settings.monitor_night_delay_min
+    old_rest_probability = settings.monitor_long_rest_probability
+    old_monitor_min_delay = settings.monitor_min_delay_sec
+    old_monitor_max_delay = settings.monitor_max_delay_sec
+    old_monitor_circuit_errors = settings.monitor_circuit_max_errors
+    old_monitor_403_threshold = settings.monitor_circuit_403_threshold
+    old_monitor_cooldown = settings.monitor_circuit_cooldown_sec
+    old_auto_start_monitor = settings.auto_start_monitor
+    old_auto_start_autotrade = settings.auto_start_autotrade
+    old_auto_start_retry = settings.auto_start_execution_retry
+    old_default_monitor = settings.automation_default_include_monitor
+    old_default_scan = settings.automation_default_include_scan
+    old_default_autotrade = settings.automation_default_include_autotrade
+    old_default_retry = settings.automation_default_include_execution_retry
+    old_provider = settings.execution_provider
+    old_live = settings.execution_live_enabled
+    old_proxy_pool = settings.monitor_use_proxy_pool
+    old_force_proxy_url = settings.network_force_proxy_url
+    old_rotate_proxy = settings.execution_auto_rotate_proxy_on_ban
+    old_scan_limit = settings.automation_default_scan_limit
+    old_portfolio_cap = settings.auto_approve_portfolio_max_deployed_capital
+    old_source_share = settings.auto_approve_max_source_capital_share
+    old_cluster_batch = settings.auto_approve_max_cluster_batch_share
+    old_cluster_capital = settings.auto_approve_max_cluster_capital_share
+    try:
+        object.__setattr__(settings, "single_account_mode", True)
+        object.__setattr__(settings, "strategy_profile", "conservative")
+        object.__setattr__(settings, "monitor_pages", 1)
+        object.__setattr__(settings, "monitor_day_delay_min", 20.0)
+        object.__setattr__(settings, "monitor_peak_delay_min", 12.0)
+        object.__setattr__(settings, "monitor_night_delay_min", 35.0)
+        object.__setattr__(settings, "monitor_long_rest_probability", 0.12)
+        object.__setattr__(settings, "monitor_min_delay_sec", 3.0)
+        object.__setattr__(settings, "monitor_max_delay_sec", 8.0)
+        object.__setattr__(settings, "monitor_circuit_max_errors", 2)
+        object.__setattr__(settings, "monitor_circuit_403_threshold", 1)
+        object.__setattr__(settings, "monitor_circuit_cooldown_sec", 1800.0)
+        object.__setattr__(settings, "auto_start_monitor", False)
+        object.__setattr__(settings, "auto_start_autotrade", False)
+        object.__setattr__(settings, "auto_start_execution_retry", False)
+        object.__setattr__(settings, "automation_default_include_monitor", False)
+        object.__setattr__(settings, "automation_default_include_scan", True)
+        object.__setattr__(settings, "automation_default_include_autotrade", False)
+        object.__setattr__(settings, "automation_default_include_execution_retry", False)
+        object.__setattr__(settings, "execution_provider", "mock")
+        object.__setattr__(settings, "execution_live_enabled", False)
+        object.__setattr__(settings, "monitor_use_proxy_pool", False)
+        object.__setattr__(settings, "network_force_proxy_url", "")
+        object.__setattr__(settings, "execution_auto_rotate_proxy_on_ban", False)
+        object.__setattr__(settings, "automation_default_scan_limit", 40)
+        object.__setattr__(settings, "auto_approve_portfolio_max_deployed_capital", 500.0)
+        object.__setattr__(settings, "auto_approve_max_source_capital_share", 0.35)
+        object.__setattr__(settings, "auto_approve_max_cluster_batch_share", 0.25)
+        object.__setattr__(settings, "auto_approve_max_cluster_capital_share", 0.25)
+
+        status = single_account_guardrail_status()
+    finally:
+        object.__setattr__(settings, "single_account_mode", old_single_account_mode)
+        object.__setattr__(settings, "strategy_profile", old_strategy_profile)
+        object.__setattr__(settings, "monitor_pages", old_monitor_pages)
+        object.__setattr__(settings, "monitor_day_delay_min", old_day_delay_min)
+        object.__setattr__(settings, "monitor_peak_delay_min", old_peak_delay_min)
+        object.__setattr__(settings, "monitor_night_delay_min", old_night_delay_min)
+        object.__setattr__(settings, "monitor_long_rest_probability", old_rest_probability)
+        object.__setattr__(settings, "monitor_min_delay_sec", old_monitor_min_delay)
+        object.__setattr__(settings, "monitor_max_delay_sec", old_monitor_max_delay)
+        object.__setattr__(settings, "monitor_circuit_max_errors", old_monitor_circuit_errors)
+        object.__setattr__(settings, "monitor_circuit_403_threshold", old_monitor_403_threshold)
+        object.__setattr__(settings, "monitor_circuit_cooldown_sec", old_monitor_cooldown)
+        object.__setattr__(settings, "auto_start_monitor", old_auto_start_monitor)
+        object.__setattr__(settings, "auto_start_autotrade", old_auto_start_autotrade)
+        object.__setattr__(settings, "auto_start_execution_retry", old_auto_start_retry)
+        object.__setattr__(settings, "automation_default_include_monitor", old_default_monitor)
+        object.__setattr__(settings, "automation_default_include_scan", old_default_scan)
+        object.__setattr__(settings, "automation_default_include_autotrade", old_default_autotrade)
+        object.__setattr__(settings, "automation_default_include_execution_retry", old_default_retry)
+        object.__setattr__(settings, "execution_provider", old_provider)
+        object.__setattr__(settings, "execution_live_enabled", old_live)
+        object.__setattr__(settings, "monitor_use_proxy_pool", old_proxy_pool)
+        object.__setattr__(settings, "network_force_proxy_url", old_force_proxy_url)
+        object.__setattr__(settings, "execution_auto_rotate_proxy_on_ban", old_rotate_proxy)
+        object.__setattr__(settings, "automation_default_scan_limit", old_scan_limit)
+        object.__setattr__(settings, "auto_approve_portfolio_max_deployed_capital", old_portfolio_cap)
+        object.__setattr__(settings, "auto_approve_max_source_capital_share", old_source_share)
+        object.__setattr__(settings, "auto_approve_max_cluster_batch_share", old_cluster_batch)
+        object.__setattr__(settings, "auto_approve_max_cluster_capital_share", old_cluster_capital)
+
+    assert status["enabled"] is True
+    assert status["aligned"] is True
+    assert status["failing_codes"] == []
 
 
 def test_database_health_snapshot_handles_unopenable_path(tmp_path: Path) -> None:
@@ -598,3 +811,59 @@ def test_health_ready_route_reports_ready_and_degraded(
     assert degraded_payload["ready"] is False
     assert "database:journal_mode:delete" in degraded_payload["reasons"]
     assert "operating_state:recovery" in degraded_payload["reasons"]
+
+
+def test_operating_state_ignores_dry_run_execution_failures_for_live_degrade(
+    isolated_sqlite: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opportunity_id = _seed_pending_opportunity(index=6)
+    trade = repo.approve_opportunity_idempotent(
+        opportunity_id=opportunity_id,
+        approved_buy_price=106.0,
+        approved_by="pytest",
+        note="operating state seed",
+    )
+    trade_id = int(trade["trade_id"])
+
+    for idx in range(6):
+        repo.create_execution_log(
+            trade_id=trade_id,
+            action="buy",
+            provider="pytest",
+            dry_run=True,
+            request_payload={"idx": idx},
+            response_payload={"error": "dry run failed"},
+            success=False,
+            error="dry_run_failure",
+        )
+
+    monkeypatch.setattr(
+        health_router_module.monitor_service,
+        "status",
+        lambda: {
+            "circuit_open": False,
+            "health": {
+                "samples": 10,
+                "success_rate": 1.0,
+                "guard_triggered": False,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        health_router_module.auto_trade_service,
+        "status",
+        lambda: {"running": False},
+    )
+    monkeypatch.setattr(
+        health_router_module.execution_retry_service,
+        "status",
+        lambda: {"running": False, "last_error": ""},
+    )
+
+    status = health_router_module.operating_state_service.status()
+
+    assert status["state"] == "normal"
+    assert status["signals"]["execution_signal_scope"] == "live_only"
+    assert status["signals"]["execution_all_sample_size"] >= 6
+    assert status["signals"]["execution_live_sample_size"] == 0

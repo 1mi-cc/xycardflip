@@ -1,11 +1,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-import { useLocalTokenStore } from "./localTokenManager";
-
 const AUTH_ENDPOINTS = {
   login: ["/card-api/auth/login", "/auth/login"],
-  register: ["/card-api/auth/register", "/auth/register"],
   logout: ["/card-api/auth/logout", "/auth/logout"],
   refresh: ["/card-api/auth/refresh", "/auth/refresh"],
   userInfo: [
@@ -22,13 +19,13 @@ const toStringArray = (value) => {
   if (!Array.isArray(value))
     return [];
   return value
-    .filter((item) => typeof item === "string")
-    .map((item) => item.trim())
+    .filter(item => typeof item === "string")
+    .map(item => item.trim())
     .filter(Boolean);
 };
 
 const uniqueStrings = (items) => {
-  const normalized = [];
+  const result = [];
   const seen = new Set();
   for (const item of items) {
     const text = String(item || "").trim();
@@ -38,9 +35,9 @@ const uniqueStrings = (items) => {
     if (seen.has(lowered))
       continue;
     seen.add(lowered);
-    normalized.push(text);
+    result.push(text);
   }
-  return normalized;
+  return result;
 };
 
 const normalizeApiPayload = (payload) => {
@@ -65,33 +62,32 @@ const extractErrorMessage = (payload, fallback = "请求失败") => {
     if (typeof first === "string")
       return first;
     if (first && typeof first === "object") {
-      const msg = first.msg || first.message || first.detail;
-      if (typeof msg === "string" && msg.trim())
-        return msg.trim();
+      const text = first.msg || first.message || first.detail;
+      if (typeof text === "string" && text.trim())
+        return text.trim();
     }
   }
-  if (payload.error && typeof payload.error === "string")
-    return payload.error;
   return fallback;
 };
 
 const normalizeRoleKeys = (profile, payload) => {
-  const roleKeys = [
+  const direct = [
     ...toStringArray(profile?.roleKeys),
     ...toStringArray(payload?.roleKeys),
   ];
-  if (roleKeys.length)
-    return uniqueStrings(roleKeys);
+  if (direct.length)
+    return uniqueStrings(direct);
 
-  const roleObjects = [
+  const roles = [
     ...(Array.isArray(profile?.roles) ? profile.roles : []),
     ...(Array.isArray(payload?.roles) ? payload.roles : []),
   ];
-  const fromRoleObjects = roleObjects
-    .filter((role) => role && typeof role === "object")
-    .flatMap((role) => toStringArray([role.key, role.name]));
 
-  return uniqueStrings(fromRoleObjects);
+  return uniqueStrings(
+    roles
+      .filter(role => role && typeof role === "object")
+      .flatMap(role => toStringArray([role.key, role.name])),
+  );
 };
 
 const normalizeUserPayload = (payload) => {
@@ -107,7 +103,7 @@ const normalizeUserPayload = (payload) => {
   ]);
   const roles = Array.isArray(profile?.roles) && profile.roles.length
     ? profile.roles
-    : roleKeys.map((role) => ({
+    : roleKeys.map(role => ({
         key: role,
         name: role,
         permissions,
@@ -117,12 +113,13 @@ const normalizeUserPayload = (payload) => {
   return {
     ...profile,
     id: profile?.id || `user_${username}`,
+    userId: profile?.userId || profile?.id || null,
     username,
     nickname: profile?.nickname || username,
     roleKeys,
+    roles,
     permissions,
     perms: permissions,
-    roles,
     isAdmin: Boolean(profile?.isAdmin) || roleKeys.includes("admin"),
   };
 };
@@ -136,9 +133,6 @@ const requestAuth = async ({
   let lastError = null;
 
   for (const endpoint of endpoints) {
-    // Separate the network-level fetch from response processing so that a
-    // real server error (e.g. 401 "用户名或密码错误") is never silently
-    // replaced by a 404 returned from a fallback endpoint.
     let response;
     try {
       const headers = { Accept: "application/json" };
@@ -154,18 +148,13 @@ const requestAuth = async ({
         body: body !== null ? JSON.stringify(body) : undefined,
       });
     } catch {
-      // Network error – backend unreachable. Only record if no earlier real
-      // error has been captured, then try the next endpoint.
       if (!lastError)
-        lastError = new Error("无法连接到服务器，请确认后端服务已启动");
+        lastError = new Error("无法连接到后端服务");
       continue;
     }
 
     const payload = await response.json().catch(() => null);
     if (response.ok) {
-      // If the body could not be parsed as JSON (e.g. the Vite dev-server
-      // served its SPA index.html for an unmatched path), do not treat this
-      // as a successful auth response – fall through to the next endpoint.
       if (payload === null) {
         if (!lastError)
           lastError = new Error("接口返回了非 JSON 响应");
@@ -175,15 +164,11 @@ const requestAuth = async ({
     }
 
     if (response.status === 404) {
-      // Endpoint not found on this host – try the next fallback URL, but
-      // do not overwrite a more specific error already recorded.
       if (!lastError)
-        lastError = new Error("接口不存在");
+        lastError = new Error("认证接口不存在");
       continue;
     }
 
-    // Any other HTTP error (4xx/5xx) means the endpoint exists and returned
-    // a real error. Surface it immediately without trying further endpoints.
     throw new Error(extractErrorMessage(payload, "请求失败"));
   }
 
@@ -196,16 +181,13 @@ export const useAuthStore = defineStore("auth", () => {
   const isLoading = ref(false);
   const initialized = ref(false);
 
-  const localTokenStore = useLocalTokenStore();
-
   const isAuthenticated = computed(() => Boolean(token.value && user.value));
   const userInfo = computed(() => user.value);
-
   const permissions = computed(() => {
-    const info = user.value || {};
+    const current = user.value || {};
     return uniqueStrings([
-      ...toStringArray(info?.permissions),
-      ...toStringArray(info?.perms),
+      ...toStringArray(current?.permissions),
+      ...toStringArray(current?.perms),
     ]);
   });
 
@@ -216,10 +198,10 @@ export const useAuthStore = defineStore("auth", () => {
   };
 
   const getDefaultHomeRoute = () => {
-    if (hasPermission("support:ticket:manage"))
+    if (Boolean(user.value?.isAdmin) || hasPermission("dashboard:view"))
       return "/admin/dashboard";
-    if (hasPermission("support:ticket:view"))
-      return "/support/tickets";
+    if (hasPermission("cardflip:view"))
+      return "/admin/card-flip-ops";
     return "/login";
   };
 
@@ -236,11 +218,16 @@ export const useAuthStore = defineStore("auth", () => {
   };
 
   const clearPersistedAuthState = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("gameRoles");
-    localTokenStore.clearUserToken();
-    localTokenStore.clearAllGameTokens();
+    for (const key of [
+      "token",
+      "user",
+      "gameRoles",
+      "gameTokens",
+      "selectedTokenId",
+      "activeConnections",
+    ]) {
+      localStorage.removeItem(key);
+    }
   };
 
   const applyAuthPayload = (payload, fallbackToken = "") => {
@@ -250,8 +237,6 @@ export const useAuthStore = defineStore("auth", () => {
 
     user.value = normalizedUser;
     token.value = nextToken;
-    if (nextToken)
-      localTokenStore.setUserToken(nextToken);
     persistAuthState();
   };
 
@@ -279,25 +264,6 @@ export const useAuthStore = defineStore("auth", () => {
     }
   };
 
-  const register = async (userInfoData) => {
-    try {
-      isLoading.value = true;
-      await requestAuth({
-        method: "POST",
-        endpoints: AUTH_ENDPOINTS.register,
-        body: userInfoData || {},
-      });
-      return { success: true, message: "注册成功，请登录" };
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : "注册失败",
-      };
-    } finally {
-      isLoading.value = false;
-    }
-  };
-
   const logout = async () => {
     const tokenSnapshot = token.value;
     try {
@@ -309,8 +275,9 @@ export const useAuthStore = defineStore("auth", () => {
         });
       }
     } catch {
-      // ignore logout transport errors
+      // ignore
     }
+
     user.value = null;
     token.value = "";
     initialized.value = true;
@@ -389,7 +356,6 @@ export const useAuthStore = defineStore("auth", () => {
     hasPermission,
     getDefaultHomeRoute,
     login,
-    register,
     logout,
     fetchUserInfo,
     initAuth,

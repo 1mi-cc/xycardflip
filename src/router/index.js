@@ -1,65 +1,24 @@
 import { createRouter, createWebHistory } from "vue-router";
-import * as autoRoutes from "vue-router/auto-routes";
 
 import { useAuthStore } from "@/stores/auth";
-import { useTokenStore } from "@/stores/tokenStore";
 
-const generatedRoutes = autoRoutes.routes ?? [];
-
-const myRoutes = [
+const routes = [
   {
     path: "/",
-    redirect: "/login",
+    redirect: "/admin/dashboard",
   },
   {
     path: "/login",
     name: "Login",
     component: () => import("@/views/Login.vue"),
     meta: {
-      title: "登录",
+      title: "Sign In",
       guestOnly: true,
     },
   },
   {
-    path: "/register",
-    name: "Register",
-    component: () => import("@/views/Register.vue"),
-    meta: {
-      title: "注册",
-      guestOnly: true,
-    },
-  },
-  {
-    path: "/support/tickets",
-    name: "SupportTicketsPortal",
-    component: () => import("@/views/SupportTickets.vue"),
-    meta: {
-      title: "工单中心",
-      requiresAuth: true,
-      permission: "support:ticket:view",
-    },
-  },
-  {
-    path: "/tokens",
-    name: "TokenImport",
-    component: () => import("@/views/TokenImport/index.vue"),
-    meta: {
-      title: "Token 管理",
-      requiresAuth: true,
-      permission: "token:view",
-    },
-    props: (route) => ({
-      importToken: route.query.token,
-      name: route.query.name,
-      server: route.query.server,
-      wsUrl: route.query.wsUrl,
-      api: route.query.api,
-      auto: route.query.auto === "true",
-    }),
-  },
-  {
-    name: "DefaultLayout",
     path: "/admin",
+    name: "AdminLayout",
     component: () => import("@/layout/DefaultLayout.vue"),
     meta: {
       requiresAuth: true,
@@ -70,18 +29,9 @@ const myRoutes = [
         name: "Dashboard",
         component: () => import("@/views/Dashboard.vue"),
         meta: {
-          title: "控制台",
+          title: "Overview",
           permission: "dashboard:view",
-        },
-      },
-      {
-        path: "game-features",
-        name: "GameFeatures",
-        component: () => import("@/views/GameFeatures.vue"),
-        meta: {
-          title: "游戏功能",
-          permission: "game:feature:view",
-          requiresToken: true,
+          adminOnly: true,
         },
       },
       {
@@ -89,144 +39,81 @@ const myRoutes = [
         name: "CardFlipOps",
         component: () => import("@/views/card-flip-ops/CardFlipOpsPage.vue"),
         meta: {
-          title: "卡片倒卖 · 操作台",
+          title: "Card Trading",
           permission: "cardflip:view",
         },
       },
       {
-        path: "card-flip",
-        redirect: "/admin/card-flip/sim",
-      },
-      {
-        path: "card-flip/sim",
-        name: "CardFlipSimulation",
-        component: () => import("@/views/CardFlipModeDashboard.vue"),
-        props: { mode: "simulation" },
+        path: "matching-lab",
+        name: "MatchingLab",
+        component: () => import("@/views/MatchingLab.vue"),
         meta: {
-          title: "卡片倒卖 · 模拟盘",
+          title: "Matching Lab",
           permission: "cardflip:view",
-        },
-      },
-      {
-        path: "card-flip/live",
-        name: "CardFlipLive",
-        component: () => import("@/views/CardFlipModeDashboard.vue"),
-        props: { mode: "live" },
-        meta: {
-          title: "卡片倒卖 · 实战盘",
-          permission: "cardflip:view",
-        },
-      },
-      {
-        path: "card-flip/docs",
-        name: "CardFlipDocs",
-        component: () => import("@/views/card-flip-ops/CardFlipDocsPage.vue"),
-        meta: {
-          title: "卡片倒卖 · 使用文档",
-          permission: "cardflip:view",
-        },
-      },
-      {
-        path: "support-tickets",
-        name: "SupportTicketsAdmin",
-        component: () => import("@/views/SupportTickets.vue"),
-        meta: {
-          title: "工单处理台",
-          permission: "support:ticket:manage",
-        },
-      },
-      {
-        path: "message-test",
-        name: "MessageTest",
-        component: () => import("@/components/Test/MessageTester.vue"),
-        meta: {
-          title: "消息测试",
-          permission: "message:test",
-        },
-      },
-      {
-        path: "profile",
-        name: "Profile",
-        component: () => import("@/views/Profile.vue"),
-        meta: {
-          title: "个人设置",
-          permission: "profile:view",
-        },
-      },
-      {
-        path: "system-settings",
-        name: "SystemSettings",
-        component: () => import("@/views/SystemSettings.vue"),
-        meta: {
-          title: "绯荤粺璁剧疆",
-          permission: "system:settings",
-        },
-      },
-      {
-        path: "daily-tasks",
-        name: "DailyTasks",
-        component: () => import("@/views/DailyTasks.vue"),
-        meta: {
-          title: "日常任务",
-          permission: "task:view",
-          requiresToken: true,
-        },
-      },
-      {
-        path: "batch-daily-tasks",
-        name: "BatchDailyTasks",
-        component: () => import("@/views/BatchDailyTasks.vue"),
-        meta: {
-          title: "批量日常",
-          permission: "task:batch",
-          requiresToken: true,
         },
       },
     ],
   },
   {
-    path: "/websocket-test",
-    name: "WebSocketTest",
-    component: () => import("@/components/Test/WebSocketTester.vue"),
-    meta: {
-      title: "WebSocket 测试",
-      requiresAuth: true,
-      permission: "message:test",
-      requiresToken: true,
-    },
-  },
-  ...generatedRoutes,
-  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: () => import("@/views/NotFound.vue"),
     meta: {
-      title: "页面不存在",
+      title: "Not Found",
     },
   },
 ];
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: myRoutes,
-  scrollBehavior(to, _from, savedPosition) {
+  routes,
+  scrollBehavior(_to, _from, savedPosition) {
     if (savedPosition)
       return savedPosition;
     return { top: 0 };
   },
 });
 
+const CHUNK_RELOAD_GUARD_KEY = "xycardflip:chunk-reload-guard";
+
+function isDynamicImportFailure(error) {
+  const text = String(error?.message || error || "").trim();
+  if (!text)
+    return false;
+  return [
+    "Failed to fetch dynamically imported module",
+    "Importing a module script failed",
+    "Loading chunk",
+    "Unable to preload CSS",
+  ].some(pattern => text.includes(pattern));
+}
+
+router.onError((error, to) => {
+  if (!isDynamicImportFailure(error))
+    return;
+
+  const targetPath = String(
+    to?.fullPath
+    || `${window.location.pathname || "/"}${window.location.search || ""}${window.location.hash || ""}`,
+  ).trim() || "/";
+  const guardValue = sessionStorage.getItem(CHUNK_RELOAD_GUARD_KEY);
+
+  if (guardValue === targetPath)
+    return;
+
+  sessionStorage.setItem(CHUNK_RELOAD_GUARD_KEY, targetPath);
+  window.location.assign(targetPath);
+});
+
 router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
-  const tokenStore = useTokenStore();
 
-  document.title = to.meta.title
-    ? `${to.meta.title} - XYZW 游戏管理系统`
-    : "XYZW 游戏管理系统";
+  document.title = to.meta?.title
+    ? `${to.meta.title} - XYZW Card Trading Console`
+    : "XYZW Card Trading Console";
 
-  if (!authStore.initialized) {
+  if (!authStore.initialized)
     await authStore.initAuth();
-  }
 
   if (to.meta.guestOnly && authStore.isAuthenticated) {
     next(authStore.getDefaultHomeRoute());
@@ -236,23 +123,29 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({
       path: "/login",
-      query: to.fullPath && to.fullPath !== "/login" ? { redirect: to.fullPath } : undefined,
+      query: to.fullPath !== "/login" ? { redirect: to.fullPath } : undefined,
     });
     return;
   }
 
-  const requiredPermission = to.meta.permission;
+  const requiredPermission = to.meta?.permission;
   if (requiredPermission && authStore.isAuthenticated && !authStore.hasPermission(requiredPermission)) {
     next(authStore.getDefaultHomeRoute());
     return;
   }
 
-  if (to.meta.requiresToken && !tokenStore.hasTokens) {
-    next("/tokens");
+  if (to.meta?.adminOnly && authStore.isAuthenticated && !authStore.userInfo?.isAdmin) {
+    next(authStore.getDefaultHomeRoute());
     return;
   }
 
   next();
+});
+
+router.afterEach((to) => {
+  const guardValue = sessionStorage.getItem(CHUNK_RELOAD_GUARD_KEY);
+  if (guardValue && guardValue === String(to?.fullPath || ""))
+    sessionStorage.removeItem(CHUNK_RELOAD_GUARD_KEY);
 });
 
 export default router;

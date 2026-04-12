@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -10,9 +11,12 @@ from typing import Any
 from .config import settings
 from .database import get_conn
 from .database import record_batch_write_status
-from .schemas import FeatureData, ListingIn, SaleIn, ValuationOut
+from .schemas import FeatureData, ListingIn, MarketplaceOfferIn, SaleIn, ValuationOut
 from .services.listing_normalizer import ListingNormalization
+from .services.listing_normalizer import TRADABLE_ITEM_TYPES
 from .services.listing_normalizer import normalize_listing
+from .services.marketplace_normalizer import explain_marketplace_match
+from .services.marketplace_normalizer import normalize_marketplace_canonical_key
 
 
 def _normalize_optional_id(raw: str | None) -> str | None:
@@ -20,6 +24,22 @@ def _normalize_optional_id(raw: str | None) -> str | None:
         return None
     value = str(raw).strip()
     return value or None
+
+
+def _parse_event_timestamp(raw: str | None) -> datetime:
+    text = str(raw or "").strip()
+    if not text:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    normalized = text.replace("Z", "+00:00")
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _load_existing_pairs(
@@ -49,6 +69,13 @@ def _load_existing_pairs(
 def _normalize_text_key(raw: str | None) -> str:
     text = str(raw or "").strip().lower()
     return " ".join(text.split())
+
+
+def _normalize_marketplace_platform(raw: str | None) -> str:
+    text = _normalize_text_key(raw)
+    if text in {"xianyu_monitor", "xianyu_vnpy", "market_monitor", "goofish"}:
+        return "xianyu"
+    return text
 
 
 def _normalize_price_key(raw: float | int | str | None) -> float:
@@ -385,6 +412,1113 @@ def insert_listings(rows: list[ListingIn]) -> int:
     return len(values)
 
 
+def _normalize_marketplace_canonical_key(raw_key: str | None, title: str) -> str:
+    explicit = normalize_marketplace_canonical_key(raw_key=raw_key, title=title)
+    if explicit:
+        return explicit[:160]
+    return normalize_marketplace_canonical_key(title=title)[:160]
+
+
+def insert_marketplace_offers(rows: list[MarketplaceOfferIn]) -> int:
+    sql = """
+    INSERT INTO marketplace_offers(
+        platform, offer_id, seller_id, title, canonical_key, item_type,
+        list_price, shipping_cost, fee_rate, currency, listed_at, status, listing_url, raw_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(platform, offer_id) DO UPDATE SET
+        seller_id=excluded.seller_id,
+        title=excluded.title,
+        canonical_key=excluded.canonical_key,
+        item_type=excluded.item_type,
+        list_price=excluded.list_price,
+        shipping_cost=excluded.shipping_cost,
+        fee_rate=excluded.fee_rate,
+        currency=excluded.currency,
+        listed_at=excluded.listed_at,
+        status=excluded.status,
+        listing_url=excluded.listing_url,
+        raw_json=excluded.raw_json,
+        updated_at=CURRENT_TIMESTAMP
+    """
+    values: list[tuple[Any, ...]] = []
+    for row in rows:
+        platform = _normalize_marketplace_platform(row.platform)
+        if not platform:
+            continue
+        offer_id = _normalize_optional_id(row.offer_id)
+        if not offer_id:
+            offer_id = f"{platform}:{_normalize_marketplace_canonical_key(row.canonical_key, row.title)}:{_normalize_price_key(row.list_price)}"
+        values.append(
+            (
+                platform,
+                offer_id,
+                _normalize_optional_id(row.seller_id),
+                row.title.strip(),
+                _normalize_marketplace_canonical_key(row.canonical_key, row.title),
+                _normalize_text_key(row.item_type) or "generic",
+                float(row.list_price),
+                float(row.shipping_cost),
+                float(row.fee_rate),
+                str(row.currency or "CNY").strip().upper() or "CNY",
+                row.listed_at.isoformat(),
+                str(row.status or "open").strip() or "open",
+                str(row.listing_url or "").strip(),
+                json.dumps(row.raw, ensure_ascii=True),
+            )
+        )
+    if not values:
+        return 0
+    with get_conn() as conn:
+        conn.executemany(sql, values)
+    return len(values)
+
+
+def list_marketplace_offers(
+    *,
+    platform: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[sqlite3.Row]:
+    sql = """
+    SELECT *
+    FROM marketplace_offers
+    """
+    where: list[str] = []
+    params: list[Any] = []
+    if platform:
+        where.append("platform = ?")
+        params.append(_normalize_marketplace_platform(platform))
+    if status:
+        where.append("status = ?")
+        params.append(str(status).strip())
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY listed_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    with get_conn() as conn:
+        return conn.execute(sql, tuple(params)).fetchall()
+
+
+def backfill_marketplace_offers_from_listings(
+    *,
+    sources: tuple[str, ...] = ("xianyu_monitor", "xianyu_vnpy"),
+    limit: int = 500,
+    listing_hours: int = 24 * 30,
+) -> int:
+    source_values = [str(item or "").strip() for item in sources if str(item or "").strip()]
+    if not source_values:
+        return 0
+    listed_after = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(listing_hours)))).isoformat()
+    placeholders = ",".join("?" for _ in source_values)
+    sql = f"""
+    SELECT source, listing_id, seller_id, title, description, normalized_key, item_type, list_price, listed_at, status, raw_json
+    FROM listings_raw
+    WHERE status = 'open'
+      AND COALESCE(source, '') IN ({placeholders})
+      AND listed_at >= ?
+    ORDER BY listed_at DESC
+    LIMIT ?
+    """
+    params: list[Any] = [*source_values, listed_after, max(1, int(limit))]
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    payload: list[MarketplaceOfferIn] = []
+    for row in rows:
+        title = str(row["title"] or "").strip()
+        normalization = _listing_normalization_payload(
+            title=title,
+            description=str(row["description"] or ""),
+        )
+        item_type = str(normalization["item_type"] or row["item_type"] or "generic").strip() or "generic"
+        canonical_key = str(normalization["normalized_key"] or row["normalized_key"] or title).strip()
+        payload.append(
+            MarketplaceOfferIn(
+                platform=_normalize_marketplace_platform(row["source"]),
+                offer_id=_normalize_optional_id(row["listing_id"]),
+                seller_id=_normalize_optional_id(row["seller_id"]),
+                title=title,
+                canonical_key=canonical_key,
+                item_type=item_type,
+                list_price=float(row["list_price"] or 0.0),
+                shipping_cost=0.0,
+                fee_rate=0.0,
+                currency="CNY",
+                listed_at=_parse_event_timestamp(str(row["listed_at"] or "")).astimezone(timezone.utc),
+                status="open",
+                listing_url="",
+                raw=_parse_json_object(row["raw_json"]),
+            )
+        )
+    return insert_marketplace_offers(payload)
+
+
+def get_marketplace_provider_status(
+    *,
+    listing_hours: int = 24 * 30,
+    providers: tuple[str, ...] = ("xianyu", "taobao", "jd", "pinduoduo"),
+) -> list[dict[str, Any]]:
+    normalized_providers = [_normalize_marketplace_platform(item) for item in providers if str(item or "").strip()]
+    listed_after = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(listing_hours)))).isoformat()
+    with get_conn() as conn:
+        offer_rows = conn.execute(
+            """
+            SELECT platform, COUNT(*) AS c, MAX(listed_at) AS latest_listed_at
+            FROM marketplace_offers
+            WHERE status = 'open' AND listed_at >= ?
+            GROUP BY platform
+            """,
+            (listed_after,),
+        ).fetchall()
+        legacy_rows = conn.execute(
+            """
+            SELECT source, COUNT(*) AS c, MAX(listed_at) AS latest_listed_at
+            FROM listings_raw
+            WHERE status = 'open'
+              AND COALESCE(source, '') != 'simulation_seed'
+              AND listed_at >= ?
+            GROUP BY source
+            """,
+            (listed_after,),
+        ).fetchall()
+    offer_map = {
+        str(row["platform"] or "").strip().lower(): {
+            "offer_count": int(row["c"] or 0),
+            "latest_offer_at": str(row["latest_listed_at"] or ""),
+        }
+        for row in offer_rows
+    }
+    legacy_map: dict[str, dict[str, Any]] = {}
+    for row in legacy_rows:
+        provider = _normalize_marketplace_platform(row["source"])
+        bucket = legacy_map.setdefault(
+            provider,
+            {"legacy_open_listing_count": 0, "latest_legacy_at": ""},
+        )
+        bucket["legacy_open_listing_count"] += int(row["c"] or 0)
+        bucket["latest_legacy_at"] = max(
+            str(bucket["latest_legacy_at"] or ""),
+            str(row["latest_listed_at"] or ""),
+        )
+    items: list[dict[str, Any]] = []
+    for provider in normalized_providers:
+        offer_info = offer_map.get(provider, {})
+        legacy_info = legacy_map.get(provider, {})
+        items.append(
+            {
+                "provider": provider,
+                "offer_count": int(offer_info.get("offer_count") or 0),
+                "latest_offer_at": str(offer_info.get("latest_offer_at") or ""),
+                "legacy_open_listing_count": int(legacy_info.get("legacy_open_listing_count") or 0),
+                "latest_legacy_at": str(legacy_info.get("latest_legacy_at") or ""),
+                "backfill_ready": int(legacy_info.get("legacy_open_listing_count") or 0) > 0,
+            }
+        )
+    return items
+
+
+def create_marketplace_shadow_run(
+    *,
+    trigger_source: str,
+    status: str,
+    candidate_count: int,
+    accepted_count: int,
+    blocked_count: int,
+    error_count: int,
+    config: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO marketplace_shadow_runs(
+                trigger_source,
+                status,
+                candidate_count,
+                accepted_count,
+                blocked_count,
+                error_count,
+                config_json,
+                summary_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(trigger_source or "").strip() or "operator",
+                str(status or "").strip() or "completed",
+                max(0, int(candidate_count)),
+                max(0, int(accepted_count)),
+                max(0, int(blocked_count)),
+                max(0, int(error_count)),
+                json.dumps(config or {}, ensure_ascii=True),
+                json.dumps(summary or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM marketplace_shadow_runs WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_run(row)
+
+
+def update_marketplace_shadow_run(
+    run_id: int,
+    *,
+    status: str,
+    candidate_count: int,
+    accepted_count: int,
+    blocked_count: int,
+    error_count: int,
+    config: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE marketplace_shadow_runs
+            SET status = ?,
+                candidate_count = ?,
+                accepted_count = ?,
+                blocked_count = ?,
+                error_count = ?,
+                config_json = ?,
+                summary_json = ?
+            WHERE id = ?
+            """,
+            (
+                str(status or "").strip() or "completed",
+                max(0, int(candidate_count)),
+                max(0, int(accepted_count)),
+                max(0, int(blocked_count)),
+                max(0, int(error_count)),
+                json.dumps(config or {}, ensure_ascii=True),
+                json.dumps(summary or {}, ensure_ascii=True),
+                int(run_id),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM marketplace_shadow_runs WHERE id = ?",
+            (int(run_id),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_run(row)
+
+
+def create_marketplace_shadow_intent(
+    *,
+    run_id: int | None,
+    intent_key: str,
+    arbitrage_key: str,
+    reference_title: str,
+    buy_platform: str,
+    sell_platform: str,
+    buy_listing_id: str,
+    sell_listing_id: str,
+    platform_count: int,
+    listing_count: int,
+    estimated_net_profit: float,
+    estimated_roi: float,
+    confidence_score: float,
+    decision_status: str,
+    blocked_reason: str = "",
+    snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO marketplace_shadow_intents(
+                run_id,
+                intent_key,
+                arbitrage_key,
+                reference_title,
+                buy_platform,
+                sell_platform,
+                buy_listing_id,
+                sell_listing_id,
+                platform_count,
+                listing_count,
+                estimated_net_profit,
+                estimated_roi,
+                confidence_score,
+                decision_status,
+                blocked_reason,
+                snapshot_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(run_id) if run_id is not None else None,
+                str(intent_key or "").strip(),
+                str(arbitrage_key or "").strip(),
+                str(reference_title or "").strip(),
+                str(buy_platform or "").strip(),
+                str(sell_platform or "").strip(),
+                str(buy_listing_id or "").strip(),
+                str(sell_listing_id or "").strip(),
+                max(0, int(platform_count)),
+                max(0, int(listing_count)),
+                float(estimated_net_profit or 0.0),
+                float(estimated_roi or 0.0),
+                float(confidence_score or 0.0),
+                str(decision_status or "").strip() or "blocked",
+                str(blocked_reason or "").strip(),
+                json.dumps(snapshot or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM marketplace_shadow_intents WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_intent(row)
+
+
+def list_marketplace_shadow_runs(limit: int = 50) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_runs
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, int(limit)),),
+        ).fetchall()
+    return [_serialize_marketplace_shadow_run(row) for row in rows]
+
+
+def list_marketplace_shadow_intents(
+    *,
+    limit: int = 100,
+    decision_status: str | None = None,
+) -> list[dict[str, Any]]:
+    sql = """
+    SELECT *
+    FROM marketplace_shadow_intents
+    """
+    params: list[Any] = []
+    if decision_status:
+        sql += " WHERE decision_status = ?"
+        params.append(str(decision_status).strip())
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(max(1, int(limit)))
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    return [_serialize_marketplace_shadow_intent(row) for row in rows]
+
+
+def get_marketplace_shadow_intent(intent_id: int) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_intents
+            WHERE id = ?
+            """,
+            (int(intent_id),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_intent(row) if row else None
+
+
+def mark_marketplace_shadow_intent_reviewed(
+    intent_id: int,
+    *,
+    reviewed_by: str,
+    review_note: str = "",
+    review_verdict: str = "",
+) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE marketplace_shadow_intents
+            SET reviewed_at = CURRENT_TIMESTAMP,
+                reviewed_by = ?,
+                review_note = ?,
+                review_verdict = ?
+            WHERE id = ?
+            """,
+            (
+                str(reviewed_by or "").strip() or "operator",
+                str(review_note or "").strip(),
+                str(review_verdict or "").strip(),
+                int(intent_id),
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_intents
+            WHERE id = ?
+            """,
+            (int(intent_id),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_intent(row) if row else None
+
+
+def mark_marketplace_shadow_intent_outcome(
+    intent_id: int,
+    *,
+    outcome_status: str,
+    observed_buy_price: float,
+    observed_sell_price: float,
+    observed_extra_cost: float,
+    observed_net_profit: float,
+    observed_roi: float,
+    outcome_by: str,
+    outcome_note: str = "",
+) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE marketplace_shadow_intents
+            SET outcome_status = ?,
+                observed_buy_price = ?,
+                observed_sell_price = ?,
+                observed_extra_cost = ?,
+                observed_net_profit = ?,
+                observed_roi = ?,
+                outcome_note = ?,
+                outcome_at = CURRENT_TIMESTAMP,
+                outcome_by = ?
+            WHERE id = ?
+            """,
+            (
+                str(outcome_status or "").strip(),
+                float(observed_buy_price or 0.0),
+                float(observed_sell_price or 0.0),
+                float(observed_extra_cost or 0.0),
+                float(observed_net_profit or 0.0),
+                float(observed_roi or 0.0),
+                str(outcome_note or "").strip(),
+                str(outcome_by or "").strip() or "operator",
+                int(intent_id),
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_intents
+            WHERE id = ?
+            """,
+            (int(intent_id),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_intent(row) if row else None
+
+
+def get_recent_marketplace_shadow_accept(
+    *,
+    intent_key: str,
+    cooldown_minutes: int,
+) -> dict[str, Any] | None:
+    normalized_key = str(intent_key or "").strip()
+    if not normalized_key:
+        return None
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max(1, int(cooldown_minutes)))
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_intents
+            WHERE intent_key = ?
+              AND decision_status = 'accepted'
+            ORDER BY id DESC
+            LIMIT 20
+            """,
+            (normalized_key,),
+        ).fetchall()
+    for row in rows:
+        if _parse_matching_sample_time(row["created_at"]) >= cutoff:
+            return _serialize_marketplace_shadow_intent(row)
+    return None
+
+
+def get_marketplace_shadow_status() -> dict[str, Any]:
+    runs = list_marketplace_shadow_runs(limit=1)
+    intents = list_marketplace_shadow_intents(limit=20)
+    accepted_recent = sum(1 for item in intents if str(item.get("decision_status") or "") == "accepted")
+    blocked_recent = sum(1 for item in intents if str(item.get("decision_status") or "") == "blocked")
+    return {
+        "last_run": runs[0] if runs else {},
+        "recent_intent_count": len(intents),
+        "recent_accepted_count": accepted_recent,
+        "recent_blocked_count": blocked_recent,
+    }
+
+
+def _serialize_marketplace_shadow_run(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    return {
+        "id": int(row["id"]),
+        "trigger_source": str(row["trigger_source"] or ""),
+        "status": str(row["status"] or ""),
+        "candidate_count": int(row["candidate_count"] or 0),
+        "accepted_count": int(row["accepted_count"] or 0),
+        "blocked_count": int(row["blocked_count"] or 0),
+        "error_count": int(row["error_count"] or 0),
+        "config": _parse_json_object(row["config_json"]),
+        "summary": _parse_json_object(row["summary_json"]),
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
+def _serialize_marketplace_shadow_intent(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    snapshot = _parse_json_object(row["snapshot_json"])
+    decision_pack = _build_marketplace_shadow_decision_pack(row, snapshot)
+    return {
+        "id": int(row["id"]),
+        "run_id": int(row["run_id"]) if row["run_id"] is not None else None,
+        "intent_key": str(row["intent_key"] or ""),
+        "arbitrage_key": str(row["arbitrage_key"] or ""),
+        "reference_title": str(row["reference_title"] or ""),
+        "buy_platform": str(row["buy_platform"] or ""),
+        "sell_platform": str(row["sell_platform"] or ""),
+        "buy_listing_id": str(row["buy_listing_id"] or ""),
+        "sell_listing_id": str(row["sell_listing_id"] or ""),
+        "platform_count": int(row["platform_count"] or 0),
+        "listing_count": int(row["listing_count"] or 0),
+        "estimated_net_profit": float(row["estimated_net_profit"] or 0.0),
+        "estimated_roi": float(row["estimated_roi"] or 0.0),
+        "confidence_score": float(row["confidence_score"] or 0.0),
+        "decision_status": str(row["decision_status"] or ""),
+        "blocked_reason": str(row["blocked_reason"] or ""),
+        "snapshot": snapshot,
+        "decision_pack": decision_pack,
+        "reviewed_at": str(row["reviewed_at"] or ""),
+        "reviewed_by": str(row["reviewed_by"] or ""),
+        "review_note": str(row["review_note"] or ""),
+        "review_verdict": str(row["review_verdict"] or ""),
+        "outcome_status": str(row["outcome_status"] or ""),
+        "observed_buy_price": float(row["observed_buy_price"] or 0.0),
+        "observed_sell_price": float(row["observed_sell_price"] or 0.0),
+        "observed_extra_cost": float(row["observed_extra_cost"] or 0.0),
+        "observed_net_profit": float(row["observed_net_profit"] or 0.0),
+        "observed_roi": float(row["observed_roi"] or 0.0),
+        "outcome_note": str(row["outcome_note"] or ""),
+        "outcome_at": str(row["outcome_at"] or ""),
+        "outcome_by": str(row["outcome_by"] or ""),
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
+def _build_marketplace_shadow_decision_pack(
+    row: sqlite3.Row,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    candidate = snapshot.get("candidate") if isinstance(snapshot.get("candidate"), dict) else {}
+    decision = snapshot.get("decision") if isinstance(snapshot.get("decision"), dict) else {}
+
+    def offer_leg(name: str, platform_column: str, listing_column: str) -> dict[str, Any]:
+        leg = candidate.get(name) if isinstance(candidate.get(name), dict) else {}
+        return {
+            "platform": str(leg.get("source") or row[platform_column] or ""),
+            "listing_id": str(leg.get("listing_id") or row[listing_column] or ""),
+            "title": str(leg.get("title") or ""),
+            "list_price": float(leg.get("list_price") or 0.0),
+            "listing_url": str(leg.get("listing_url") or ""),
+            "listed_at": str(leg.get("listed_at") or ""),
+        }
+
+    return {
+        "item_type": str(decision.get("item_type") or candidate.get("item_type") or ""),
+        "virtual_only": bool(decision.get("virtual_only")),
+        "threshold_source": str(decision.get("threshold_source") or ""),
+        "min_net_profit": float(decision.get("min_net_profit") or 0.0),
+        "min_roi": float(decision.get("min_roi") or 0.0),
+        "min_confidence": float(decision.get("min_confidence") or 0.0),
+        "confidence_score": float(row["confidence_score"] or 0.0),
+        "decision_status": str(row["decision_status"] or ""),
+        "blocked_reason": str(row["blocked_reason"] or ""),
+        "reviewed_at": str(row["reviewed_at"] or ""),
+        "reviewed_by": str(row["reviewed_by"] or ""),
+        "review_note": str(row["review_note"] or ""),
+        "review_verdict": str(row["review_verdict"] or ""),
+        "outcome": {
+            "status": str(row["outcome_status"] or ""),
+            "observed_buy_price": float(row["observed_buy_price"] or 0.0),
+            "observed_sell_price": float(row["observed_sell_price"] or 0.0),
+            "extra_cost": float(row["observed_extra_cost"] or 0.0),
+            "observed_net_profit": float(row["observed_net_profit"] or 0.0),
+            "observed_roi": float(row["observed_roi"] or 0.0),
+            "note": str(row["outcome_note"] or ""),
+            "at": str(row["outcome_at"] or ""),
+            "by": str(row["outcome_by"] or ""),
+        },
+        "estimated_net_profit": float(row["estimated_net_profit"] or 0.0),
+        "estimated_roi": float(row["estimated_roi"] or 0.0),
+        "reference_title": str(row["reference_title"] or ""),
+        "arbitrage_key": str(row["arbitrage_key"] or ""),
+        "buy": offer_leg("buy", "buy_platform", "buy_listing_id"),
+        "sell": offer_leg("sell", "sell_platform", "sell_listing_id"),
+    }
+
+
+def create_matching_lab_sample(
+    *,
+    left_title: str,
+    right_title: str,
+    left_key: str = "",
+    right_key: str = "",
+    expected_verdict: str = "",
+    note: str = "",
+    result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO matching_lab_samples(
+                left_title, right_title, left_key, right_key, expected_verdict, note, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(left_title or "").strip(),
+                str(right_title or "").strip(),
+                str(left_key or "").strip(),
+                str(right_key or "").strip(),
+                str(expected_verdict or "").strip(),
+                str(note or "").strip(),
+                json.dumps(result or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM matching_lab_samples WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_matching_lab_sample_row(row) if row else {}
+
+
+def _serialize_matching_lab_sample_row(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    try:
+        result_json = json.loads(str(row["result_json"] or "{}"))
+    except json.JSONDecodeError:
+        result_json = {}
+    return {
+        "id": int(row["id"]),
+        "left_title": str(row["left_title"] or ""),
+        "right_title": str(row["right_title"] or ""),
+        "left_key": str(row["left_key"] or ""),
+        "right_key": str(row["right_key"] or ""),
+        "expected_verdict": str(row["expected_verdict"] or ""),
+        "note": str(row["note"] or ""),
+        "result": result_json,
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
+def list_matching_lab_samples(limit: int = 100) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM matching_lab_samples
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, int(limit)),),
+        ).fetchall()
+    return [_serialize_matching_lab_sample_row(row) for row in rows]
+
+
+def _parse_matching_sample_time(raw: Any) -> datetime:
+    text = str(raw or "").strip()
+    if not text:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    normalized = text.replace("Z", "+00:00")
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def build_matching_lab_report(
+    *,
+    days: int = 30,
+    limit: int = 2000,
+    accuracy_threshold: float = 0.8,
+    min_scored_samples: int = 10,
+) -> dict[str, Any]:
+    rows = list_matching_lab_samples(limit=max(1, int(limit)))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))
+    recent_rows = [
+        row
+        for row in rows
+        if _parse_matching_sample_time(row.get("created_at")) >= cutoff
+    ]
+
+    verdict_counts = {"same_group": 0, "close_match": 0, "different_group": 0}
+    expected_counts = {"same_group": 0, "close_match": 0, "different_group": 0}
+    scored_rows: list[dict[str, Any]] = []
+    mismatches: list[dict[str, Any]] = []
+
+    for row in recent_rows:
+        result = row.get("result") if isinstance(row.get("result"), dict) else {}
+        actual_verdict = str(result.get("verdict") or "").strip()
+        expected_verdict = str(row.get("expected_verdict") or "").strip()
+        if actual_verdict in verdict_counts:
+            verdict_counts[actual_verdict] += 1
+        if expected_verdict in expected_counts:
+            expected_counts[expected_verdict] += 1
+            scored_rows.append(row)
+            if actual_verdict != expected_verdict:
+                mismatches.append(
+                    {
+                        "id": row["id"],
+                        "left_title": row["left_title"],
+                        "right_title": row["right_title"],
+                        "expected_verdict": expected_verdict,
+                        "actual_verdict": actual_verdict,
+                        "note": row.get("note") or "",
+                        "created_at": row["created_at"],
+                    }
+                )
+
+    scored_count = len(scored_rows)
+    mismatch_count = len(mismatches)
+    correct_count = max(0, scored_count - mismatch_count)
+    accuracy = (correct_count / scored_count) if scored_count > 0 else 0.0
+    gate_ready = scored_count >= max(1, int(min_scored_samples))
+    gate_passed = gate_ready and accuracy >= float(accuracy_threshold)
+
+    distribution = [
+        {
+            "verdict": key,
+            "count": int(value),
+            "ratio": round((value / max(1, len(recent_rows))), 4),
+        }
+        for key, value in verdict_counts.items()
+    ]
+    expected_distribution = [
+        {
+            "verdict": key,
+            "count": int(value),
+            "ratio": round((value / max(1, scored_count)), 4) if scored_count else 0.0,
+        }
+        for key, value in expected_counts.items()
+    ]
+    mismatches.sort(key=lambda item: item["created_at"], reverse=True)
+    return {
+        "window_days": int(days),
+        "sample_limit": int(limit),
+        "summary": {
+            "total_samples": len(recent_rows),
+            "scored_samples": scored_count,
+            "correct_samples": correct_count,
+            "mismatch_samples": mismatch_count,
+            "accuracy": round(accuracy, 4),
+        },
+        "gate": {
+            "accuracy_threshold": float(accuracy_threshold),
+            "min_scored_samples": int(min_scored_samples),
+            "ready": gate_ready,
+            "passed": gate_passed,
+        },
+        "actual_distribution": distribution,
+        "expected_distribution": expected_distribution,
+        "mismatches": mismatches[:20],
+    }
+
+
+def _build_matching_sample_signature(
+    *,
+    left_title: str,
+    right_title: str,
+    left_key: str = "",
+    right_key: str = "",
+    pair_signature: str = "",
+    semantic_signature: str = "",
+) -> str:
+    explicit_pair = str(pair_signature or "").strip()
+    if explicit_pair:
+        return explicit_pair
+
+    explicit_semantic = str(semantic_signature or "").strip()
+    if explicit_semantic:
+        return explicit_semantic
+
+    left_canonical = normalize_marketplace_canonical_key(raw_key=left_key, title=left_title)
+    right_canonical = normalize_marketplace_canonical_key(raw_key=right_key, title=right_title)
+    parts = sorted(
+        [
+            f"{left_canonical}|{_normalize_text_key(left_title)}",
+            f"{right_canonical}|{_normalize_text_key(right_title)}",
+        ]
+    )
+    digest = hashlib.sha1("||".join(parts).encode("utf-8")).hexdigest()
+    return f"titlepair:{digest}"
+
+
+def _collect_existing_matching_sample_signatures(limit: int = 5000) -> set[str]:
+    signatures: set[str] = set()
+    for row in list_matching_lab_samples(limit=max(1, int(limit))):
+        result = row.get("result") if isinstance(row.get("result"), dict) else {}
+        for key in ("pair_signature", "semantic_signature"):
+            value = str(result.get(key) or "").strip()
+            if value:
+                signatures.add(value)
+        signatures.add(
+            _build_matching_sample_signature(
+                left_title=str(row.get("left_title") or ""),
+                right_title=str(row.get("right_title") or ""),
+                left_key=str(row.get("left_key") or ""),
+                right_key=str(row.get("right_key") or ""),
+                pair_signature=str(result.get("pair_signature") or ""),
+                semantic_signature=str(result.get("semantic_signature") or ""),
+            )
+        )
+    return signatures
+
+
+def _serialize_review_offer(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "platform": str(row["platform"] or "").strip(),
+        "offer_id": str(row["offer_id"] or "").strip(),
+        "seller_id": str(row["seller_id"] or "").strip(),
+        "title": str(row["title"] or "").strip(),
+        "canonical_key": str(row["canonical_key"] or "").strip(),
+        "item_type": str(row["item_type"] or "").strip(),
+        "list_price": float(row["list_price"] or 0.0),
+        "shipping_cost": float(row["shipping_cost"] or 0.0),
+        "fee_rate": float(row["fee_rate"] or 0.0),
+        "currency": str(row["currency"] or "CNY").strip().upper() or "CNY",
+        "listed_at": str(row["listed_at"] or ""),
+        "listing_url": str(row["listing_url"] or "").strip(),
+    }
+
+
+def _matching_review_pair_signature(left: dict[str, Any], right: dict[str, Any]) -> str:
+    parts = sorted(
+        [
+            f"{left['platform']}:{left['offer_id']}",
+            f"{right['platform']}:{right['offer_id']}",
+        ]
+    )
+    return "offerpair:" + "||".join(parts)
+
+
+def _matching_review_semantic_signature(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    comparison: dict[str, Any],
+) -> str:
+    left_key = str(comparison.get("left_canonical_key") or left.get("canonical_key") or "").strip()
+    right_key = str(comparison.get("right_canonical_key") or right.get("canonical_key") or "").strip()
+    parts = sorted(
+        [
+            f"{left['platform']}:{left_key or _normalize_text_key(left['title'])}",
+            f"{right['platform']}:{right_key or _normalize_text_key(right['title'])}",
+        ]
+    )
+    digest = hashlib.sha1("||".join(parts).encode("utf-8")).hexdigest()
+    return f"semantic:{digest}"
+
+
+def _matching_review_price_gap_ratio(left_price: float, right_price: float) -> float:
+    high = max(float(left_price or 0.0), float(right_price or 0.0), 1.0)
+    low = min(float(left_price or 0.0), float(right_price or 0.0))
+    return round((high - low) / high, 4)
+
+
+def _matching_review_price_band(price_gap_ratio: float) -> str:
+    if price_gap_ratio <= 0.15:
+        return "tight"
+    if price_gap_ratio <= 0.35:
+        return "medium"
+    return "wide"
+
+
+def _matching_review_priority(
+    *,
+    comparison: dict[str, Any],
+    left: dict[str, Any],
+    right: dict[str, Any],
+) -> float:
+    overlap_ratio = float(comparison.get("token_overlap_ratio") or 0.0)
+    overlap_tokens = comparison.get("overlap_tokens") or []
+    verdict = str(comparison.get("verdict") or "").strip()
+    price_gap_ratio = _matching_review_price_gap_ratio(left["list_price"], right["list_price"])
+    price_band = _matching_review_price_band(price_gap_ratio)
+
+    verdict_bonus = {
+        "close_match": 0.22,
+        "same_group": 0.14,
+        "different_group": 0.04,
+    }.get(verdict, 0.0)
+    price_bonus = {
+        "tight": 0.16,
+        "medium": 0.08,
+        "wide": 0.0,
+    }[price_band]
+    cross_platform_bonus = 0.12 if "xianyu" in {left["platform"], right["platform"]} else 0.06
+    overlap_bonus = min(len(overlap_tokens), 4) * 0.03
+    return round(overlap_ratio + verdict_bonus + price_bonus + cross_platform_bonus + overlap_bonus, 4)
+
+
+def _build_matching_review_queue_items(
+    *,
+    listing_hours: int = 24 * 30,
+    candidate_pool: int = 300,
+    min_token_overlap: float = 0.35,
+) -> list[dict[str, Any]]:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, int(listing_hours)))
+    rows = list_marketplace_offers(status="open", limit=max(20, min(1000, int(candidate_pool))))
+    offers = [
+        _serialize_review_offer(row)
+        for row in rows
+        if _parse_matching_sample_time(row["listed_at"]) >= cutoff
+    ]
+    existing_signatures = _collect_existing_matching_sample_signatures(
+        limit=max(1000, min(10000, int(candidate_pool) * 10))
+    )
+
+    candidate_map: dict[str, dict[str, Any]] = {}
+    for index, left in enumerate(offers):
+        for right in offers[index + 1 :]:
+            if left["platform"] == right["platform"]:
+                continue
+
+            comparison = explain_marketplace_match(
+                left_title=left["title"],
+                right_title=right["title"],
+                left_key=left["canonical_key"],
+                right_key=right["canonical_key"],
+            )
+            overlap_ratio = float(comparison.get("token_overlap_ratio") or 0.0)
+            overlap_tokens = list(comparison.get("overlap_tokens") or [])
+            if not bool(comparison.get("exact_match")) and overlap_ratio < float(min_token_overlap) and len(overlap_tokens) < 2:
+                continue
+
+            pair_signature = _matching_review_pair_signature(left, right)
+            semantic_signature = _matching_review_semantic_signature(left, right, comparison)
+            fallback_signature = _build_matching_sample_signature(
+                left_title=left["title"],
+                right_title=right["title"],
+                left_key=left["canonical_key"],
+                right_key=right["canonical_key"],
+            )
+            if (
+                pair_signature in existing_signatures
+                or semantic_signature in existing_signatures
+                or fallback_signature in existing_signatures
+            ):
+                continue
+
+            price_gap_ratio = _matching_review_price_gap_ratio(left["list_price"], right["list_price"])
+            price_band = _matching_review_price_band(price_gap_ratio)
+            priority_score = _matching_review_priority(comparison=comparison, left=left, right=right)
+            review_id = hashlib.sha1(pair_signature.encode("utf-8")).hexdigest()[:16]
+            item = {
+                "review_id": review_id,
+                "pair_signature": pair_signature,
+                "semantic_signature": semantic_signature,
+                "priority_score": priority_score,
+                "predicted_verdict": str(comparison.get("verdict") or "").strip(),
+                "reason": str(comparison.get("reason") or "").strip(),
+                "token_overlap_ratio": overlap_ratio,
+                "overlap_tokens": overlap_tokens,
+                "left_only_tokens": list(comparison.get("left_only_tokens") or []),
+                "right_only_tokens": list(comparison.get("right_only_tokens") or []),
+                "exact_match": bool(comparison.get("exact_match")),
+                "price_gap_ratio": price_gap_ratio,
+                "price_band": price_band,
+                "platforms": sorted({left["platform"], right["platform"]}),
+                "left": left,
+                "right": right,
+                "comparison": comparison,
+            }
+            current = candidate_map.get(semantic_signature)
+            if current is None or float(item["priority_score"]) > float(current["priority_score"]):
+                candidate_map[semantic_signature] = item
+
+    items = sorted(
+        candidate_map.values(),
+        key=lambda item: (
+            -float(item["priority_score"]),
+            str(item["predicted_verdict"]) != "close_match",
+            float(item["price_gap_ratio"]),
+            str(item["left"]["listed_at"]),
+            str(item["right"]["listed_at"]),
+        ),
+    )
+    return items
+
+
+def build_matching_review_queue(
+    *,
+    limit: int = 20,
+    listing_hours: int = 24 * 30,
+    candidate_pool: int = 300,
+    min_token_overlap: float = 0.35,
+) -> dict[str, Any]:
+    items = _build_matching_review_queue_items(
+        listing_hours=listing_hours,
+        candidate_pool=candidate_pool,
+        min_token_overlap=min_token_overlap,
+    )[: max(1, int(limit))]
+    return {
+        "items": items,
+        "count": len(items),
+        "listing_hours": int(listing_hours),
+        "candidate_pool": int(candidate_pool),
+        "min_token_overlap": float(min_token_overlap),
+    }
+
+
+def label_matching_review_queue_item(
+    *,
+    review_id: str,
+    expected_verdict: str,
+    note: str = "",
+    listing_hours: int = 24 * 30,
+    candidate_pool: int = 300,
+    min_token_overlap: float = 0.35,
+) -> dict[str, Any]:
+    review_key = str(review_id or "").strip()
+    if not review_key:
+        raise KeyError("review_id is required")
+
+    items = _build_matching_review_queue_items(
+        listing_hours=listing_hours,
+        candidate_pool=candidate_pool,
+        min_token_overlap=min_token_overlap,
+    )
+    match = next((item for item in items if str(item["review_id"]) == review_key), None)
+    if match is None:
+        raise KeyError(review_key)
+
+    result_payload = dict(match["comparison"])
+    result_payload.update(
+        {
+            "review_id": match["review_id"],
+            "pair_signature": match["pair_signature"],
+            "semantic_signature": match["semantic_signature"],
+            "price_gap_ratio": match["price_gap_ratio"],
+            "price_band": match["price_band"],
+            "platforms": match["platforms"],
+            "priority_score": match["priority_score"],
+            "left_offer": match["left"],
+            "right_offer": match["right"],
+        }
+    )
+    sample = create_matching_lab_sample(
+        left_title=str(match["left"]["title"] or ""),
+        right_title=str(match["right"]["title"] or ""),
+        left_key=str(match["left"]["canonical_key"] or ""),
+        right_key=str(match["right"]["canonical_key"] or ""),
+        expected_verdict=str(expected_verdict or "").strip(),
+        note=str(note or "").strip(),
+        result=result_payload,
+    )
+    return {
+        "review_id": match["review_id"],
+        "sample": sample,
+    }
+
+
 def get_listing_by_source_listing_id(source: str, listing_id: str) -> sqlite3.Row | None:
     normalized_id = _normalize_optional_id(listing_id)
     if not normalized_id:
@@ -524,12 +1658,21 @@ def _backfill_listing_normalization(row_ids: list[int]) -> None:
             )
 
 
-def get_open_listings(limit: int = 50, *, include_noise_filtered: bool = False) -> list[sqlite3.Row]:
+def get_open_listings(
+    limit: int = 50,
+    *,
+    include_noise_filtered: bool = False,
+    include_simulation: bool = False,
+) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM listings_raw WHERE status = 'open'"
+    params: list[Any] = []
+    if not include_simulation:
+        sql += " AND COALESCE(source, '') != ?"
+        params.append("simulation_seed")
+    sql += " ORDER BY listed_at DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        cur = conn.execute(
-            "SELECT * FROM listings_raw WHERE status = 'open' ORDER BY listed_at DESC LIMIT ?",
-            (limit,),
-        )
+        cur = conn.execute(sql, tuple(params))
         rows = cur.fetchall()
     stale_ids = [
         int(row["id"])
@@ -549,6 +1692,58 @@ def get_open_listings(limit: int = 50, *, include_noise_filtered: bool = False) 
     if include_noise_filtered:
         return rows
     return [row for row in rows if not bool(row["normalization_blocked"])]
+
+
+def list_open_listings_for_arbitrage(
+    *,
+    listing_hours: int = 72,
+    limit: int = 2000,
+    include_sources: tuple[str, ...] = (),
+    include_simulation: bool = False,
+) -> list[sqlite3.Row]:
+    listing_window_hours = max(1, min(24 * 30, int(listing_hours)))
+    row_limit = max(1, min(5000, int(limit)))
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=listing_window_hours)).isoformat()
+    sql = """
+    SELECT
+        id,
+        source,
+        listing_id,
+        seller_id,
+        title,
+        description,
+        list_price,
+        listed_at,
+        status,
+        normalized_title,
+        normalized_key,
+        item_type,
+        normalization_confidence,
+        normalization_blocked
+    FROM listings_raw
+    WHERE status = 'open'
+      AND listed_at >= ?
+      AND COALESCE(normalization_blocked, 0) = 0
+      AND COALESCE(normalized_key, '') != ''
+    """
+    params: list[Any] = [cutoff]
+    if not include_simulation:
+        sql += " AND COALESCE(source, '') != ?"
+        params.append("simulation_seed")
+    normalized_sources = tuple(
+        token.strip()
+        for token in include_sources
+        if str(token or "").strip()
+    )
+    if normalized_sources:
+        placeholders = ",".join("?" for _ in normalized_sources)
+        sql += f" AND source IN ({placeholders})"
+        params.extend(normalized_sources)
+    sql += " ORDER BY listed_at DESC LIMIT ?"
+    params.append(row_limit)
+    with get_conn() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    return rows
 
 
 def get_opportunity_status_map_by_listing_rows(
@@ -939,22 +2134,35 @@ def persist_scan_batch(batch_items: list[dict[str, Any]]) -> dict[str, int]:
         raise
 
 
-def list_opportunities(status: str | None = None, limit: int = 100) -> list[sqlite3.Row]:
+def list_opportunities(
+    status: str | None = None,
+    limit: int = 100,
+    *,
+    include_simulation: bool = False,
+) -> list[sqlite3.Row]:
     base_sql = """
-    SELECT o.*, l.title, l.source, l.seller_id, l.list_price, v.expected_sale_price, v.suggested_list_price
+    SELECT o.*, l.listing_id, l.title, l.source, l.seller_id, l.list_price, l.item_type, l.normalized_key,
+           v.expected_sale_price, v.suggested_list_price
     FROM opportunities o
     JOIN listings_raw l ON l.id = o.listing_row_id
     JOIN valuation_records v ON v.id = o.valuation_id
     """
-    params: tuple[Any, ...]
+    where_parts: list[str] = []
+    params: list[Any] = []
     if status:
-        sql = f"{base_sql} WHERE o.status = ? ORDER BY o.score DESC LIMIT ?"
-        params = (status, limit)
-    else:
-        sql = f"{base_sql} ORDER BY o.score DESC LIMIT ?"
-        params = (limit,)
+        where_parts.append("o.status = ?")
+        params.append(status)
+    if not include_simulation:
+        where_parts.append("COALESCE(l.source, '') != ?")
+        params.append("simulation_seed")
+
+    sql = base_sql
+    if where_parts:
+        sql += f" WHERE {' AND '.join(where_parts)}"
+    sql += " ORDER BY o.score DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        cur = conn.execute(sql, params)
+        cur = conn.execute(sql, tuple(params))
         return cur.fetchall()
 
 
@@ -1094,6 +2302,83 @@ def list_opportunity_reject_logs(
     with get_conn() as conn:
         cur = conn.execute(sql, tuple(params))
         return cur.fetchall()
+
+
+def cleanup_simulation_seed_data(
+    *,
+    note: str = "simulation seed archived from live workflow",
+) -> dict[str, int]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                l.id AS listing_row_id,
+                l.status AS listing_status,
+                o.id AS opportunity_id,
+                o.status AS opportunity_status
+            FROM listings_raw l
+            LEFT JOIN opportunities o ON o.listing_row_id = l.id
+            WHERE COALESCE(l.source, '') = 'simulation_seed'
+            ORDER BY l.id ASC
+            """
+        ).fetchall()
+
+    listing_ids = [int(row["listing_row_id"]) for row in rows]
+    queued_rows = [
+        row
+        for row in rows
+        if row["opportunity_id"] is not None
+        and str(row["opportunity_status"] or "") in {"pending_review", "blocked_risk"}
+    ]
+
+    reject_log_count = 0
+    for row in queued_rows:
+        log_id = create_opportunity_reject_log(
+            int(row["opportunity_id"]),
+            note=note,
+            reject_mode="simulation_cleanup",
+        )
+        if log_id is not None:
+            reject_log_count += 1
+
+    with get_conn() as conn:
+        archived_listing_count = 0
+        if listing_ids:
+            archived_listing_count = conn.execute(
+                """
+                UPDATE listings_raw
+                SET status = 'archived'
+                WHERE COALESCE(source, '') = 'simulation_seed'
+                  AND status != 'archived'
+                """
+            ).rowcount
+
+        queued_opportunity_count = 0
+        if queued_rows:
+            opportunity_ids = [int(row["opportunity_id"]) for row in queued_rows]
+            placeholders = ",".join("?" for _ in opportunity_ids)
+            queued_opportunity_count = conn.execute(
+                f"""
+                UPDATE opportunities
+                SET status = 'rejected',
+                    review_note = ?,
+                    reviewed_at = CURRENT_TIMESTAMP
+                WHERE id IN ({placeholders})
+                """,
+                (note, *opportunity_ids),
+            ).rowcount
+
+    pending_review_count = sum(1 for row in queued_rows if str(row["opportunity_status"] or "") == "pending_review")
+    blocked_risk_count = sum(1 for row in queued_rows if str(row["opportunity_status"] or "") == "blocked_risk")
+    return {
+        "simulation_listing_count": len(listing_ids),
+        "archived_listing_count": int(archived_listing_count),
+        "queued_simulation_opportunity_count": len(queued_rows),
+        "pending_review_rejected_count": pending_review_count,
+        "blocked_risk_rejected_count": blocked_risk_count,
+        "updated_opportunity_count": int(queued_opportunity_count),
+        "reject_log_count": int(reject_log_count),
+    }
 
 
 def get_opportunity(opportunity_id: int) -> sqlite3.Row | None:
@@ -1633,6 +2918,128 @@ def get_autotrade_tuning_daily_report(hours: int = 24) -> dict[str, Any]:
     }
 
 
+def _serialize_validation_baseline_snapshot_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "bucket_type": str(row["bucket_type"] or ""),
+        "bucket_key": str(row["bucket_key"] or ""),
+        "status": str(row["status"] or ""),
+        "ready": bool(row["ready"]),
+        "ready_for_tune": bool(row["ready_for_tune"]),
+        "ready_for_scale": bool(row["ready_for_scale"]),
+        "direction": str(row["direction"] or ""),
+        "summary": str(row["summary"] or ""),
+        "blocking_codes": _load_json_array(row["blocking_codes_json"]),
+        "captured_at": row["captured_at"],
+        "updated_at": row["updated_at"],
+        "snapshot": _load_json_object(row["snapshot_json"]),
+    }
+
+
+def upsert_validation_baseline_snapshot(
+    *,
+    bucket_type: str,
+    bucket_key: str,
+    status: str,
+    ready: bool,
+    ready_for_tune: bool,
+    ready_for_scale: bool,
+    direction: str,
+    summary: str,
+    blocking_codes: list[str] | None = None,
+    snapshot: dict[str, Any] | None = None,
+    captured_at: str = "",
+) -> dict[str, Any]:
+    normalized_bucket_type = str(bucket_type or "").strip().lower()
+    normalized_bucket_key = str(bucket_key or "").strip()
+    if normalized_bucket_type not in {"hour", "day"}:
+        raise ValueError("bucket_type must be hour or day")
+    if not normalized_bucket_key:
+        raise ValueError("bucket_key is required")
+    timestamp = str(captured_at or "").strip() or datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO validation_baseline_snapshots(
+                bucket_type,
+                bucket_key,
+                status,
+                ready,
+                ready_for_tune,
+                ready_for_scale,
+                direction,
+                summary,
+                blocking_codes_json,
+                snapshot_json,
+                captured_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(bucket_type, bucket_key) DO UPDATE SET
+                status = excluded.status,
+                ready = excluded.ready,
+                ready_for_tune = excluded.ready_for_tune,
+                ready_for_scale = excluded.ready_for_scale,
+                direction = excluded.direction,
+                summary = excluded.summary,
+                blocking_codes_json = excluded.blocking_codes_json,
+                snapshot_json = excluded.snapshot_json,
+                captured_at = excluded.captured_at,
+                updated_at = excluded.updated_at
+            """,
+            (
+                normalized_bucket_type,
+                normalized_bucket_key,
+                str(status or "").strip(),
+                1 if ready else 0,
+                1 if ready_for_tune else 0,
+                1 if ready_for_scale else 0,
+                str(direction or "").strip(),
+                str(summary or "").strip(),
+                json.dumps(list(blocking_codes or []), ensure_ascii=True),
+                json.dumps(snapshot or {}, ensure_ascii=True),
+                timestamp,
+                timestamp,
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT *
+            FROM validation_baseline_snapshots
+            WHERE bucket_type = ? AND bucket_key = ?
+            LIMIT 1
+            """,
+            (normalized_bucket_type, normalized_bucket_key),
+        ).fetchone()
+    return _serialize_validation_baseline_snapshot_row(row)
+
+
+def list_validation_baseline_snapshots(
+    *,
+    bucket_type: str,
+    limit: int = 24,
+) -> list[dict[str, Any]]:
+    normalized_bucket_type = str(bucket_type or "").strip().lower()
+    if normalized_bucket_type not in {"hour", "day"}:
+        return []
+    capped_limit = max(1, min(200, int(limit)))
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM validation_baseline_snapshots
+                WHERE bucket_type = ?
+                ORDER BY captured_at DESC, id DESC
+                LIMIT ?
+                """,
+                (normalized_bucket_type, capped_limit),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_validation_baseline_snapshot_row(row) for row in rows]
+
+
 def _serialize_seller_control_state_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "source": str(row["source"] or ""),
@@ -1875,6 +3282,1864 @@ def get_seller_control_daily_report(hours: int = 24) -> dict[str, Any]:
         "hottest_sellers": hottest_sellers,
         "items": items[:10],
     }
+
+
+def _serialize_source_control_state_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "source": str(row["source"] or ""),
+        "state": str(row["state"] or "normal"),
+        "reason": str(row["reason"] or ""),
+        "frozen_until": row["frozen_until"],
+        "metadata": _load_json_object(row["metadata_json"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def get_source_control_state(source: str) -> dict[str, Any] | None:
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM source_control_states
+                WHERE source = ?
+                LIMIT 1
+                """,
+                (str(source or "").strip(),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_source_control_state_row(row)
+
+
+def list_source_control_states(
+    *,
+    state: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(500, int(limit)))
+    sql = "SELECT * FROM source_control_states"
+    params: list[Any] = []
+    if state:
+        sql += " WHERE state = ?"
+        params.append(str(state or "").strip())
+    sql += " ORDER BY updated_at DESC LIMIT ?"
+    params.append(capped_limit)
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_source_control_state_row(row) for row in rows]
+
+
+def upsert_source_control_state(
+    *,
+    source: str,
+    state: str,
+    reason: str = "",
+    frozen_until: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized_source = str(source or "").strip()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO source_control_states(
+                source, state, reason, frozen_until, metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source) DO UPDATE SET
+                state=excluded.state,
+                reason=excluded.reason,
+                frozen_until=excluded.frozen_until,
+                metadata_json=excluded.metadata_json,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (
+                normalized_source,
+                str(state or "normal").strip(),
+                str(reason or "").strip(),
+                frozen_until,
+                json.dumps(metadata or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT *
+            FROM source_control_states
+            WHERE source = ?
+            LIMIT 1
+            """,
+            (normalized_source,),
+        ).fetchone()
+    return _serialize_source_control_state_row(row)
+
+
+def _serialize_source_control_event_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "source": str(row["source"] or ""),
+        "event_type": str(row["event_type"] or ""),
+        "reason": str(row["reason"] or ""),
+        "previous_state": _load_json_object(row["previous_state_json"]),
+        "next_state": _load_json_object(row["next_state_json"]),
+        "created_at": row["created_at"],
+    }
+
+
+def create_source_control_event(
+    *,
+    source: str,
+    event_type: str,
+    reason: str,
+    previous_state: dict[str, Any] | None,
+    next_state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO source_control_events(
+                source,
+                event_type,
+                reason,
+                previous_state_json,
+                next_state_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                str(source or "").strip(),
+                str(event_type or "").strip(),
+                str(reason or "").strip(),
+                json.dumps(previous_state or {}, ensure_ascii=True),
+                json.dumps(next_state or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM source_control_events WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_source_control_event_row(row)
+
+
+def list_source_control_events(limit: int = 50) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(500, int(limit)))
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM source_control_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_source_control_event_row(row) for row in rows]
+
+
+def get_source_control_daily_report(hours: int = 24) -> dict[str, Any]:
+    window_hours = max(1, min(24 * 30, int(hours)))
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM source_control_events
+                WHERE created_at >= datetime('now', ?)
+                ORDER BY id DESC
+                """,
+                (f"-{window_hours} hours",),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+
+    items = [_serialize_source_control_event_row(row) for row in rows]
+    counts_by_type: dict[str, int] = {}
+    counts_by_source: dict[str, int] = {}
+    for item in items:
+        event_type = str(item["event_type"] or "unknown")
+        counts_by_type[event_type] = counts_by_type.get(event_type, 0) + 1
+        source_key = str(item["source"] or "")
+        counts_by_source[source_key] = counts_by_source.get(source_key, 0) + 1
+
+    hottest_sources = [
+        {"source": source, "count": count}
+        for source, count in sorted(
+            counts_by_source.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:5]
+    ]
+
+    return {
+        "hours": window_hours,
+        "event_count": len(items),
+        "counts_by_type": counts_by_type,
+        "latest_event": items[0] if items else None,
+        "hottest_sources": hottest_sources,
+        "items": items[:10],
+    }
+
+
+def _serialize_cluster_control_state_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "risk_cluster": str(row["risk_cluster"] or ""),
+        "state": str(row["state"] or "normal"),
+        "reason": str(row["reason"] or ""),
+        "frozen_until": row["frozen_until"],
+        "metadata": _load_json_object(row["metadata_json"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def get_cluster_control_state(risk_cluster: str) -> dict[str, Any] | None:
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM cluster_control_states
+                WHERE risk_cluster = ?
+                LIMIT 1
+                """,
+                (str(risk_cluster or "").strip(),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_cluster_control_state_row(row)
+
+
+def list_cluster_control_states(
+    *,
+    state: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(500, int(limit)))
+    sql = "SELECT * FROM cluster_control_states"
+    params: list[Any] = []
+    if state:
+        sql += " WHERE state = ?"
+        params.append(str(state or "").strip())
+    sql += " ORDER BY updated_at DESC LIMIT ?"
+    params.append(capped_limit)
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_cluster_control_state_row(row) for row in rows]
+
+
+def upsert_cluster_control_state(
+    *,
+    risk_cluster: str,
+    state: str,
+    reason: str = "",
+    frozen_until: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized_cluster = str(risk_cluster or "").strip()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO cluster_control_states(
+                risk_cluster, state, reason, frozen_until, metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(risk_cluster) DO UPDATE SET
+                state=excluded.state,
+                reason=excluded.reason,
+                frozen_until=excluded.frozen_until,
+                metadata_json=excluded.metadata_json,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (
+                normalized_cluster,
+                str(state or "normal").strip(),
+                str(reason or "").strip(),
+                frozen_until,
+                json.dumps(metadata or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT *
+            FROM cluster_control_states
+            WHERE risk_cluster = ?
+            LIMIT 1
+            """,
+            (normalized_cluster,),
+        ).fetchone()
+    return _serialize_cluster_control_state_row(row)
+
+
+def _serialize_cluster_control_event_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "risk_cluster": str(row["risk_cluster"] or ""),
+        "event_type": str(row["event_type"] or ""),
+        "reason": str(row["reason"] or ""),
+        "previous_state": _load_json_object(row["previous_state_json"]),
+        "next_state": _load_json_object(row["next_state_json"]),
+        "created_at": row["created_at"],
+    }
+
+
+def create_cluster_control_event(
+    *,
+    risk_cluster: str,
+    event_type: str,
+    reason: str,
+    previous_state: dict[str, Any] | None,
+    next_state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO cluster_control_events(
+                risk_cluster,
+                event_type,
+                reason,
+                previous_state_json,
+                next_state_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                str(risk_cluster or "").strip(),
+                str(event_type or "").strip(),
+                str(reason or "").strip(),
+                json.dumps(previous_state or {}, ensure_ascii=True),
+                json.dumps(next_state or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM cluster_control_events WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_cluster_control_event_row(row)
+
+
+def list_cluster_control_events(limit: int = 50) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(500, int(limit)))
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM cluster_control_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_cluster_control_event_row(row) for row in rows]
+
+
+def get_cluster_control_daily_report(hours: int = 24) -> dict[str, Any]:
+    window_hours = max(1, min(24 * 30, int(hours)))
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM cluster_control_events
+                WHERE created_at >= datetime('now', ?)
+                ORDER BY id DESC
+                """,
+                (f"-{window_hours} hours",),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+
+    items = [_serialize_cluster_control_event_row(row) for row in rows]
+    counts_by_type: dict[str, int] = {}
+    counts_by_cluster: dict[str, int] = {}
+    for item in items:
+        event_type = str(item["event_type"] or "unknown")
+        counts_by_type[event_type] = counts_by_type.get(event_type, 0) + 1
+        cluster_key = str(item["risk_cluster"] or "")
+        counts_by_cluster[cluster_key] = counts_by_cluster.get(cluster_key, 0) + 1
+
+    hottest_clusters = [
+        {"risk_cluster": risk_cluster, "count": count}
+        for risk_cluster, count in sorted(
+            counts_by_cluster.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:5]
+    ]
+
+    return {
+        "hours": window_hours,
+        "event_count": len(items),
+        "counts_by_type": counts_by_type,
+        "latest_event": items[0] if items else None,
+        "hottest_clusters": hottest_clusters,
+        "items": items[:10],
+    }
+
+
+def _serialize_alert_delivery_event_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "channel": str(row["channel"] or ""),
+        "provider": str(row["provider"] or ""),
+        "channel_label": str(row["channel_label"] or ""),
+        "delivery_stage": str(row["delivery_stage"] or ""),
+        "alert_signature": str(row["alert_signature"] or ""),
+        "alert_keys": _load_json_array(row["alert_keys_json"]),
+        "alert_context": _load_json_object(row["alert_context_json"]),
+        "alert_count": int(row["alert_count"] or 0),
+        "subject": str(row["subject"] or ""),
+        "reason": str(row["reason"] or ""),
+        "success": bool(row["success"]),
+        "source": str(row["source"] or ""),
+        "created_at": row["created_at"],
+    }
+
+
+def create_alert_delivery_event(
+    *,
+    channel: str,
+    provider: str = "",
+    channel_label: str = "",
+    delivery_stage: str = "",
+    alert_signature: str,
+    alert_keys: list[str] | None = None,
+    alert_context: dict[str, Any] | None = None,
+    alert_count: int,
+    subject: str,
+    reason: str,
+    success: bool,
+    source: str = "",
+) -> dict[str, Any]:
+    normalized_alert_keys = [
+        str(item or "").strip()
+        for item in list(alert_keys or [])
+        if str(item or "").strip()
+    ]
+    normalized_alert_context = {
+        str(key or "").strip(): value
+        for key, value in dict(alert_context or {}).items()
+        if str(key or "").strip()
+    }
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO alert_delivery_events(
+                channel,
+                provider,
+                channel_label,
+                delivery_stage,
+                alert_signature,
+                alert_keys_json,
+                alert_context_json,
+                alert_count,
+                subject,
+                reason,
+                success,
+                source
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(channel or "").strip(),
+                str(provider or "").strip(),
+                str(channel_label or "").strip(),
+                str(delivery_stage or "").strip(),
+                str(alert_signature or "").strip(),
+                json.dumps(normalized_alert_keys, ensure_ascii=True),
+                json.dumps(normalized_alert_context, ensure_ascii=True),
+                int(alert_count or 0),
+                str(subject or "").strip(),
+                str(reason or "").strip(),
+                1 if success else 0,
+                str(source or "").strip(),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM alert_delivery_events WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_alert_delivery_event_row(row)
+
+
+def list_alert_delivery_events(
+    *,
+    channel: str | None = None,
+    alert_key: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(200, int(limit)))
+    sql = "SELECT * FROM alert_delivery_events"
+    params: list[Any] = []
+    if channel:
+        sql += " WHERE channel = ?"
+        params.append(str(channel or "").strip())
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(capped_limit)
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    items = [_serialize_alert_delivery_event_row(row) for row in rows]
+    normalized_alert_key = str(alert_key or "").strip()
+    if normalized_alert_key:
+        items = [
+            item for item in items
+            if normalized_alert_key in list(item.get("alert_keys") or [])
+        ]
+    return items[:capped_limit]
+
+
+def list_alert_delivery_events_for_alert_key(
+    *,
+    alert_key: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    normalized_key = str(alert_key or "").strip()
+    if not normalized_key:
+        return []
+    capped_limit = max(1, min(200, int(limit)))
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_delivery_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (max(capped_limit * 8, 200),),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    matched: list[dict[str, Any]] = []
+    for row in rows:
+        item = _serialize_alert_delivery_event_row(row)
+        alert_keys = {
+            str(value or "").strip()
+            for value in list(item.get("alert_keys") or [])
+            if str(value or "").strip()
+        }
+        if normalized_key in alert_keys:
+            matched.append(item)
+            if len(matched) >= capped_limit:
+                break
+    return matched
+
+
+def find_recent_alert_delivery_event(
+    *,
+    channel: str,
+    alert_signature: str,
+    within_minutes: int,
+    success_only: bool = True,
+) -> dict[str, Any] | None:
+    minutes = max(1, min(24 * 60, int(within_minutes)))
+    sql = """
+        SELECT *
+        FROM alert_delivery_events
+        WHERE channel = ?
+          AND alert_signature = ?
+          AND created_at >= datetime('now', ?)
+    """
+    params: list[Any] = [
+        str(channel or "").strip(),
+        str(alert_signature or "").strip(),
+        f"-{minutes} minutes",
+    ]
+    if success_only:
+        sql += " AND success = 1"
+    sql += " ORDER BY id DESC LIMIT 1"
+    try:
+        with get_conn() as conn:
+            row = conn.execute(sql, tuple(params)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_delivery_event_row(row)
+
+
+def _serialize_autotrade_alert_state_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "alert_signature": str(row["alert_signature"] or ""),
+        "alert_code": str(row["alert_code"] or ""),
+        "scope": str(row["scope"] or ""),
+        "target": str(row["target"] or ""),
+        "title": str(row["title"] or ""),
+        "current_severity": str(row["current_severity"] or "warning"),
+        "first_seen_at": row["first_seen_at"],
+        "last_seen_at": row["last_seen_at"],
+        "last_cleared_at": row["last_cleared_at"],
+        "occurrence_count": int(row["occurrence_count"] or 0),
+        "active": bool(row["active"]),
+        "updated_at": row["updated_at"],
+    }
+
+
+def get_autotrade_alert_state(alert_signature: str) -> dict[str, Any] | None:
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM autotrade_alert_states
+                WHERE alert_signature = ?
+                LIMIT 1
+                """,
+                (str(alert_signature or "").strip(),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_autotrade_alert_state_row(row)
+
+
+def list_autotrade_alert_states(
+    *,
+    active_only: bool = False,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(500, int(limit)))
+    sql = "SELECT * FROM autotrade_alert_states"
+    params: list[Any] = []
+    if active_only:
+        sql += " WHERE active = 1"
+    sql += " ORDER BY updated_at DESC LIMIT ?"
+    params.append(capped_limit)
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_autotrade_alert_state_row(row) for row in rows]
+
+
+def touch_autotrade_alert_state(
+    *,
+    alert_signature: str,
+    alert_code: str,
+    scope: str,
+    target: str,
+    title: str,
+    current_severity: str,
+    seen_at: str,
+) -> dict[str, Any]:
+    normalized_signature = str(alert_signature or "").strip()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO autotrade_alert_states(
+                alert_signature,
+                alert_code,
+                scope,
+                target,
+                title,
+                current_severity,
+                first_seen_at,
+                last_seen_at,
+                occurrence_count,
+                active
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+            ON CONFLICT(alert_signature) DO UPDATE SET
+                alert_code=excluded.alert_code,
+                scope=excluded.scope,
+                target=excluded.target,
+                title=excluded.title,
+                current_severity=excluded.current_severity,
+                first_seen_at=CASE
+                    WHEN autotrade_alert_states.active = 1 THEN autotrade_alert_states.first_seen_at
+                    ELSE excluded.first_seen_at
+                END,
+                last_seen_at=excluded.last_seen_at,
+                last_cleared_at=NULL,
+                occurrence_count=CASE
+                    WHEN autotrade_alert_states.active = 1 THEN autotrade_alert_states.occurrence_count
+                    ELSE autotrade_alert_states.occurrence_count + 1
+                END,
+                active=1,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (
+                normalized_signature,
+                str(alert_code or "").strip(),
+                str(scope or "").strip(),
+                str(target or "").strip(),
+                str(title or "").strip(),
+                str(current_severity or "warning").strip(),
+                seen_at,
+                seen_at,
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT *
+            FROM autotrade_alert_states
+            WHERE alert_signature = ?
+            LIMIT 1
+            """,
+            (normalized_signature,),
+        ).fetchone()
+    return _serialize_autotrade_alert_state_row(row)
+
+
+def deactivate_autotrade_alert_states_except(
+    *,
+    active_signatures: list[str],
+    cleared_at: str,
+) -> int:
+    normalized = [str(item or "").strip() for item in active_signatures if str(item or "").strip()]
+    try:
+        with get_conn() as conn:
+            if normalized:
+                placeholders = ",".join("?" for _ in normalized)
+                cur = conn.execute(
+                    f"""
+                    UPDATE autotrade_alert_states
+                    SET active = 0,
+                        last_cleared_at = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE active = 1
+                      AND alert_signature NOT IN ({placeholders})
+                    """,
+                    (cleared_at, *normalized),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    UPDATE autotrade_alert_states
+                    SET active = 0,
+                        last_cleared_at = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE active = 1
+                    """,
+                    (cleared_at,),
+                )
+            return int(cur.rowcount or 0)
+    except sqlite3.OperationalError:
+        return 0
+
+
+def override_autotrade_alert_state_timestamps(
+    *,
+    alert_signature: str,
+    first_seen_at: str | None = None,
+    last_seen_at: str | None = None,
+) -> dict[str, Any] | None:
+    updates: list[str] = []
+    params: list[Any] = []
+    if first_seen_at is not None:
+        updates.append("first_seen_at = ?")
+        params.append(first_seen_at)
+    if last_seen_at is not None:
+        updates.append("last_seen_at = ?")
+        params.append(last_seen_at)
+    if not updates:
+        return get_autotrade_alert_state(alert_signature)
+    params.extend([str(alert_signature or "").strip()])
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                f"""
+                UPDATE autotrade_alert_states
+                SET {", ".join(updates)},
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE alert_signature = ?
+                """,
+                tuple(params),
+            )
+            row = conn.execute(
+                """
+                SELECT *
+                FROM autotrade_alert_states
+                WHERE alert_signature = ?
+                LIMIT 1
+                """,
+                (str(alert_signature or "").strip(),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_autotrade_alert_state_row(row)
+
+
+def _serialize_alert_signal_state_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "alert_key": str(row["alert_key"] or ""),
+        "code": str(row["code"] or ""),
+        "scope": str(row["scope"] or ""),
+        "target": str(row["target"] or ""),
+        "title": str(row["title"] or ""),
+        "last_message": str(row["last_message"] or ""),
+        "first_seen_at": row["first_seen_at"],
+        "last_seen_at": row["last_seen_at"],
+        "last_severity": str(row["last_severity"] or "info"),
+        "acked_at": row["acked_at"],
+        "acked_by": str(row["acked_by"] or ""),
+        "snoozed_until": row["snoozed_until"],
+        "snooze_reason": str(row["snooze_reason"] or ""),
+        "incident_owner": str(row["incident_owner"] or ""),
+        "incident_status": str(row["incident_status"] or "open"),
+        "incident_priority": str(row["incident_priority"] or ""),
+        "incident_sla_due_at": row["incident_sla_due_at"],
+        "latest_case_note": str(row["latest_case_note"] or ""),
+        "last_case_actor": str(row["last_case_actor"] or ""),
+        "last_case_updated_at": row["last_case_updated_at"],
+        "resolved_at": row["resolved_at"],
+    }
+
+
+def _serialize_alert_signal_event_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "alert_key": str(row["alert_key"] or ""),
+        "action": str(row["action"] or ""),
+        "actor": str(row["actor"] or ""),
+        "reason": str(row["reason"] or ""),
+        "previous_state": _load_json_object(row["previous_state_json"]),
+        "next_state": _load_json_object(row["next_state_json"]),
+        "created_at": row["created_at"],
+    }
+
+
+def create_alert_signal_event(
+    *,
+    alert_key: str,
+    action: str,
+    actor: str,
+    reason: str,
+    previous_state: dict[str, Any] | None,
+    next_state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO alert_signal_events(
+                alert_key,
+                action,
+                actor,
+                reason,
+                previous_state_json,
+                next_state_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(alert_key or "").strip(),
+                str(action or "").strip(),
+                str(actor or "").strip(),
+                str(reason or "").strip(),
+                json.dumps(previous_state or {}, ensure_ascii=True),
+                json.dumps(next_state or {}, ensure_ascii=True),
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM alert_signal_events WHERE id = ?",
+            (int(cur.lastrowid),),
+        ).fetchone()
+    return _serialize_alert_signal_event_row(row)
+
+
+def list_alert_signal_events(
+    *,
+    alert_key: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(200, int(limit)))
+    sql = "SELECT * FROM alert_signal_events"
+    params: list[Any] = []
+    if alert_key:
+        sql += " WHERE alert_key = ?"
+        params.append(str(alert_key or "").strip())
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(capped_limit)
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_alert_signal_event_row(row) for row in rows]
+
+
+def get_latest_alert_signal_event(
+    *,
+    alert_key: str,
+    actions: tuple[str, ...] = (),
+) -> dict[str, Any] | None:
+    normalized_key = str(alert_key or "").strip()
+    sql = "SELECT * FROM alert_signal_events WHERE alert_key = ?"
+    params: list[Any] = [normalized_key]
+    if actions:
+        placeholders = ",".join("?" for _ in actions)
+        sql += f" AND action IN ({placeholders})"
+        params.extend(str(action or "").strip() for action in actions)
+    sql += " ORDER BY id DESC LIMIT 1"
+    try:
+        with get_conn() as conn:
+            row = conn.execute(sql, tuple(params)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_signal_event_row(row)
+
+
+def _alert_incident_target(
+    *,
+    alert_key: str,
+    previous_state: dict[str, Any] | None,
+    next_state: dict[str, Any] | None,
+) -> str:
+    for state in (next_state or {}, previous_state or {}):
+        text = str(state.get("title") or state.get("target") or "").strip()
+        if text:
+            return text
+    return str(alert_key or "").strip()
+
+
+def _serialize_alert_signal_incident_item(event: dict[str, Any]) -> dict[str, Any]:
+    alert_key = str(event.get("alert_key") or "").strip()
+    previous_state = dict(event.get("previous_state") or {})
+    next_state = dict(event.get("next_state") or {})
+    action = str(event.get("action") or "").strip()
+    return {
+        "id": f"signal:{int(event.get('id') or 0)}",
+        "event_id": int(event.get("id") or 0),
+        "kind": "signal",
+        "alert_key": alert_key,
+        "action": action,
+        "actor": str(event.get("actor") or "").strip(),
+        "reason": str(event.get("reason") or "").strip(),
+        "summary": str(event.get("reason") or action or "").strip(),
+        "channel": "",
+        "channel_label": "",
+        "provider": "",
+        "delivery_stage": "",
+        "success": None,
+        "alert_count": 1,
+        "target": _alert_incident_target(
+            alert_key=alert_key,
+            previous_state=previous_state,
+            next_state=next_state,
+        ),
+        "previous_state": previous_state,
+        "next_state": next_state,
+        "created_at": event.get("created_at"),
+    }
+
+
+def _serialize_alert_delivery_incident_items(
+    event: dict[str, Any],
+    *,
+    alert_key: str | None = None,
+) -> list[dict[str, Any]]:
+    normalized_key = str(alert_key or "").strip()
+    alert_keys = [
+        str(item or "").strip()
+        for item in list(event.get("alert_keys") or [])
+        if str(item or "").strip()
+    ]
+    if normalized_key:
+        if normalized_key not in alert_keys:
+            return []
+        incident_keys = [normalized_key]
+    else:
+        incident_keys = alert_keys or [""]
+
+    success = bool(event.get("success"))
+    channel = str(event.get("channel") or "").strip()
+    channel_label = str(event.get("channel_label") or channel.title() or "Alert").strip()
+    action_channel = channel
+    if channel == "webhook" and channel_label:
+        normalized_label = channel_label.strip().lower().replace(" ", "_")
+        if normalized_label in {"slack", "telegram", "webhook"}:
+            action_channel = normalized_label
+    delivery_stage = str(event.get("delivery_stage") or "").strip()
+    reason = str(event.get("reason") or "").strip()
+    subject = str(event.get("subject") or "").strip()
+    summary = f"{channel_label} {'sent' if success else 'skipped'}"
+    if delivery_stage:
+        summary = f"{summary} / {delivery_stage}"
+    if reason:
+        summary = f"{summary} / {reason}"
+
+    return [
+        {
+            "id": f"delivery:{int(event.get('id') or 0)}:{key or 'all'}",
+            "event_id": int(event.get("id") or 0),
+            "kind": "delivery",
+            "alert_key": key,
+            "action": f"{action_channel}_{'sent' if success else 'skipped'}",
+            "actor": str(event.get("source") or "system").strip(),
+            "reason": reason,
+            "summary": summary,
+            "channel": channel,
+            "channel_label": channel_label,
+            "provider": str(event.get("provider") or "").strip(),
+            "delivery_stage": delivery_stage,
+            "success": success,
+            "alert_count": int(event.get("alert_count") or 0),
+            "subject": subject,
+            "target": key or channel_label,
+            "previous_state": {},
+            "next_state": {},
+            "created_at": event.get("created_at"),
+        }
+        for key in incident_keys
+    ]
+
+
+def list_alert_incident_events(
+    *,
+    alert_key: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(200, int(limit)))
+    signal_items = [
+        _serialize_alert_signal_incident_item(item)
+        for item in list_alert_signal_events(alert_key=alert_key, limit=max(capped_limit * 2, 100))
+    ]
+    delivery_events = list_alert_delivery_events(limit=max(capped_limit * 3, 120))
+    delivery_items: list[dict[str, Any]] = []
+    for event in delivery_events:
+        delivery_items.extend(
+            _serialize_alert_delivery_incident_items(event, alert_key=alert_key),
+        )
+
+    def _sort_key(item: dict[str, Any]) -> tuple[float, int]:
+        created_at = str(item.get("created_at") or "").replace(" ", "T")
+        try:
+            created_value = datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            created_value = 0.0
+        return created_value, int(item.get("event_id") or 0)
+
+    items = sorted(
+        signal_items + delivery_items,
+        key=_sort_key,
+        reverse=True,
+    )
+    return items[:capped_limit]
+
+
+def list_alert_incident_timeline(
+    *,
+    alert_key: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    return list_alert_incident_events(
+        alert_key=str(alert_key or "").strip() or None,
+        limit=limit,
+    )
+
+
+INCIDENT_PRIORITY_RANK = {
+    "low": 1,
+    "normal": 2,
+    "high": 3,
+    "critical": 4,
+}
+
+
+def _normalize_incident_priority(priority: str | None, *, fallback: str = "normal") -> str:
+    value = str(priority or "").strip().lower()
+    return value if value in INCIDENT_PRIORITY_RANK else fallback
+
+
+def _default_incident_priority_for_severity(severity: str | None) -> str:
+    normalized = str(severity or "").strip().lower()
+    if normalized == "error":
+        return "high"
+    if normalized == "info":
+        return "low"
+    return "normal"
+
+
+def _incident_sla_minutes_for_priority(priority: str) -> int:
+    normalized = _normalize_incident_priority(priority)
+    if normalized == "critical":
+        return 30
+    if normalized == "high":
+        return 60
+    if normalized == "normal":
+        return 120
+    return 240
+
+
+def _incident_sla_due_at(priority: str, *, now: datetime | None = None) -> str:
+    current = now or datetime.now(timezone.utc)
+    return (current + timedelta(minutes=_incident_sla_minutes_for_priority(priority))).replace(microsecond=0).isoformat()
+
+
+def upsert_alert_signal_state(
+    *,
+    alert_key: str,
+    code: str,
+    scope: str,
+    target: str,
+    title: str,
+    last_message: str,
+    last_severity: str,
+) -> dict[str, Any]:
+    normalized_key = str(alert_key or "").strip()
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM alert_signal_states
+            WHERE alert_key = ?
+            LIMIT 1
+            """,
+            (normalized_key,),
+        ).fetchone()
+        if row and not row["resolved_at"]:
+            conn.execute(
+                """
+                UPDATE alert_signal_states
+                SET code = ?,
+                    scope = ?,
+                    target = ?,
+                    title = ?,
+                    last_message = ?,
+                    last_severity = ?,
+                    last_seen_at = CURRENT_TIMESTAMP,
+                    incident_status = CASE
+                        WHEN incident_status = 'resolved' THEN 'open'
+                        ELSE incident_status
+                    END,
+                    resolved_at = NULL
+                WHERE alert_key = ?
+                """,
+                (
+                    str(code or "").strip(),
+                    str(scope or "").strip(),
+                    str(target or "").strip(),
+                    str(title or "").strip(),
+                    str(last_message or "").strip(),
+                    str(last_severity or "info").strip(),
+                    normalized_key,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO alert_signal_states(
+                    alert_key,
+                    code,
+                    scope,
+                    target,
+                    title,
+                    last_message,
+                    first_seen_at,
+                    last_seen_at,
+                    last_severity,
+                    acked_at,
+                    acked_by,
+                    snoozed_until,
+                    snooze_reason,
+                    incident_owner,
+                    incident_status,
+                    incident_priority,
+                    incident_sla_due_at,
+                    latest_case_note,
+                    last_case_actor,
+                    last_case_updated_at,
+                    resolved_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, NULL, '', NULL, '', '', 'open', '', NULL, '', '', NULL, NULL)
+                ON CONFLICT(alert_key) DO UPDATE SET
+                    code = excluded.code,
+                    scope = excluded.scope,
+                    target = excluded.target,
+                    title = excluded.title,
+                    last_message = excluded.last_message,
+                    first_seen_at = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.first_seen_at
+                        ELSE CURRENT_TIMESTAMP
+                    END,
+                    last_seen_at = CURRENT_TIMESTAMP,
+                    last_severity = excluded.last_severity,
+                    acked_at = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.acked_at
+                        ELSE NULL
+                    END,
+                    acked_by = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.acked_by
+                        ELSE ''
+                    END,
+                    snoozed_until = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.snoozed_until
+                        ELSE NULL
+                    END,
+                    snooze_reason = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.snooze_reason
+                        ELSE ''
+                    END,
+                    incident_owner = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.incident_owner
+                        ELSE ''
+                    END,
+                    incident_status = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN CASE
+                                WHEN alert_signal_states.incident_status = 'resolved' THEN 'open'
+                                ELSE alert_signal_states.incident_status
+                            END
+                        ELSE 'open'
+                    END,
+                    incident_priority = CASE
+                        WHEN alert_signal_states.incident_priority = '' THEN ''
+                        ELSE alert_signal_states.incident_priority
+                    END,
+                    incident_sla_due_at = CASE
+                        WHEN alert_signal_states.incident_sla_due_at IS NULL
+                            OR alert_signal_states.incident_sla_due_at = ''
+                            THEN NULL
+                        ELSE alert_signal_states.incident_sla_due_at
+                    END,
+                    latest_case_note = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.latest_case_note
+                        ELSE ''
+                    END,
+                    last_case_actor = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.last_case_actor
+                        ELSE ''
+                    END,
+                    last_case_updated_at = CASE
+                        WHEN alert_signal_states.resolved_at IS NULL
+                            THEN alert_signal_states.last_case_updated_at
+                        ELSE NULL
+                    END,
+                    resolved_at = NULL
+                """,
+                (
+                    normalized_key,
+                    str(code or "").strip(),
+                    str(scope or "").strip(),
+                    str(target or "").strip(),
+                    str(title or "").strip(),
+                    str(last_message or "").strip(),
+                    str(last_severity or "info").strip(),
+                ),
+            )
+        next_row = conn.execute(
+            """
+            SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+    return _serialize_alert_signal_state_row(next_row)
+
+
+def get_alert_signal_state(alert_key: str) -> dict[str, Any] | None:
+    normalized_key = str(alert_key or "").strip()
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_signal_state_row(row)
+
+
+def list_active_alert_signal_states(limit: int = 200) -> list[dict[str, Any]]:
+    capped_limit = max(1, min(500, int(limit)))
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE resolved_at IS NULL
+                ORDER BY last_seen_at DESC
+                LIMIT ?
+                """,
+                (capped_limit,),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_serialize_alert_signal_state_row(row) for row in rows]
+
+
+def resolve_missing_alert_signal_states(active_keys: set[str]) -> int:
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE resolved_at IS NULL
+                """
+            ).fetchall()
+            missing_rows = [
+                row
+                for row in rows
+                if str(row["alert_key"] or "") not in active_keys
+            ]
+            for row in missing_rows:
+                current = _serialize_alert_signal_state_row(row)
+                key = str(current.get("alert_key") or "")
+                conn.execute(
+                    """
+                    UPDATE alert_signal_states
+                    SET incident_status = 'resolved',
+                        latest_case_note = CASE
+                            WHEN latest_case_note = '' THEN 'alert cleared automatically'
+                            ELSE latest_case_note
+                        END,
+                        last_case_actor = CASE
+                            WHEN last_case_actor = '' THEN 'system'
+                            ELSE last_case_actor
+                        END,
+                        last_case_updated_at = CURRENT_TIMESTAMP,
+                        resolved_at = CURRENT_TIMESTAMP
+                    WHERE alert_key = ?
+                    """,
+                    (key,),
+                )
+                next_row = conn.execute(
+                    """
+                    SELECT *
+                    FROM alert_signal_states
+                    WHERE alert_key = ?
+                    LIMIT 1
+                    """,
+                    (key,),
+                ).fetchone()
+                next_state = _serialize_alert_signal_state_row(next_row)
+                conn.execute(
+                    """
+                    INSERT INTO alert_signal_events(
+                        alert_key,
+                        action,
+                        actor,
+                        reason,
+                        previous_state_json,
+                        next_state_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        key,
+                        "cleared",
+                        "system",
+                        "alert cleared automatically",
+                        json.dumps(current or {}, ensure_ascii=True),
+                        json.dumps(next_state or {}, ensure_ascii=True),
+                    ),
+                )
+    except sqlite3.OperationalError:
+        return 0
+    return len(missing_rows)
+
+
+def release_expired_alert_signal_snoozes(*, now: datetime | None = None) -> list[dict[str, Any]]:
+    current_time = now or datetime.now(timezone.utc)
+    released: list[dict[str, Any]] = []
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE resolved_at IS NULL
+                  AND snoozed_until IS NOT NULL
+                  AND snoozed_until != ''
+                """
+            ).fetchall()
+            for row in rows:
+                current = _serialize_alert_signal_state_row(row)
+                snoozed_until = str(current.get("snoozed_until") or "").strip()
+                if not snoozed_until:
+                    continue
+                try:
+                    parsed = datetime.fromisoformat(snoozed_until.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                parsed = parsed.astimezone(timezone.utc)
+                if parsed > current_time:
+                    continue
+                conn.execute(
+                    """
+                    UPDATE alert_signal_states
+                    SET snoozed_until = NULL,
+                        snooze_reason = '',
+                        resolved_at = NULL
+                    WHERE alert_key = ?
+                    """,
+                    (str(current.get("alert_key") or ""),),
+                )
+                next_row = conn.execute(
+                    """
+                    SELECT *
+                    FROM alert_signal_states
+                    WHERE alert_key = ?
+                    LIMIT 1
+                    """,
+                    (str(current.get("alert_key") or ""),),
+                ).fetchone()
+                next_state = _serialize_alert_signal_state_row(next_row)
+                event_cur = conn.execute(
+                    """
+                    INSERT INTO alert_signal_events(
+                        alert_key,
+                        action,
+                        actor,
+                        reason,
+                        previous_state_json,
+                        next_state_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(current.get("alert_key") or ""),
+                        "snooze_expired",
+                        "system",
+                        "snooze expired",
+                        json.dumps(current or {}, ensure_ascii=True),
+                        json.dumps(next_state or {}, ensure_ascii=True),
+                    ),
+                )
+                event_row = conn.execute(
+                    "SELECT * FROM alert_signal_events WHERE id = ?",
+                    (int(event_cur.lastrowid),),
+                ).fetchone()
+                event = _serialize_alert_signal_event_row(event_row)
+                released.append(event)
+    except sqlite3.OperationalError:
+        return []
+    return released
+
+
+def release_expired_alert_acknowledgements(
+    *,
+    now: datetime | None = None,
+    timeout_minutes: int = 240,
+) -> list[dict[str, Any]]:
+    current_time = now or datetime.now(timezone.utc)
+    timeout = max(1, int(timeout_minutes))
+    released: list[dict[str, Any]] = []
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE resolved_at IS NULL
+                  AND acked_at IS NOT NULL
+                  AND acked_at != ''
+                """
+            ).fetchall()
+            for row in rows:
+                current = _serialize_alert_signal_state_row(row)
+                acked_at = str(current.get("acked_at") or "").strip()
+                if not acked_at:
+                    continue
+                try:
+                    parsed = datetime.fromisoformat(acked_at.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                parsed = parsed.astimezone(timezone.utc)
+                age_minutes = (current_time - parsed).total_seconds() / 60.0
+                if age_minutes < timeout:
+                    continue
+                conn.execute(
+                    """
+                    UPDATE alert_signal_states
+                    SET acked_at = NULL,
+                        acked_by = '',
+                        resolved_at = NULL
+                    WHERE alert_key = ?
+                    """,
+                    (str(current.get("alert_key") or ""),),
+                )
+                next_row = conn.execute(
+                    """
+                    SELECT *
+                    FROM alert_signal_states
+                    WHERE alert_key = ?
+                    LIMIT 1
+                    """,
+                    (str(current.get("alert_key") or ""),),
+                ).fetchone()
+                next_state = _serialize_alert_signal_state_row(next_row)
+                event_cur = conn.execute(
+                    """
+                    INSERT INTO alert_signal_events(
+                        alert_key,
+                        action,
+                        actor,
+                        reason,
+                        previous_state_json,
+                        next_state_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(current.get("alert_key") or ""),
+                        "ack_expired",
+                        "system",
+                        "ack timeout expired",
+                        json.dumps(current or {}, ensure_ascii=True),
+                        json.dumps(next_state or {}, ensure_ascii=True),
+                    ),
+                )
+                event_row = conn.execute(
+                    "SELECT * FROM alert_signal_events WHERE id = ?",
+                    (int(event_cur.lastrowid),),
+                ).fetchone()
+                released.append(_serialize_alert_signal_event_row(event_row))
+    except sqlite3.OperationalError:
+        return []
+    return released
+
+
+def override_alert_signal_state_timestamps(
+    *,
+    alert_key: str,
+    first_seen_at: str | None = None,
+    last_seen_at: str | None = None,
+) -> dict[str, Any] | None:
+    updates: list[str] = []
+    params: list[Any] = []
+    if first_seen_at is not None:
+        updates.append("first_seen_at = ?")
+        params.append(first_seen_at)
+    if last_seen_at is not None:
+        updates.append("last_seen_at = ?")
+        params.append(last_seen_at)
+    if not updates:
+        return None
+    params.append(str(alert_key or "").strip())
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                f"""
+                UPDATE alert_signal_states
+                SET {", ".join(updates)}
+                WHERE alert_key = ?
+                """,
+                tuple(params),
+            )
+            row = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (str(alert_key or "").strip(),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_signal_state_row(row)
+
+
+def acknowledge_alert_signal_state(
+    *,
+    alert_key: str,
+    actor: str,
+) -> dict[str, Any] | None:
+    normalized_key = str(alert_key or "").strip()
+    acknowledged_at = datetime.now(timezone.utc).isoformat()
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE alert_signal_states
+                SET acked_at = ?,
+                    acked_by = ?,
+                    snoozed_until = NULL,
+                    snooze_reason = '',
+                    resolved_at = NULL
+                WHERE alert_key = ?
+                """,
+                (acknowledged_at, str(actor or "").strip(), normalized_key),
+            )
+            row = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_signal_state_row(row)
+
+
+def snooze_alert_signal_state(
+    *,
+    alert_key: str,
+    actor: str,
+    minutes: int,
+    reason: str = "",
+) -> dict[str, Any] | None:
+    normalized_key = str(alert_key or "").strip()
+    snoozed_until = (datetime.now(timezone.utc) + timedelta(minutes=max(1, int(minutes)))).isoformat()
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE alert_signal_states
+                SET acked_at = NULL,
+                    acked_by = '',
+                    snoozed_until = ?,
+                    snooze_reason = ?,
+                    resolved_at = NULL
+                WHERE alert_key = ?
+                """,
+                (
+                    snoozed_until,
+                    str(reason or "").strip(),
+                    normalized_key,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_signal_state_row(row)
+
+
+def clear_alert_signal_operator_hold(alert_key: str) -> dict[str, Any] | None:
+    normalized_key = str(alert_key or "").strip()
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE alert_signal_states
+                SET acked_at = NULL,
+                    acked_by = '',
+                    snoozed_until = NULL,
+                    snooze_reason = '',
+                    resolved_at = NULL
+                WHERE alert_key = ?
+                """,
+                (normalized_key,),
+            )
+            row = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_signal_state_row(row)
+
+
+def update_alert_signal_incident_state(
+    *,
+    alert_key: str,
+    action: str,
+    actor: str,
+    owner: str | None = None,
+    priority: str | None = None,
+    note: str = "",
+) -> dict[str, Any] | None:
+    normalized_key = str(alert_key or "").strip()
+    normalized_action = str(action or "").strip().lower()
+    normalized_actor = str(actor or "").strip()
+    normalized_owner = str(owner or "").strip()
+    normalized_priority = _normalize_incident_priority(priority, fallback="")
+    normalized_note = str(note or "").strip()
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    if normalized_action == "assign":
+        status_value = "assigned"
+    elif normalized_action == "handoff":
+        status_value = "handed_off"
+    elif normalized_action == "resolve":
+        status_value = "resolved"
+    elif normalized_action == "priority":
+        status_value = ""
+    elif normalized_action == "note":
+        status_value = ""
+    else:
+        return None
+
+    try:
+        with get_conn() as conn:
+            current_row = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+            if not current_row:
+                return None
+            current_state = _serialize_alert_signal_state_row(current_row)
+            effective_priority = (
+                normalized_priority
+                or str(current_state.get("incident_priority") or "").strip()
+                or _default_incident_priority_for_severity(current_state.get("last_severity"))
+            )
+            next_sla_due_at = _incident_sla_due_at(effective_priority)
+
+            if normalized_action in {"assign", "handoff", "resolve"}:
+                conn.execute(
+                    """
+                    UPDATE alert_signal_states
+                    SET incident_owner = CASE
+                            WHEN ? != '' THEN ?
+                            ELSE incident_owner
+                        END,
+                        incident_status = ?,
+                        incident_priority = CASE
+                            WHEN incident_priority = '' THEN ?
+                            ELSE incident_priority
+                        END,
+                        incident_sla_due_at = CASE
+                            WHEN ? = 'resolved' THEN incident_sla_due_at
+                            ELSE CASE
+                                WHEN incident_sla_due_at IS NULL OR incident_sla_due_at = '' THEN ?
+                                ELSE incident_sla_due_at
+                            END
+                        END,
+                        latest_case_note = CASE
+                            WHEN ? != '' THEN ?
+                            ELSE latest_case_note
+                        END,
+                        last_case_actor = ?,
+                        last_case_updated_at = ?
+                    WHERE alert_key = ?
+                    """,
+                    (
+                        normalized_owner,
+                        normalized_owner,
+                        status_value,
+                        effective_priority,
+                        status_value,
+                        next_sla_due_at,
+                        normalized_note,
+                        normalized_note,
+                        normalized_actor,
+                        now,
+                        normalized_key,
+                    ),
+                )
+            elif normalized_action == "priority":
+                conn.execute(
+                    """
+                    UPDATE alert_signal_states
+                    SET incident_priority = ?,
+                        incident_sla_due_at = ?,
+                        latest_case_note = CASE
+                            WHEN ? != '' THEN ?
+                            ELSE latest_case_note
+                        END,
+                        last_case_actor = ?,
+                        last_case_updated_at = ?
+                    WHERE alert_key = ?
+                    """,
+                    (
+                        effective_priority,
+                        next_sla_due_at,
+                        normalized_note,
+                        normalized_note,
+                        normalized_actor,
+                        now,
+                        normalized_key,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE alert_signal_states
+                    SET latest_case_note = CASE
+                            WHEN ? != '' THEN ?
+                            ELSE latest_case_note
+                        END,
+                        last_case_actor = ?,
+                        last_case_updated_at = ?
+                    WHERE alert_key = ?
+                    """,
+                    (
+                        normalized_note,
+                        normalized_note,
+                        normalized_actor,
+                        now,
+                        normalized_key,
+                    ),
+                )
+            row = conn.execute(
+                """
+                SELECT *
+                FROM alert_signal_states
+                WHERE alert_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return _serialize_alert_signal_state_row(row)
 
 
 def _serialize_seller_control_preset_row(row: sqlite3.Row) -> dict[str, Any]:
@@ -2347,7 +5612,7 @@ def get_trade(trade_id: int) -> sqlite3.Row | None:
     with get_conn() as conn:
         cur = conn.execute(
             """
-            SELECT t.*, o.listing_row_id, l.title, l.list_price
+            SELECT t.*, o.listing_row_id, l.title, l.list_price, l.source, l.seller_id
             FROM trades t
             JOIN opportunities o ON o.id = t.opportunity_id
             JOIN listings_raw l ON l.id = o.listing_row_id
@@ -2440,20 +5705,20 @@ def list_open_trade_ids(limit: int = 100) -> list[int]:
 
 def list_trades(status: str | None = None, limit: int = 100) -> list[sqlite3.Row]:
     base_sql = """
-    SELECT t.*, o.listing_row_id, l.title, l.list_price
+    SELECT t.*, o.listing_row_id, l.title, l.list_price, l.source AS listing_source
     FROM trades t
     JOIN opportunities o ON o.id = t.opportunity_id
     JOIN listings_raw l ON l.id = o.listing_row_id
     """
-    params: tuple[Any, ...]
+    where_parts: list[str] = ["COALESCE(l.source, '') != ?"]
+    params: list[Any] = ["simulation_seed"]
     if status:
-        sql = f"{base_sql} WHERE t.status = ? ORDER BY t.updated_at DESC LIMIT ?"
-        params = (status, limit)
-    else:
-        sql = f"{base_sql} ORDER BY t.updated_at DESC LIMIT ?"
-        params = (limit,)
+        where_parts.append("t.status = ?")
+        params.append(status)
+    sql = f"{base_sql} WHERE {' AND '.join(where_parts)} ORDER BY t.updated_at DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        cur = conn.execute(sql, params)
+        cur = conn.execute(sql, tuple(params))
         return cur.fetchall()
 
 
@@ -2568,14 +5833,23 @@ def _normalized_market_regime_tag(
     return "mixed"
 
 
+def _normalized_market_snapshot_is_tradable(item_type: str) -> bool:
+    return str(item_type or "").strip() in TRADABLE_ITEM_TYPES
+
+
 def get_normalized_market_snapshots(
     *,
     limit: int = 20,
     listing_hours: int = 24,
     sales_days: int = 7,
+    scope: str = "full",
 ) -> list[dict[str, Any]]:
     listing_window_hours = max(1, min(24 * 30, int(listing_hours)))
     sales_window_days = max(1, min(90, int(sales_days)))
+    scope_name = str(scope or "full").strip().lower()
+    if scope_name not in {"full", "tradable"}:
+        scope_name = "full"
+    tradable_only = scope_name == "tradable"
     listing_cutoff = (datetime.now(timezone.utc) - timedelta(hours=listing_window_hours)).isoformat()
     sales_cutoff = (datetime.now(timezone.utc) - timedelta(days=sales_window_days)).isoformat()
 
@@ -2701,6 +5975,9 @@ def get_normalized_market_snapshots(
             float(bucket["sample_confidence_sum"]) / float(bucket["sample_confidence_count"])
             if bucket["sample_confidence_count"] else 0.0
         )
+        is_tradable = _normalized_market_snapshot_is_tradable(str(bucket["item_type"] or ""))
+        if tradable_only and not is_tradable:
+            continue
         regime_tag = _normalized_market_regime_tag(
             open_listing_count=int(bucket["open_listing_count"]),
             recent_sales_count=len(sold_prices),
@@ -2721,6 +5998,7 @@ def get_normalized_market_snapshots(
                 "normalized_key": bucket["normalized_key"],
                 "normalized_title": bucket["normalized_title"],
                 "item_type": bucket["item_type"],
+                "snapshot_scope": scope_name,
                 "open_listing_count": int(bucket["open_listing_count"]),
                 "recent_listing_count_24h": int(bucket["open_listing_count"]),
                 "recent_sales_count_7d": len(sold_prices),
@@ -2735,6 +6013,7 @@ def get_normalized_market_snapshots(
                 "seller_count": len(bucket["listing_seller_ids"]),
                 "noise_listing_count": int(bucket["noise_listing_count"]),
                 "sample_confidence": round(sample_confidence, 4),
+                "is_tradable": is_tradable,
                 "regime_tag": regime_tag,
                 "summary_text": summary,
             }
@@ -2840,6 +6119,12 @@ def _compute_trade_profit_components(row: sqlite3.Row) -> dict[str, Any] | None:
         - (settings.platform_fee_rate * sold_price)
     )
     roi = (net_profit / approved_buy_price) if approved_buy_price > 0 else 0.0
+    created_at = _parse_db_timestamp(row["created_at"])
+    holding_days = (
+        max(0.0, (sold_at - created_at).total_seconds() / 86400.0)
+        if created_at is not None
+        else 0.0
+    )
 
     return {
         "sold_at": sold_at,
@@ -2848,6 +6133,7 @@ def _compute_trade_profit_components(row: sqlite3.Row) -> dict[str, Any] | None:
         "gross_profit": gross_profit,
         "net_profit": net_profit,
         "roi": roi,
+        "holding_days": holding_days,
         "source": str(row["listing_source"] or "unknown").strip() or "unknown",
     }
 
@@ -2924,12 +6210,141 @@ def _build_inventory_exposure_summary(rows: list[sqlite3.Row]) -> dict[str, Any]
     }
 
 
+def _build_source_execution_snapshot(rows: list[sqlite3.Row]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        source = str(row["listing_source"] or "unknown").strip() or "unknown"
+        bucket = grouped.setdefault(
+            source,
+            {
+                "execution_live_sample_size": 0,
+                "execution_live_success_count": 0,
+                "execution_live_failure_count": 0,
+                "execution_live_business_ban_count": 0,
+                "execution_live_last_failure_at": "",
+                "by_action": {},
+            },
+        )
+        action = str(row["action"] or "unknown").strip().lower() or "unknown"
+        action_bucket = bucket["by_action"].setdefault(
+            action,
+            {
+                "sample_size": 0,
+                "success_count": 0,
+                "failure_count": 0,
+                "success_rate": 0.0,
+                "failure_rate": 0.0,
+                "business_ban_count": 0,
+                "last_failure_at": "",
+                "positive_streak": 0,
+                "_history": [],
+            },
+        )
+        bucket["execution_live_sample_size"] += 1
+        action_bucket["sample_size"] += 1
+        success = bool(row["success"])
+        action_bucket["_history"].append((str(row["created_at"] or ""), success))
+        if success:
+            bucket["execution_live_success_count"] += 1
+            action_bucket["success_count"] += 1
+        else:
+            bucket["execution_live_failure_count"] += 1
+            action_bucket["failure_count"] += 1
+            if not bucket["execution_live_last_failure_at"]:
+                bucket["execution_live_last_failure_at"] = str(row["created_at"] or "")
+            if not action_bucket["last_failure_at"]:
+                action_bucket["last_failure_at"] = str(row["created_at"] or "")
+
+        response_payload = _parse_json_object(row["response_json"])
+        business_ban_code = str(response_payload.get("business_ban_code") or "").strip()
+        error_text = " ".join(
+            part
+            for part in (
+                str(row["error"] or "").strip(),
+                str(response_payload.get("error") or "").strip(),
+            )
+            if part
+        ).lower()
+        if business_ban_code or "business ban" in error_text:
+            bucket["execution_live_business_ban_count"] += 1
+            action_bucket["business_ban_count"] += 1
+
+    for bucket in grouped.values():
+        sample_size = int(bucket["execution_live_sample_size"] or 0)
+        success_count = int(bucket["execution_live_success_count"] or 0)
+        failure_count = int(bucket["execution_live_failure_count"] or 0)
+        bucket["execution_live_success_rate"] = round(
+            (success_count / sample_size) if sample_size else 0.0,
+            4,
+        )
+        bucket["execution_live_failure_rate"] = round(
+            (failure_count / sample_size) if sample_size else 0.0,
+            4,
+        )
+        for action_bucket in bucket["by_action"].values():
+            action_sample_size = int(action_bucket["sample_size"] or 0)
+            action_success_count = int(action_bucket["success_count"] or 0)
+            action_failure_count = int(action_bucket["failure_count"] or 0)
+            positive_streak = 0
+            for _, was_success in sorted(
+                list(action_bucket.get("_history") or []),
+                key=lambda item: item[0],
+                reverse=True,
+            ):
+                if was_success:
+                    positive_streak += 1
+                    continue
+                break
+            action_bucket["success_rate"] = round(
+                (action_success_count / action_sample_size) if action_sample_size else 0.0,
+                4,
+            )
+            action_bucket["failure_rate"] = round(
+                (action_failure_count / action_sample_size) if action_sample_size else 0.0,
+                4,
+            )
+            action_bucket["positive_streak"] = positive_streak
+            action_bucket.pop("_history", None)
+    return grouped
+
+
+def _execution_health_state(summary: dict[str, Any] | None) -> str:
+    summary = summary or {}
+    sample_size = int(summary.get("sample_size") or 0)
+    if sample_size < int(settings.operating_state_min_execution_samples):
+        return "normal"
+    failure_rate = float(summary.get("failure_rate") or 0.0)
+    business_ban_count = int(summary.get("business_ban_count") or 0)
+    if (
+        failure_rate >= float(settings.operating_state_recovery_failure_rate)
+        or business_ban_count >= int(settings.operating_state_recovery_business_bans)
+    ):
+        return "recovery"
+    if (
+        failure_rate >= float(settings.operating_state_cautious_failure_rate)
+        or business_ban_count >= int(settings.operating_state_cautious_business_bans)
+    ):
+        return "cautious"
+    return "normal"
+
+
+def _action_lane_from_execution_state(state: str) -> str:
+    normalized = str(state or "").strip().lower()
+    if normalized == "recovery":
+        return "blocked"
+    if normalized == "cautious":
+        return "reduced"
+    return "open"
+
+
 def _build_source_profit_snapshot(
     rows: list[sqlite3.Row],
     *,
     since: datetime | None = None,
+    execution_by_source: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     grouped: dict[str, dict[str, Any]] = {}
+    execution_by_source = execution_by_source or {}
     for row in rows:
         details = _compute_trade_profit_components(row)
         if not details:
@@ -2947,6 +6362,7 @@ def _build_source_profit_snapshot(
                 "profitable_sold_count": 0,
                 "realized_net_profit": 0.0,
                 "avg_realized_roi_values": [],
+                "holding_days_values": [],
             },
         )
         bucket["sold_count"] += 1
@@ -2954,12 +6370,14 @@ def _build_source_profit_snapshot(
             bucket["profitable_sold_count"] += 1
         bucket["realized_net_profit"] += float(details["net_profit"])
         bucket["avg_realized_roi_values"].append(float(details["roi"]))
+        bucket["holding_days_values"].append(float(details["holding_days"] or 0.0))
 
     items: list[dict[str, Any]] = []
     for bucket in grouped.values():
         sold_count = int(bucket["sold_count"])
         profitable_sold_count = int(bucket["profitable_sold_count"])
         roi_values = list(bucket["avg_realized_roi_values"])
+        holding_days_values = list(bucket["holding_days_values"])
         realized_net_profit = round(float(bucket["realized_net_profit"]), 2)
         profit_hit_rate = round(
             (profitable_sold_count / sold_count) if sold_count else 0.0,
@@ -2969,6 +6387,11 @@ def _build_source_profit_snapshot(
             (sum(roi_values) / len(roi_values)) if roi_values else 0.0,
             4,
         )
+        avg_holding_days = round(
+            (sum(holding_days_values) / len(holding_days_values)) if holding_days_values else 0.0,
+            2,
+        )
+        median_holding_days = round(_median(holding_days_values), 2)
         strategy_mode = "hold"
         strategy_summary = "Insufficient edge to change source weighting."
         threshold_delta = {
@@ -2977,6 +6400,7 @@ def _build_source_profit_snapshot(
             "max_risk_score": 0.0,
         }
         intake_multiplier = 1.0
+        capital_multiplier = 1.0
 
         if sold_count < 2:
             strategy_summary = "Need more sold trades before adapting this source."
@@ -2989,6 +6413,7 @@ def _build_source_profit_snapshot(
                 "max_risk_score": -4.0,
             }
             intake_multiplier = 0.6
+            capital_multiplier = 0.7
         elif realized_net_profit > 0 and profit_hit_rate >= 0.65 and avg_realized_roi >= 0.08:
             strategy_mode = "widen"
             strategy_summary = "Recent source quality is healthy. Widen the funnel slightly."
@@ -2998,6 +6423,199 @@ def _build_source_profit_snapshot(
                 "max_risk_score": 2.0,
             }
             intake_multiplier = 1.15
+            capital_multiplier = 1.15
+
+        execution = execution_by_source.get(str(bucket["source"]), {})
+        execution_sample_size = int(execution.get("execution_live_sample_size") or 0)
+        execution_success_count = int(execution.get("execution_live_success_count") or 0)
+        execution_failure_count = int(execution.get("execution_live_failure_count") or 0)
+        execution_business_ban_count = int(execution.get("execution_live_business_ban_count") or 0)
+        execution_success_rate = float(execution.get("execution_live_success_rate") or 0.0)
+        execution_failure_rate = float(execution.get("execution_live_failure_rate") or 0.0)
+        execution_last_failure_at = str(execution.get("execution_live_last_failure_at") or "")
+        execution_by_action = dict(execution.get("by_action") or {})
+        buy_execution = dict(execution_by_action.get("buy") or {})
+        list_execution = dict(execution_by_action.get("list") or {})
+        sell_execution = dict(execution_by_action.get("sell") or {})
+        buy_execution_state = _execution_health_state(buy_execution)
+        list_execution_state = _execution_health_state(list_execution)
+        sell_execution_state = _execution_health_state(sell_execution)
+        exit_execution_state = "recovery" if "recovery" in {list_execution_state, sell_execution_state} else (
+            "cautious" if "cautious" in {list_execution_state, sell_execution_state} else "normal"
+        )
+        buy_positive_streak = int(buy_execution.get("positive_streak") or 0)
+        list_positive_streak = int(list_execution.get("positive_streak") or 0)
+        sell_positive_streak = int(sell_execution.get("positive_streak") or 0)
+        source_release_streak = max(1, int(settings.auto_approve_source_observe_release_streak))
+        source_recovery_progress = min(1.0, buy_positive_streak / float(source_release_streak))
+        source_observe_base_multiplier = max(
+            0.05,
+            min(0.6, float(settings.auto_approve_source_observe_base_multiplier)),
+        )
+        source_observe_multiplier = round(
+            source_observe_base_multiplier
+            + ((0.6 - source_observe_base_multiplier) * source_recovery_progress),
+            2,
+        )
+        recovery_profit_validated = (
+            sold_count >= 2
+            and realized_net_profit > 0
+            and profit_hit_rate >= 0.65
+            and avg_realized_roi >= 0.08
+        )
+        cashout_quality_validated = (
+            recovery_profit_validated
+            and avg_holding_days > 0
+            and avg_holding_days <= float(settings.auto_approve_source_cashout_max_holding_days)
+        )
+        source_lane = "open"
+        block_new_approvals = False
+        list_action_lane = "open"
+        sell_action_lane = "open"
+
+        if execution_sample_size >= int(settings.operating_state_min_execution_samples):
+            if (
+                execution_failure_rate >= float(settings.operating_state_recovery_failure_rate)
+                or execution_business_ban_count >= int(settings.operating_state_recovery_business_bans)
+            ):
+                strategy_mode = "tighten"
+                strategy_summary = "Live execution quality is degraded. Tighten source intake."
+                threshold_delta = {
+                    "min_score": max(float(threshold_delta["min_score"]), 6.0),
+                    "min_roi": max(float(threshold_delta["min_roi"]), 0.03),
+                    "max_risk_score": min(float(threshold_delta["max_risk_score"]), -6.0),
+                }
+                intake_multiplier = min(float(intake_multiplier), 0.35)
+                capital_multiplier = min(float(capital_multiplier), 0.35)
+            elif (
+                execution_failure_rate >= float(settings.operating_state_cautious_failure_rate)
+                or execution_business_ban_count >= int(settings.operating_state_cautious_business_bans)
+            ):
+                strategy_mode = "tighten"
+                strategy_summary = "Live execution quality is unstable. Reduce source intake."
+                threshold_delta = {
+                    "min_score": max(float(threshold_delta["min_score"]), 4.0),
+                    "min_roi": max(float(threshold_delta["min_roi"]), 0.02),
+                    "max_risk_score": min(float(threshold_delta["max_risk_score"]), -4.0),
+                }
+                intake_multiplier = min(float(intake_multiplier), 0.6)
+                capital_multiplier = min(float(capital_multiplier), 0.7)
+
+        if buy_execution_state == "recovery":
+            if buy_positive_streak > 0:
+                source_lane = "observe"
+                strategy_mode = "tighten"
+                strategy_summary = "Live buy execution is recovering. Re-enable with small flow."
+                threshold_delta = {
+                    "min_score": max(float(threshold_delta["min_score"]), 6.0),
+                    "min_roi": max(float(threshold_delta["min_roi"]), 0.03),
+                    "max_risk_score": min(float(threshold_delta["max_risk_score"]), -6.0),
+                }
+                intake_multiplier = min(float(intake_multiplier), source_observe_multiplier)
+                capital_multiplier = min(float(capital_multiplier), max(0.5, source_observe_multiplier))
+            else:
+                source_lane = "blocked"
+                block_new_approvals = True
+                strategy_mode = "tighten"
+                strategy_summary = "Live buy execution is degraded. Block new approvals for this source."
+                threshold_delta = {
+                    "min_score": max(float(threshold_delta["min_score"]), 8.0),
+                    "min_roi": max(float(threshold_delta["min_roi"]), 0.05),
+                    "max_risk_score": min(float(threshold_delta["max_risk_score"]), -8.0),
+                }
+                intake_multiplier = 0.0
+                capital_multiplier = 0.0
+        elif buy_execution_state == "cautious":
+            source_lane = "observe"
+            strategy_mode = "tighten"
+            strategy_summary = "Live buy execution is unstable. Keep source in observe mode."
+            threshold_delta = {
+                "min_score": max(float(threshold_delta["min_score"]), 6.0),
+                "min_roi": max(float(threshold_delta["min_roi"]), 0.03),
+                "max_risk_score": min(float(threshold_delta["max_risk_score"]), -6.0),
+            }
+            intake_multiplier = min(float(intake_multiplier), max(0.35, source_observe_multiplier))
+            capital_multiplier = min(float(capital_multiplier), 0.6)
+        elif buy_positive_streak > 0:
+            if buy_positive_streak >= source_release_streak and recovery_profit_validated:
+                source_lane = "expand"
+                strategy_mode = "widen"
+                strategy_summary = "Live buy execution recovered and realized ROI validated. Restore source capacity."
+                threshold_delta = {
+                    "min_score": min(float(threshold_delta["min_score"]), 0.0),
+                    "min_roi": min(float(threshold_delta["min_roi"]), 0.0),
+                    "max_risk_score": max(float(threshold_delta["max_risk_score"]), 0.0),
+                }
+                intake_multiplier = max(float(intake_multiplier), 1.0)
+                capital_multiplier = max(float(capital_multiplier), 1.2)
+            else:
+                source_lane = "observe"
+                strategy_mode = "tighten"
+                strategy_summary = "Live buy execution recovered, but realized ROI is not yet validated. Keep source in observe mode."
+                threshold_delta = {
+                    "min_score": max(float(threshold_delta["min_score"]), 3.0),
+                    "min_roi": max(float(threshold_delta["min_roi"]), 0.015),
+                    "max_risk_score": min(float(threshold_delta["max_risk_score"]), -3.0),
+                }
+                intake_multiplier = min(float(intake_multiplier), max(0.35, source_observe_multiplier))
+                capital_multiplier = min(float(capital_multiplier), 0.75)
+        elif exit_execution_state == "recovery":
+            source_lane = "reduced"
+            strategy_mode = "tighten"
+            strategy_summary = "Exit execution is degraded. Reduce new exposure for this source."
+            threshold_delta = {
+                "min_score": max(float(threshold_delta["min_score"]), 5.0),
+                "min_roi": max(float(threshold_delta["min_roi"]), 0.025),
+                "max_risk_score": min(float(threshold_delta["max_risk_score"]), -5.0),
+            }
+            intake_multiplier = min(float(intake_multiplier), 0.5)
+            capital_multiplier = min(float(capital_multiplier), 0.55)
+        elif exit_execution_state == "cautious":
+            source_lane = "reduced"
+            strategy_mode = "tighten"
+            strategy_summary = "Exit execution is unstable. Trim intake for this source."
+            threshold_delta = {
+                "min_score": max(float(threshold_delta["min_score"]), 4.0),
+                "min_roi": max(float(threshold_delta["min_roi"]), 0.02),
+                "max_risk_score": min(float(threshold_delta["max_risk_score"]), -4.0),
+            }
+            intake_multiplier = min(float(intake_multiplier), 0.7)
+            capital_multiplier = min(float(capital_multiplier), 0.8)
+
+        if list_execution_state == "recovery":
+            list_action_lane = "observe" if list_positive_streak > 0 else "blocked"
+        elif list_execution_state == "cautious":
+            list_action_lane = "observe"
+        elif list_positive_streak >= source_release_streak and cashout_quality_validated:
+            list_action_lane = "expand"
+        elif list_positive_streak > 0:
+            list_action_lane = "observe"
+
+        if sell_execution_state == "recovery":
+            sell_action_lane = "observe" if sell_positive_streak > 0 else "blocked"
+        elif sell_execution_state == "cautious":
+            sell_action_lane = "observe"
+        elif sell_positive_streak >= source_release_streak and cashout_quality_validated:
+            sell_action_lane = "expand"
+        elif sell_positive_streak > 0:
+            sell_action_lane = "observe"
+
+        if list_action_lane == "blocked" or sell_action_lane == "blocked":
+            capital_multiplier = min(float(capital_multiplier), 0.5)
+        elif list_action_lane in {"observe", "reduced"} or sell_action_lane in {"observe", "reduced"}:
+            capital_multiplier = min(float(capital_multiplier), 0.8)
+        elif (
+            cashout_quality_validated
+            and "expand" in {list_action_lane, sell_action_lane}
+        ):
+            capital_multiplier = max(float(capital_multiplier), 1.3)
+        elif (
+            source_lane == "expand"
+            and list_action_lane == "expand"
+            and sell_action_lane == "expand"
+            and cashout_quality_validated
+        ):
+            capital_multiplier = max(float(capital_multiplier), 1.4)
 
         items.append(
             {
@@ -3007,10 +6625,37 @@ def _build_source_profit_snapshot(
                 "realized_net_profit": realized_net_profit,
                 "profit_hit_rate": profit_hit_rate,
                 "avg_realized_roi": avg_realized_roi,
+                "avg_holding_days": avg_holding_days,
+                "median_holding_days": median_holding_days,
                 "strategy_mode": strategy_mode,
                 "strategy_summary": strategy_summary,
                 "threshold_delta": threshold_delta,
                 "intake_multiplier": intake_multiplier,
+                "capital_multiplier": round(capital_multiplier, 2),
+                "source_lane": source_lane,
+                "block_new_approvals": block_new_approvals,
+                "list_action_lane": list_action_lane,
+                "sell_action_lane": sell_action_lane,
+                "allow_auto_list": list_action_lane != "blocked",
+                "allow_auto_sell": sell_action_lane != "blocked",
+                "recovery_profit_validated": recovery_profit_validated,
+                "cashout_quality_validated": cashout_quality_validated,
+                "execution_live_sample_size": execution_sample_size,
+                "execution_live_success_count": execution_success_count,
+                "execution_live_failure_count": execution_failure_count,
+                "execution_live_success_rate": round(execution_success_rate, 4),
+                "execution_live_failure_rate": round(execution_failure_rate, 4),
+                "execution_live_business_ban_count": execution_business_ban_count,
+                "execution_live_last_failure_at": execution_last_failure_at,
+                "execution_buy_state": buy_execution_state,
+                "execution_list_state": list_execution_state,
+                "execution_sell_state": sell_execution_state,
+                "buy_positive_streak": buy_positive_streak,
+                "list_positive_streak": list_positive_streak,
+                "sell_positive_streak": sell_positive_streak,
+                "source_release_streak": source_release_streak,
+                "source_recovery_progress": round(source_recovery_progress, 4),
+                "execution_by_action": execution_by_action,
             }
         )
 
@@ -3352,7 +6997,13 @@ def _list_forward_validation_trade_rows_with_conn(
 def get_trade_performance_report() -> dict[str, Any]:
     with get_conn() as conn:
         pending = conn.execute(
-            "SELECT COUNT(*) AS c FROM opportunities WHERE status = 'pending_review'"
+            """
+            SELECT COUNT(*) AS c
+            FROM opportunities o
+            JOIN listings_raw l ON l.id = o.listing_row_id
+            WHERE o.status = 'pending_review'
+              AND COALESCE(l.source, '') != 'simulation_seed'
+            """
         ).fetchone()["c"]
         trade_rows = conn.execute(
             """
@@ -3370,6 +7021,7 @@ def get_trade_performance_report() -> dict[str, Any]:
             FROM trades t
             JOIN opportunities o ON o.id = t.opportunity_id
             JOIN listings_raw l ON l.id = o.listing_row_id
+            WHERE COALESCE(l.source, '') != 'simulation_seed'
             ORDER BY t.id DESC
             """
         ).fetchall()
@@ -3380,7 +7032,27 @@ def get_trade_performance_report() -> dict[str, Any]:
         today_summary = _build_realized_window_summary(trade_rows, since=today_start)
         last_7d_summary = _build_realized_window_summary(trade_rows, since=last_7d_start)
         inventory_summary = _build_inventory_exposure_summary(trade_rows)
-        source_snapshot = _build_source_profit_snapshot(trade_rows, since=last_7d_start)
+        execution_rows_7d = conn.execute(
+            """
+            SELECT
+                e.*,
+                l.source AS listing_source
+            FROM execution_logs e
+            JOIN trades t ON t.id = e.trade_id
+            JOIN opportunities o ON o.id = t.opportunity_id
+            JOIN listings_raw l ON l.id = o.listing_row_id
+            WHERE e.created_at >= ? AND e.dry_run = 0
+              AND COALESCE(l.source, '') != 'simulation_seed'
+            ORDER BY e.id DESC
+            """,
+            (last_7d_start.isoformat(),),
+        ).fetchall()
+        source_execution_snapshot = _build_source_execution_snapshot(execution_rows_7d)
+        source_snapshot = _build_source_profit_snapshot(
+            trade_rows,
+            since=last_7d_start,
+            execution_by_source=source_execution_snapshot,
+        )
         seller_snapshot = _build_seller_profit_snapshot(trade_rows, since=last_7d_start)
         seller_snapshot_all_time = _build_seller_profit_snapshot(trade_rows)
         seller_attribution_all_time = _enrich_seller_attribution_items(
@@ -3459,6 +7131,7 @@ def get_trade_performance_report() -> dict[str, Any]:
             "best_source_7d": source_snapshot["best"],
             "weakest_source_7d": source_snapshot["weakest"],
             "source_leaderboard_7d": source_snapshot["items"],
+            "source_execution_live_7d": list(source_execution_snapshot.values())[:5],
             "best_seller_7d": seller_snapshot["best"],
             "weakest_seller_7d": seller_snapshot["weakest"],
             "seller_leaderboard_7d": seller_snapshot["items"],
@@ -3520,12 +7193,14 @@ def list_execution_logs(
     limit: int = 100,
 ) -> list[sqlite3.Row]:
     base_sql = """
-    SELECT e.*, t.status AS trade_status, t.approved_buy_price, t.target_sell_price
+    SELECT e.*, t.status AS trade_status, t.approved_buy_price, t.target_sell_price, l.source AS listing_source
     FROM execution_logs e
     JOIN trades t ON t.id = e.trade_id
+    JOIN opportunities o ON o.id = t.opportunity_id
+    JOIN listings_raw l ON l.id = o.listing_row_id
     """
-    params: list[Any] = []
-    where: list[str] = []
+    params: list[Any] = ["simulation_seed"]
+    where: list[str] = ["COALESCE(l.source, '') != ?"]
     if trade_id is not None:
         where.append("e.trade_id = ?")
         params.append(trade_id)
@@ -3566,30 +7241,36 @@ def _parse_json_object(raw: Any) -> dict[str, Any]:
     return {}
 
 
-def get_execution_log_summary(limit: int = 24) -> dict[str, Any]:
-    try:
-        rows = list_execution_logs(limit=max(1, min(500, int(limit))))
-    except sqlite3.OperationalError:
-        return {
-            "sample_size": 0,
-            "success_count": 0,
-            "failure_count": 0,
-            "success_rate": 0.0,
-            "failure_rate": 0.0,
-            "business_ban_count": 0,
-            "last_failure_at": "",
-        }
+def _build_execution_log_summary(rows: list[sqlite3.Row]) -> dict[str, Any]:
     sample_size = len(rows)
     failure_count = 0
     business_ban_count = 0
     last_failure_at = ""
+    by_action: dict[str, dict[str, Any]] = {}
 
     for row in rows:
         success = bool(row["success"])
+        action = str(row["action"] or "unknown").strip().lower() or "unknown"
+        action_bucket = by_action.setdefault(
+            action,
+            {
+                "sample_size": 0,
+                "success_count": 0,
+                "failure_count": 0,
+                "success_rate": 0.0,
+                "failure_rate": 0.0,
+                "business_ban_count": 0,
+                "last_failure_at": "",
+            },
+        )
+        action_bucket["sample_size"] += 1
         if not success:
             failure_count += 1
+            action_bucket["failure_count"] += 1
             if not last_failure_at:
                 last_failure_at = str(row["created_at"] or "")
+            if not action_bucket["last_failure_at"]:
+                action_bucket["last_failure_at"] = str(row["created_at"] or "")
 
         response_payload = _parse_json_object(row["response_json"])
         business_ban_code = str(response_payload.get("business_ban_code") or "").strip()
@@ -3603,10 +7284,24 @@ def get_execution_log_summary(limit: int = 24) -> dict[str, Any]:
         ).lower()
         if business_ban_code or "business ban" in error_text:
             business_ban_count += 1
+            action_bucket["business_ban_count"] += 1
 
     success_count = sample_size - failure_count
     success_rate = (success_count / sample_size) if sample_size else 0.0
     failure_rate = (failure_count / sample_size) if sample_size else 0.0
+    for bucket in by_action.values():
+        action_sample_size = int(bucket["sample_size"] or 0)
+        action_failure_count = int(bucket["failure_count"] or 0)
+        action_success_count = action_sample_size - action_failure_count
+        bucket["success_count"] = action_success_count
+        bucket["success_rate"] = round(
+            (action_success_count / action_sample_size) if action_sample_size else 0.0,
+            4,
+        )
+        bucket["failure_rate"] = round(
+            (action_failure_count / action_sample_size) if action_sample_size else 0.0,
+            4,
+        )
     return {
         "sample_size": sample_size,
         "success_count": success_count,
@@ -3615,7 +7310,30 @@ def get_execution_log_summary(limit: int = 24) -> dict[str, Any]:
         "failure_rate": round(failure_rate, 4),
         "business_ban_count": business_ban_count,
         "last_failure_at": last_failure_at,
+        "by_action": by_action,
     }
+
+
+def get_execution_log_summary(limit: int = 24, *, dry_run: bool | None = None) -> dict[str, Any]:
+    try:
+        rows = list_execution_logs(
+            limit=max(1, min(500, int(limit))),
+            dry_run=dry_run,
+        )
+    except sqlite3.OperationalError:
+        return {
+            "sample_size": 0,
+            "success_count": 0,
+            "failure_count": 0,
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "business_ban_count": 0,
+            "last_failure_at": "",
+            "by_action": {},
+        }
+    summary = _build_execution_log_summary(rows)
+    summary["dry_run_filter"] = dry_run
+    return summary
 
 
 def get_latest_execution_log(
@@ -3644,10 +7362,13 @@ def list_latest_failed_execution_candidates(
     limit: int = 20,
 ) -> list[sqlite3.Row]:
     sql = """
-    SELECT e.*, t.status AS trade_status
+    SELECT e.*, t.status AS trade_status, l.source AS listing_source
     FROM execution_logs e
     JOIN trades t ON t.id = e.trade_id
+    JOIN opportunities o ON o.id = t.opportunity_id
+    JOIN listings_raw l ON l.id = o.listing_row_id
     WHERE e.success = 0
+      AND COALESCE(l.source, '') != 'simulation_seed'
       AND NOT EXISTS (
           SELECT 1
           FROM execution_logs newer

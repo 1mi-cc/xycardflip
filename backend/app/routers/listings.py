@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from .. import repositories as repo
+from ..route_guard import require_cardflip_view
 
-router = APIRouter(prefix="/listings", tags=["listings"])
+router = APIRouter(
+    prefix="/listings",
+    tags=["listings"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 
 def _build_listing_url(source: str | None, listing_id: str | None) -> str | None:

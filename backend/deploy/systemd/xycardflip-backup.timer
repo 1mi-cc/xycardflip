@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily XY Card Flip Shared Data Backup
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+RandomizedDelaySec=15m
+Unit=xycardflip-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -9,8 +9,9 @@ from typing import Any
 import requests
 
 from ..config import settings
-from ..repositories import insert_listings
-from ..schemas import ListingIn
+from ..repositories import insert_listings, insert_marketplace_offers
+from ..schemas import ListingIn, MarketplaceOfferIn
+from .marketplace_normalizer import normalize_marketplace_canonical_key
 from .cookie_provider import CookieProvider
 from .notifier import format_circuit_email, send_alert_email
 from .opportunity_scan import scan_open_listings
@@ -304,6 +305,7 @@ class MarketMonitorService:
 
     def _save_items(self, items: list[dict[str, Any]]) -> int:
         rows: list[ListingIn] = []
+        marketplace_rows: list[MarketplaceOfferIn] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -335,10 +337,34 @@ class MarketMonitorService:
                     raw=item,
                 )
             )
+            marketplace_rows.append(
+                MarketplaceOfferIn(
+                    platform="xianyu",
+                    offer_id=listing_id,
+                    seller_id=seller_id,
+                    title=title,
+                    canonical_key=normalize_marketplace_canonical_key(title=title),
+                    item_type="generic",
+                    list_price=price,
+                    shipping_cost=0.0,
+                    fee_rate=0.0,
+                    currency="CNY",
+                    listed_at=datetime.now(timezone.utc),
+                    status="open",
+                    listing_url="",
+                    raw=item,
+                )
+            )
 
         if not rows:
             return 0
-        return insert_listings(rows)
+        inserted = insert_listings(rows)
+        if marketplace_rows:
+            try:
+                insert_marketplace_offers(marketplace_rows)
+            except Exception:
+                pass
+        return inserted
 
     def _register_error(self, exc: Exception, is_403: bool = False, active_proxy: str = "") -> None:
         with self._lock:

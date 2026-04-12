@@ -3,12 +3,18 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import repositories as repo
+from ..route_guard import require_cardflip_operate
+from ..route_guard import require_cardflip_view
 from ..services.opportunity_scan import scan_open_listings
 
-router = APIRouter(prefix="/opportunities", tags=["opportunities"])
+router = APIRouter(
+    prefix="/opportunities",
+    tags=["opportunities"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 
 def _parse_risk_score(note: str) -> float | None:
@@ -27,18 +33,41 @@ def _parse_risk_score(note: str) -> float | None:
     return None
 
 
-@router.post("/scan")
+def _build_listing_url(source: str | None, listing_id: str | None) -> str | None:
+    if not listing_id:
+        return None
+    source_norm = (source or "").lower()
+    if source_norm in {"xianyu", "goofish", "idle", "xianyu_monitor"}:
+        return f"https://www.goofish.com/item?id={listing_id}"
+    return None
+
+
+@router.post("/scan", dependencies=[Depends(require_cardflip_operate)])
 async def scan_opportunities(limit: int = Query(default=50, ge=1, le=500)) -> dict[str, Any]:
     return await scan_open_listings(limit=limit)
 
 
 @router.get("")
-def list_opportunities(status: str | None = None, limit: int = Query(default=100, ge=1, le=500)) -> dict:
-    rows = repo.list_opportunities(status=status, limit=limit)
+def list_opportunities(
+    status: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    include_simulation: bool = False,
+) -> dict:
+    rows = repo.list_opportunities(
+        status=status,
+        limit=limit,
+        include_simulation=include_simulation,
+    )
     items = [
         {
             "opportunity_id": row["id"],
             "listing_row_id": row["listing_row_id"],
+            "listing_id": row["listing_id"],
+            "listing_url": _build_listing_url(row["source"], row["listing_id"]),
+            "source": row["source"],
+            "seller_id": row["seller_id"],
+            "item_type": row["item_type"],
+            "normalized_key": row["normalized_key"],
             "title": row["title"],
             "list_price": row["list_price"],
             "expected_sale_price": row["expected_sale_price"],
@@ -54,7 +83,7 @@ def list_opportunities(status: str | None = None, limit: int = Query(default=100
     return {"items": items, "count": len(items)}
 
 
-@router.post("/{opportunity_id}/reject")
+@router.post("/{opportunity_id}/reject", dependencies=[Depends(require_cardflip_operate)])
 def reject_opportunity(opportunity_id: int, note: str = "manual reject") -> dict:
     target = repo.get_opportunity(opportunity_id)
     if not target:
@@ -72,7 +101,7 @@ def reject_opportunity(opportunity_id: int, note: str = "manual reject") -> dict
     }
 
 
-@router.post("/{opportunity_id}/send-to-review")
+@router.post("/{opportunity_id}/send-to-review", dependencies=[Depends(require_cardflip_operate)])
 def send_to_review(opportunity_id: int, note: str = "manual review override") -> dict:
     target = repo.get_opportunity(opportunity_id)
     if not target:
@@ -83,7 +112,7 @@ def send_to_review(opportunity_id: int, note: str = "manual review override") ->
     return {"opportunity_id": opportunity_id, "status": "pending_review"}
 
 
-@router.post("/send-to-review/batch")
+@router.post("/send-to-review/batch", dependencies=[Depends(require_cardflip_operate)])
 def send_to_review_batch(
     max_risk_score: float = Query(default=45.0, ge=0.0, le=100.0),
     limit: int = Query(default=200, ge=1, le=1000),
@@ -114,7 +143,7 @@ def send_to_review_batch(
     }
 
 
-@router.post("/reject/batch")
+@router.post("/reject/batch", dependencies=[Depends(require_cardflip_operate)])
 def reject_blocked_batch(
     limit: int = Query(default=200, ge=1, le=1000),
     note: str = "manual batch reject from blocked list",

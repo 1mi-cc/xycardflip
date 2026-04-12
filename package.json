@@ -1,27 +1,11 @@
 {
-  "name": "xyzw-token-manager",
+  "name": "xycardflip-admin",
   "version": "2.0.0",
   "type": "module",
-  "description": "XYZW game token manager with Base64 import and WebSocket connection management",
-  "main": "dist/xyzw-token-manager.cjs",
-  "module": "dist/xyzw-token-manager.mjs",
-  "exports": {
-    ".": {
-      "import": "./dist/xyzw-token-manager.mjs",
-      "require": "./dist/xyzw-token-manager.cjs"
-    }
-  },
-  "files": [
-    "dist",
-    "src/lib.js",
-    "src/utils"
-  ],
+  "description": "XYZW card flip executive admin frontend",
   "scripts": {
-    "testr": "node ./test/roleToken.js",
-    "testd": "node ./test/token.js",
     "dev": "vite",
     "build": "vite build",
-    "build:lib": "vite build --config vite.lib.config.js",
     "preview": "vite preview",
     "lint": "eslint src --ext .vue,.js,.ts --fix",
     "format": "prettier --write \"src/**/*.{js,vue,ts,css,scss}\""
@@ -63,12 +47,9 @@
   },
   "keywords": [
     "vue",
-    "token-management",
-    "websocket",
-    "base64",
-    "game-automation",
-    "xyzw",
-    "frontend"
+    "cardflip",
+    "dashboard",
+    "xyzw"
   ],
   "author": "XYZW Team",
   "license": "CC-BY-NC-SA-4.0",

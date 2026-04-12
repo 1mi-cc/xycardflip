@@ -64,7 +64,9 @@ DB_WRITE_BATCH_SIZE=50
 31. `GET /autotrade/tuning-history|tuning-activity|tuning-daily-report|tuning-evaluation` inspect threshold audit trail, recent decisions, 24h report, and current auto-tune guard state.
 32. `POST /autotrade/tuning/apply` apply a manual threshold tune with persistence.
 33. `POST /autotrade/tuning-history/{id}/rollback` revert one recorded threshold tune.
-34. `GET /setup/status|audit|test-gemini` and `POST /setup/apply` support first-run setup flow.
+34. `GET /autotrade/cockpit` returns a delivery/operations cockpit including readiness, blocking reasons, portfolio budget, and source/cluster controls.
+35. `POST /autotrade/config` updates execution, recovery, and portfolio-risk knobs for live operations.
+36. `GET /setup/status|audit|test-gemini` and `POST /setup/apply` support first-run setup flow.
 
 ## 3. Gemini setup
 
@@ -124,6 +126,12 @@ is configured, the extractor automatically switches to rule-based mode.
 - Forward validation batches let you enroll the next 30-100 approved trades automatically and review realized hit rate / holding days.
 - Auto-tune can optionally apply threshold changes after a forward-validation batch is closed, but only if guardrails pass.
 - Auto-tune decisions are written to both a tuning history table and an activity feed so you can audit why the system tuned, skipped, or blocked itself.
+- Autotrade now exposes operator-ready delivery controls:
+  - source-level batch/capital controls
+  - source-action lanes for `buy|list|sell`
+  - risk-cluster controls using `normalized_key` / `item_type`
+  - portfolio-level capital cap and single-source concentration cap
+- `GET /autotrade/cockpit` is the primary operator surface for go-live checks.
 
 ### Auto-tune env
 
@@ -177,12 +185,62 @@ AUTO_EXECUTE_LIST_ON_BUY_SUCCESS=false
 AUTO_EXECUTE_LIST_DRY_RUN=true
 AUTO_START_AUTOTRADE=false
 AUTO_START_EXECUTION_RETRY=false
+
+AUTO_APPROVE_SOURCE_OBSERVE_BASE_MULTIPLIER=0.2
+AUTO_APPROVE_SOURCE_OBSERVE_RELEASE_STREAK=3
+AUTO_APPROVE_SOURCE_CASHOUT_MAX_HOLDING_DAYS=5.0
+
+AUTO_APPROVE_PORTFOLIO_MAX_DEPLOYED_CAPITAL=0
+AUTO_APPROVE_MAX_SOURCE_CAPITAL_SHARE=0.6
+AUTO_APPROVE_MAX_CLUSTER_BATCH_SHARE=0.6
+AUTO_APPROVE_MAX_CLUSTER_CAPITAL_SHARE=0.6
 ```
 
 When `EXECUTION_WEBHOOK_SECRET` is set, webhook requests include:
 - `X-CardFlip-Timestamp`
 - `X-CardFlip-Signature` (`HMAC-SHA256(secret, timestamp + "." + rawBody)`)
 - `X-Idempotency-Key`
+
+### Delivery Controls
+
+- `AUTO_APPROVE_SOURCE_OBSERVE_BASE_MULTIPLIER`
+  Base approval flow allowed when a source is in `observe`.
+- `AUTO_APPROVE_SOURCE_OBSERVE_RELEASE_STREAK`
+  Number of consecutive live execution successes required before a recovering source can fully expand again.
+- `AUTO_APPROVE_SOURCE_CASHOUT_MAX_HOLDING_DAYS`
+  Cashout quality threshold used before `list/sell` lanes can expand.
+- `AUTO_APPROVE_PORTFOLIO_MAX_DEPLOYED_CAPITAL`
+  Hard portfolio capital ceiling for approved/open exposure. `0` means disabled.
+- `AUTO_APPROVE_MAX_SOURCE_CAPITAL_SHARE`
+  Max fraction of the current portfolio capital budget assignable to one source.
+- `AUTO_APPROVE_MAX_CLUSTER_BATCH_SHARE`
+  Max fraction of one run's approval batch assignable to one risk cluster.
+- `AUTO_APPROVE_MAX_CLUSTER_CAPITAL_SHARE`
+  Max fraction of one run's capital budget assignable to one risk cluster.
+
+## 7. Operator Runbook
+
+Before enabling live automation:
+
+1. `GET /health/ready`
+   Ensure the API reports ready and there is no degraded reason.
+2. `GET /execution/readiness`
+   Confirm webhook/live execution is actually ready.
+3. `GET /autotrade/cockpit`
+   Verify `ready=true`, inspect `blocking_reasons`, and confirm portfolio remaining capital is positive.
+4. `POST /autotrade/config`
+   Set portfolio and concentration caps for the current bankroll.
+5. `POST /autotrade/run-once?force=true`
+   Run one dry operational approval cycle and inspect `source_position_controls`, `cluster_position_controls`, and execution counters.
+6. `POST /automation/run-once`
+   Run the full orchestrated loop only after the previous checks are clean.
+
+During operations, use:
+
+- `GET /autotrade/cockpit` for the top-level operator view
+- `GET /trades/metrics-summary` for realized performance and cashout quality
+- `GET /execution/logs` for action-level execution audit
+- `GET /autotrade/tuning-history` and `GET /autotrade/tuning-activity` for threshold audit trail
 
 ### UI permission env
 
@@ -385,3 +443,350 @@ API controls:
 - `POST /supabase/stop`
 - `POST /supabase/run-once?force=true`
 - `POST /supabase/reset-cursors?table=sales_raw` (optional `table`; empty means reset all)
+
+## 12. Marketplace provider templates
+
+The read-only arbitrage layer uses `marketplace_offers` and does **not** write into
+`pending_review`, `trades`, or `execution`.
+
+### Taobao TOP
+
+Set in `.env`:
+
+```env
+TAOBAO_TOP_GATEWAY_URL=https://eco.taobao.com/router/rest
+TAOBAO_TOP_APP_KEY=
+TAOBAO_TOP_APP_SECRET=
+TAOBAO_TOP_METHOD=alibaba.tuike.offer.get
+TAOBAO_TOP_SIGN_METHOD=hmac
+TAOBAO_TOP_ISV_CODE=
+TAOBAO_TOP_SESSION=
+TAOBAO_TOP_QUERY_STRING={"filter_param":{"price_range":{"price_range_max":5000,"price_range_min":50},"start_order_num":1},"query_param":{"offer_name":["Pokemon Card PSA 10"],"top_category_id":0,"top_category_name":"","company_name":["",""],"owner_id":null,"category_id":null,"user_tags":[]},"sort_param":{"price":"+"}}
+TAOBAO_TOP_TIMEOUT_SEC=15
+```
+
+Runtime paths:
+- `GET /marketplace/providers/taobao/status`
+- `POST /marketplace/providers/taobao/sync-once`
+- `POST /marketplace/providers/taobao/ingest-snapshot`
+- `python scripts/taobao_sync_once.py`
+
+### Pinduoduo
+
+Set in `.env`:
+
+```env
+PINDUODUO_API_URL=https://gw-api.pinduoduo.com/api/router
+PINDUODUO_CLIENT_ID=
+PINDUODUO_CLIENT_SECRET=
+PINDUODUO_TYPE=pdd.ddk.goods.search
+PINDUODUO_ACCESS_TOKEN=
+PINDUODUO_DATA_TYPE=JSON
+PINDUODUO_PARAMS_JSON={"keyword":"Pokemon Card PSA 10","page":1,"page_size":30,"sort_type":0,"with_coupon":false}
+PINDUODUO_TIMEOUT_SEC=15
+```
+
+Runtime paths:
+- `GET /marketplace/providers/pinduoduo/status`
+- `POST /marketplace/providers/pinduoduo/sync-once`
+- `POST /marketplace/providers/pinduoduo/ingest-snapshot`
+
+### JD
+
+Set in `.env`:
+
+```env
+JD_API_URL=https://router.jd.com/api
+JD_APP_KEY=
+JD_APP_SECRET=
+JD_METHOD=jd.union.open.goods.query
+JD_ACCESS_TOKEN=
+JD_SIGN_METHOD=md5
+JD_VERSION=1.0
+JD_FORMAT=json
+JD_PARAM_JSON={"goodsReq":{"keyword":"Pokemon Card PSA 10","pageIndex":1,"pageSize":20,"sortName":"price","sort":"asc"}}
+JD_TIMEOUT_SEC=15
+```
+
+Runtime paths:
+- `GET /marketplace/providers/jd/status`
+- `POST /marketplace/providers/jd/sync-once`
+- `POST /marketplace/providers/jd/ingest-snapshot`
+
+### Snapshot examples
+
+You can validate the arbitrage layer before credential approval by importing snapshot JSON manually:
+
+- `Import Taobao Snapshot`
+- `Import Pinduoduo Snapshot`
+- `Import JD Snapshot`
+
+Those actions only write to `marketplace_offers`.
+
+### Generic cookie refresh
+
+For cookie-first providers, use the generic browser cookie refresher instead of maintaining
+one script per marketplace:
+
+```powershell
+python backend/scripts/refresh_marketplace_cookie.py --provider xianyu --kill-browsers
+python backend/scripts/refresh_marketplace_cookie.py --provider jd --kill-browsers
+python backend/scripts/refresh_marketplace_cookie.py --provider pinduoduo --kill-browsers
+```
+
+Compatibility wrappers are also available:
+
+```powershell
+python backend/scripts/refresh_xianyu_cookie.py --kill-browsers
+python backend/scripts/refresh_jd_cookie.py --kill-browsers
+python backend/scripts/refresh_pinduoduo_cookie.py --kill-browsers
+```
+
+To sync the refreshed cookie to the server `.env` for the active release:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_cookie_to_server.ps1 -Provider xianyu
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_cookie_to_server.ps1 -Provider jd
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_cookie_to_server.ps1 -Provider pinduoduo
+```
+
+To keep a provider cookie synced in a loop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_cookie_bridge.ps1 -Provider xianyu -IntervalMinutes 20 -RemoteAction run-once
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_cookie_bridge.ps1 -Provider jd -IntervalMinutes 20
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_cookie_bridge.ps1 -Provider pinduoduo -IntervalMinutes 20
+```
+
+Convenience launchers:
+
+```cmd
+start_cookie_bridge.cmd
+start_jd_cookie_bridge.cmd
+start_pinduoduo_cookie_bridge.cmd
+```
+
+Notes:
+- The refresher only updates the target provider env key.
+- It never prints the full cookie value.
+- `xianyu` still validates `_m_h5_tk` and `_m_h5_tk_enc`.
+- `jd` and `pinduoduo` are cookie-mode first, but still high-risk and unstable until a real
+  snapshot bridge is proven against live pages.
+
+### Cookie-mode snapshot bridge
+
+`JD` and `Pinduoduo` cookie-mode `sync-once` can now take a bridge URL override instead of
+requiring only env-configured provider URLs.
+
+Examples:
+
+```http
+POST /card-api/marketplace/providers/jd/sync-once?snapshot_url=https://bridge.example/jd/snapshot
+POST /card-api/marketplace/providers/pinduoduo/sync-once?snapshot_url=https://bridge.example/pinduoduo/snapshot
+```
+
+The bridge only needs to return standard JSON snapshot payloads already accepted by:
+- `POST /marketplace/providers/jd/ingest-snapshot`
+- `POST /marketplace/providers/pinduoduo/ingest-snapshot`
+
+### Local snapshot bridge
+
+You can now run a local cookie-backed snapshot bridge for `JD` or `Pinduoduo`.
+The bridge listens only on `127.0.0.1`, injects the locally refreshed cookie, and
+returns JSON from the upstream source URL without writing to the database.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_snapshot_bridge.ps1 `
+  -Provider jd `
+  -SourceUrl "https://your-local-or-discovered-json-endpoint.example/jd" `
+  -UpstreamMethod GET `
+  -Port 8765
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_snapshot_bridge.ps1 `
+  -Provider pinduoduo `
+  -SourceUrl "https://your-local-or-discovered-json-endpoint.example/pdd" `
+  -UpstreamMethod GET `
+  -Port 8766
+```
+
+Provider-specific wrappers:
+
+```powershell
+python backend/scripts/jd_snapshot_bridge.py --source-url "https://example/jd" --port 8765
+python backend/scripts/pinduoduo_snapshot_bridge.py --source-url "https://example/pdd" --port 8766
+```
+
+Once running, use these bridge URLs in the dashboard:
+
+- `http://127.0.0.1:8765/snapshot`
+- `http://127.0.0.1:8766/snapshot`
+
+Health endpoints:
+
+- `http://127.0.0.1:8765/health`
+- `http://127.0.0.1:8766/health`
+
+Constraints:
+- The bridge never prints the full cookie.
+- It is `cookie-mode / high-risk / unstable`.
+- It expects the upstream source URL to already return JSON.
+- It does not implement general-purpose webpage parsing.
+
+### Local upstream capture
+
+If you do not know the upstream JSON URL yet, use the local capture helper. It connects to
+your logged-in Edge session through CDP, watches `Fetch/XHR` traffic, and prints candidate
+JSON request URLs without exposing cookies or full headers.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_upstream_capture.ps1 -Provider jd -WatchSeconds 25
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_upstream_capture.ps1 -Provider pinduoduo -WatchSeconds 25
+```
+
+Wrappers:
+
+```powershell
+python backend/scripts/capture_jd_upstream.py --watch-seconds 25
+python backend/scripts/capture_pinduoduo_upstream.py --watch-seconds 25
+```
+
+Expected workflow:
+1. Start capture.
+2. During the watch window, use the opened browser page to search the product you care about.
+3. Review the printed candidate JSON URLs.
+4. Pick one and feed it into the local snapshot bridge or dashboard `snapshot bridge URL` input.
+
+### Browser snapshot bridge
+
+If no stable upstream JSON URL is available, use the browser snapshot bridge instead.
+It extracts product cards directly from the rendered page in your logged-in Edge session and
+returns standard snapshot JSON for `sync-once`.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 `
+  -Provider jd `
+  -Keyword "Q coin auto recharge" `
+  -Port 8785
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 `
+  -Provider pinduoduo `
+  -Keyword "Q币 自动充值" `
+  -Port 8786
+```
+
+Wrappers:
+
+```powershell
+python backend/scripts/jd_browser_snapshot.py --keyword "Q coin auto recharge" --port 8785
+python backend/scripts/pinduoduo_browser_snapshot.py --keyword "Q币 自动充值" --port 8786
+```
+
+Use these bridge URLs in the dashboard:
+
+- `http://127.0.0.1:8785/snapshot`
+- `http://127.0.0.1:8786/snapshot`
+
+Notes:
+- This is still `cookie-mode / high-risk / unstable`.
+- It extracts visible browser results, not a formal API.
+- It does not print cookies or raw response bodies.
+
+### Browser session keeper
+
+For providers that need a stable logged-in browser session, start a persistent Edge remote-debug
+window first, keep it open, then run the browser snapshot bridge with `--reuse-browser`.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
+  -Provider jd `
+  -ReuseIfRunning
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
+  -Provider pinduoduo `
+  -ReuseIfRunning
+```
+
+If no keyword is provided, `jd` and `pinduoduo` now default to virtual-goods seeds:
+
+- `jd`: `Q coin auto recharge`
+- `Q币 自动充值`
+
+Probe the current keeper session without launching a new browser:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_session_keeper.ps1 `
+  -Provider pinduoduo `
+  -CheckOnly
+```
+
+The probe returns:
+
+- `current_url`
+- `page_title`
+- `page_state = login | search_results | unknown`
+- `login_required`
+
+Convenience launchers:
+
+```cmd
+start_jd_browser_keeper.cmd
+start_pinduoduo_browser_keeper.cmd
+```
+
+Then start the snapshot bridge against the same remote debug browser:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/run_browser_snapshot_bridge.ps1 -Provider pinduoduo -ReuseBrowser
+```
+
+`jd` and `pinduoduo` browser snapshots now apply `virtual_goods_only` by default.
+
+### Push local browser snapshot to remote server
+
+Because the remote backend cannot reach your local `127.0.0.1` bridge directly, use the
+push helper to fetch from the local browser bridge and then call the remote ingest endpoint.
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_snapshot_to_server.ps1 `
+  -Provider jd `
+  -BridgeUrl "http://127.0.0.1:8785/snapshot" `
+  -Limit 20
+
+powershell -ExecutionPolicy Bypass -File backend/scripts/sync_marketplace_snapshot_to_server.ps1 `
+  -Provider pinduoduo `
+  -BridgeUrl "http://127.0.0.1:8786/snapshot" `
+  -Limit 20
+```
+
+Push is fail-closed:
+
+- The local snapshot must return `ready_for_push = true`
+- `ready_for_push` only becomes true when:
+  - `login_required = false`
+  - `low_confidence = false`
+  - `accepted_item_count > 0`
+  - `virtual_candidate_count > 0`
+  - `virtual_goods_only_applied = true`
+
+### Marketplace shadow dry-run
+
+`POST /marketplace/shadow/run-once` is dry-run-only and defaults to `virtual_goods` marketplace offers. Virtual-only runs evaluate arbitrage with `shipping_cost = 0.0` and use lower observation thresholds for early validation. Keep JD fail-closed while abnormal/risk pages are present.
+
+Virtual shadow uses separate observation thresholds:
+
+- `MARKETPLACE_SHADOW_VIRTUAL_MIN_NET_PROFIT=20`
+- `MARKETPLACE_SHADOW_VIRTUAL_MIN_ROI=0.02`
+- `MARKETPLACE_SHADOW_VIRTUAL_MIN_CONFIDENCE=0.75`
+- `MARKETPLACE_SHADOW_MANUAL_VIRTUAL_MAX_AGE_HOURS=48`
+
+`GET /marketplace/shadow/virtual-report` summarizes virtual-only dry-run quality without exposing raw cookies, headers, or HTML. It is the stability report to check before any future execution work: look for repeated accepted `virtual_goods` groups and `valid_profit` review verdicts.

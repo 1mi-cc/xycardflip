@@ -3,21 +3,27 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.params import Query
 
 from .. import repositories as repo
 from ..config import settings
+from ..route_guard import require_cardflip_operate
+from ..route_guard import require_cardflip_view
 from ..schemas import ApproveTradeIn, ForwardValidationBatchCreateIn, MarkListedIn, MarkSoldIn
 from ..services.autotrade import auto_trade_service
 from ..services.execution import execution_service
 from ..services.market_sentiment import market_sentiment_service
 from ..services.pricing_strategy import build_pricing_plan
 
-router = APIRouter(prefix="/trades", tags=["trades"])
+router = APIRouter(
+    prefix="/trades",
+    tags=["trades"],
+    dependencies=[Depends(require_cardflip_view)],
+)
 
 
-@router.post("/approve")
+@router.post("/approve", dependencies=[Depends(require_cardflip_operate)])
 def approve_trade(payload: ApproveTradeIn) -> dict:
     try:
         result = repo.approve_opportunity_idempotent(
@@ -146,7 +152,7 @@ def metrics_alias() -> dict:
     return payload
 
 
-@router.post("/forward-validation/batches")
+@router.post("/forward-validation/batches", dependencies=[Depends(require_cardflip_operate)])
 def create_forward_validation_batch(payload: ForwardValidationBatchCreateIn) -> dict:
     try:
         return repo.create_forward_validation_batch(**payload.model_dump())
@@ -162,7 +168,7 @@ def list_forward_validation_batches(
     return {"items": items, "count": len(items)}
 
 
-@router.post("/forward-validation/batches/{batch_id}/close")
+@router.post("/forward-validation/batches/{batch_id}/close", dependencies=[Depends(require_cardflip_operate)])
 def close_forward_validation_batch(batch_id: int) -> dict:
     try:
         batch = repo.close_forward_validation_batch(batch_id)
@@ -186,7 +192,7 @@ def get_trade_pricing_plan(
     return _build_trade_pricing_payload(trade_id, mode)
 
 
-@router.post("/{trade_id}/apply-pricing-plan")
+@router.post("/{trade_id}/apply-pricing-plan", dependencies=[Depends(require_cardflip_operate)])
 def apply_trade_pricing_plan(
     trade_id: int,
     mode: Literal["balanced", "fast_exit", "profit_max"] = "balanced",
@@ -211,7 +217,7 @@ def apply_trade_pricing_plan(
     }
 
 
-@router.post("/reprice-open")
+@router.post("/reprice-open", dependencies=[Depends(require_cardflip_operate)])
 def reprice_open_trades(
     mode: Literal["balanced", "fast_exit", "profit_max"] = "balanced",
     limit: int = Query(default=100, ge=1, le=500),
@@ -283,7 +289,7 @@ def get_trade(trade_id: int) -> dict:
     }
 
 
-@router.post("/{trade_id}/mark-listed")
+@router.post("/{trade_id}/mark-listed", dependencies=[Depends(require_cardflip_operate)])
 def mark_listed(trade_id: int, payload: MarkListedIn) -> dict:
     if not repo.get_trade(trade_id):
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -291,7 +297,7 @@ def mark_listed(trade_id: int, payload: MarkListedIn) -> dict:
     return {"trade_id": trade_id, "status": "listed_for_sale"}
 
 
-@router.post("/{trade_id}/mark-sold")
+@router.post("/{trade_id}/mark-sold", dependencies=[Depends(require_cardflip_operate)])
 def mark_sold(trade_id: int, payload: MarkSoldIn) -> dict:
     if not repo.get_trade(trade_id):
         raise HTTPException(status_code=404, detail="Trade not found")

@@ -10,6 +10,7 @@ from typing import Any, Iterator
 
 from .auth_utils import hash_password
 from .auth_utils import utcnow
+from .auth_utils import verify_password
 from .config import settings
 
 
@@ -473,7 +474,7 @@ def _ensure_seed_admin(conn: sqlite3.Connection) -> None:
     username = settings.ui_auth_username.strip() or "operator"
     existing = conn.execute(
         """
-        SELECT id
+        SELECT id, password_hash, nickname, role, is_active, is_seeded_admin
         FROM users
         WHERE lower(username) = lower(?)
         LIMIT 1
@@ -482,6 +483,40 @@ def _ensure_seed_admin(conn: sqlite3.Connection) -> None:
     ).fetchone()
 
     if existing:
+        configured_password = str(settings.ui_auth_password or "").strip()
+        updates: list[str] = []
+        params: list[object] = []
+
+        if configured_password and not verify_password(configured_password, existing["password_hash"]):
+            updates.append("password_hash = ?")
+            params.append(hash_password(configured_password))
+
+        nickname = settings.ui_auth_nickname.strip() or username
+        if str(existing["nickname"] or "") != nickname:
+            updates.append("nickname = ?")
+            params.append(nickname)
+
+        if str(existing["role"] or "").strip().lower() != "admin":
+            updates.append("role = 'admin'")
+
+        if int(existing["is_active"] or 0) != 1:
+            updates.append("is_active = 1")
+
+        if int(existing["is_seeded_admin"] or 0) != 1:
+            updates.append("is_seeded_admin = 1")
+
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(utcnow().isoformat())
+            params.append(int(existing["id"]))
+            conn.execute(
+                f"""
+                UPDATE users
+                SET {", ".join(updates)}
+                WHERE id = ?
+                """,
+                tuple(params),
+            )
         return
 
     nickname = settings.ui_auth_nickname.strip() or username
@@ -548,6 +583,75 @@ def init_db() -> None:
         normalization_version TEXT NOT NULL DEFAULT '',
         raw_json TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS marketplace_offers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT NOT NULL,
+        offer_id TEXT,
+        seller_id TEXT,
+        title TEXT NOT NULL,
+        canonical_key TEXT NOT NULL DEFAULT '',
+        item_type TEXT NOT NULL DEFAULT 'generic',
+        list_price REAL NOT NULL,
+        shipping_cost REAL NOT NULL DEFAULT 0,
+        fee_rate REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'CNY',
+        listed_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        listing_url TEXT NOT NULL DEFAULT '',
+        raw_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(platform, offer_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS marketplace_shadow_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trigger_source TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'completed',
+        candidate_count INTEGER NOT NULL DEFAULT 0,
+        accepted_count INTEGER NOT NULL DEFAULT 0,
+        blocked_count INTEGER NOT NULL DEFAULT 0,
+        error_count INTEGER NOT NULL DEFAULT 0,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        summary_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS marketplace_shadow_intents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER,
+        intent_key TEXT NOT NULL DEFAULT '',
+        arbitrage_key TEXT NOT NULL DEFAULT '',
+        reference_title TEXT NOT NULL DEFAULT '',
+        buy_platform TEXT NOT NULL DEFAULT '',
+        sell_platform TEXT NOT NULL DEFAULT '',
+        buy_listing_id TEXT NOT NULL DEFAULT '',
+        sell_listing_id TEXT NOT NULL DEFAULT '',
+        platform_count INTEGER NOT NULL DEFAULT 0,
+        listing_count INTEGER NOT NULL DEFAULT 0,
+        estimated_net_profit REAL NOT NULL DEFAULT 0,
+        estimated_roi REAL NOT NULL DEFAULT 0,
+        confidence_score REAL NOT NULL DEFAULT 0,
+        decision_status TEXT NOT NULL DEFAULT 'blocked',
+        blocked_reason TEXT NOT NULL DEFAULT '',
+        snapshot_json TEXT NOT NULL DEFAULT '{}',
+        reviewed_at TEXT,
+        reviewed_by TEXT NOT NULL DEFAULT '',
+        review_note TEXT NOT NULL DEFAULT '',
+        review_verdict TEXT NOT NULL DEFAULT '',
+        outcome_status TEXT NOT NULL DEFAULT '',
+        observed_buy_price REAL NOT NULL DEFAULT 0,
+        observed_sell_price REAL NOT NULL DEFAULT 0,
+        observed_extra_cost REAL NOT NULL DEFAULT 0,
+        observed_net_profit REAL NOT NULL DEFAULT 0,
+        observed_roi REAL NOT NULL DEFAULT 0,
+        outcome_note TEXT NOT NULL DEFAULT '',
+        outcome_at TEXT,
+        outcome_by TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(run_id) REFERENCES marketplace_shadow_runs(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS item_features (
@@ -669,6 +773,23 @@ def init_db() -> None:
         FOREIGN KEY(related_event_id) REFERENCES autotrade_tuning_events(id)
     );
 
+    CREATE TABLE IF NOT EXISTS validation_baseline_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bucket_type TEXT NOT NULL DEFAULT '',
+        bucket_key TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT '',
+        ready INTEGER NOT NULL DEFAULT 0,
+        ready_for_tune INTEGER NOT NULL DEFAULT 0,
+        ready_for_scale INTEGER NOT NULL DEFAULT 0,
+        direction TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL DEFAULT '',
+        blocking_codes_json TEXT NOT NULL DEFAULT '[]',
+        snapshot_json TEXT NOT NULL DEFAULT '{}',
+        captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(bucket_type, bucket_key)
+    );
+
     CREATE TABLE IF NOT EXISTS system_setting_audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         actor TEXT NOT NULL DEFAULT '',
@@ -708,6 +829,113 @@ def init_db() -> None:
         source TEXT NOT NULL,
         seller_id TEXT NOT NULL,
         event_type TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        next_state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS source_control_states (
+        source TEXT NOT NULL PRIMARY KEY,
+        state TEXT NOT NULL DEFAULT 'normal',
+        reason TEXT NOT NULL DEFAULT '',
+        frozen_until TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS source_control_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        next_state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS cluster_control_states (
+        risk_cluster TEXT NOT NULL PRIMARY KEY,
+        state TEXT NOT NULL DEFAULT 'normal',
+        reason TEXT NOT NULL DEFAULT '',
+        frozen_until TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS cluster_control_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        risk_cluster TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        next_state_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_delivery_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel TEXT NOT NULL DEFAULT '',
+        provider TEXT NOT NULL DEFAULT '',
+        channel_label TEXT NOT NULL DEFAULT '',
+        delivery_stage TEXT NOT NULL DEFAULT '',
+        alert_signature TEXT NOT NULL DEFAULT '',
+        alert_keys_json TEXT NOT NULL DEFAULT '[]',
+        alert_context_json TEXT NOT NULL DEFAULT '{}',
+        alert_count INTEGER NOT NULL DEFAULT 0,
+        subject TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        success INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS autotrade_alert_states (
+        alert_signature TEXT NOT NULL PRIMARY KEY,
+        alert_code TEXT NOT NULL DEFAULT '',
+        scope TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        current_severity TEXT NOT NULL DEFAULT 'warning',
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_cleared_at TEXT,
+        occurrence_count INTEGER NOT NULL DEFAULT 1,
+        active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_signal_states (
+        alert_key TEXT NOT NULL PRIMARY KEY,
+        code TEXT NOT NULL DEFAULT '',
+        scope TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        last_message TEXT NOT NULL DEFAULT '',
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_severity TEXT NOT NULL DEFAULT 'info',
+        acked_at TEXT,
+        acked_by TEXT NOT NULL DEFAULT '',
+        snoozed_until TEXT,
+        snooze_reason TEXT NOT NULL DEFAULT '',
+        incident_owner TEXT NOT NULL DEFAULT '',
+        incident_status TEXT NOT NULL DEFAULT 'open',
+        incident_priority TEXT NOT NULL DEFAULT '',
+        incident_sla_due_at TEXT,
+        latest_case_note TEXT NOT NULL DEFAULT '',
+        last_case_actor TEXT NOT NULL DEFAULT '',
+        last_case_updated_at TEXT,
+        resolved_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_signal_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alert_key TEXT NOT NULL,
+        action TEXT NOT NULL DEFAULT '',
+        actor TEXT NOT NULL DEFAULT '',
         reason TEXT NOT NULL DEFAULT '',
         previous_state_json TEXT NOT NULL DEFAULT '{}',
         next_state_json TEXT NOT NULL DEFAULT '{}',
@@ -771,33 +999,16 @@ def init_db() -> None:
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS support_tickets (
+    CREATE TABLE IF NOT EXISTS matching_lab_samples (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_no TEXT NOT NULL UNIQUE,
-        user_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        category TEXT NOT NULL DEFAULT 'general',
-        priority TEXT NOT NULL DEFAULT 'normal',
-        status TEXT NOT NULL DEFAULT 'open',
-        description TEXT NOT NULL DEFAULT '',
-        admin_assignee TEXT NOT NULL DEFAULT '',
-        last_reply_by TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        closed_at TEXT,
-        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS support_ticket_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_id INTEGER NOT NULL,
-        author_user_id INTEGER NOT NULL,
-        author_role TEXT NOT NULL DEFAULT 'user',
-        is_internal INTEGER NOT NULL DEFAULT 0,
-        message TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE,
-        FOREIGN KEY(author_user_id) REFERENCES users(id) ON DELETE CASCADE
+        left_title TEXT NOT NULL DEFAULT '',
+        right_title TEXT NOT NULL DEFAULT '',
+        left_key TEXT NOT NULL DEFAULT '',
+        right_key TEXT NOT NULL DEFAULT '',
+        expected_verdict TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        result_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_sales_title ON sales_raw(title);
@@ -806,11 +1017,27 @@ def init_db() -> None:
         ON listings_raw(status, listed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_listings_source_seller_status_price
         ON listings_raw(source, COALESCE(seller_id, ''), status, ROUND(list_price, 2));
+    CREATE INDEX IF NOT EXISTS idx_marketplace_offers_status_listed
+        ON marketplace_offers(status, listed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_offers_platform_status
+        ON marketplace_offers(platform, status, listed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_offers_canonical_status
+        ON marketplace_offers(canonical_key, status, listed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_runs_created
+        ON marketplace_shadow_runs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_intents_created
+        ON marketplace_shadow_intents(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_intents_intent_key_created
+        ON marketplace_shadow_intents(intent_key, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_marketplace_shadow_intents_status_created
+        ON marketplace_shadow_intents(decision_status, created_at DESC);
     DROP INDEX IF EXISTS idx_opp_status;
     CREATE INDEX IF NOT EXISTS idx_opportunities_status_score
         ON opportunities(status, score DESC);
     CREATE INDEX IF NOT EXISTS idx_trades_status_updated
         ON trades(status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_validation_baseline_snapshots_bucket
+        ON validation_baseline_snapshots(bucket_type, captured_at DESC);
     CREATE INDEX IF NOT EXISTS idx_forward_validation_batches_status_created
         ON forward_validation_batches(status, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_forward_validation_trades_batch_trade
@@ -837,15 +1064,34 @@ def init_db() -> None:
         ON seller_control_states(state, frozen_until);
     CREATE INDEX IF NOT EXISTS idx_seller_control_events_created
         ON seller_control_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_source_control_states_state
+        ON source_control_states(state, frozen_until);
+    CREATE INDEX IF NOT EXISTS idx_source_control_events_created
+        ON source_control_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_cluster_control_states_state
+        ON cluster_control_states(state, frozen_until);
+    CREATE INDEX IF NOT EXISTS idx_cluster_control_events_created
+        ON cluster_control_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_channel_created
+        ON alert_delivery_events(channel, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_delivery_events_signature_created
+        ON alert_delivery_events(channel, alert_signature, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_autotrade_alert_states_active_updated
+        ON autotrade_alert_states(active, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_signal_states_active
+        ON alert_signal_states(resolved_at, last_seen_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_signal_events_created
+        ON alert_signal_events(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_alert_signal_events_key_created
+        ON alert_signal_events(alert_key, id DESC);
     CREATE INDEX IF NOT EXISTS idx_seller_control_presets_updated
         ON seller_control_presets(updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_seller_control_preset_runs_preset_created
         ON seller_control_preset_runs(preset_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
-    CREATE INDEX IF NOT EXISTS idx_support_tickets_status_updated ON support_tickets(status, updated_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket_id ON support_ticket_messages(ticket_id, created_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_matching_lab_samples_created
+        ON matching_lab_samples(created_at DESC);
     """
     with get_conn() as conn:
         conn.executescript(ddl)
@@ -869,6 +1115,21 @@ def init_db() -> None:
             "normalization_reason": "normalization_reason TEXT NOT NULL DEFAULT ''",
             "normalization_version": "normalization_version TEXT NOT NULL DEFAULT ''",
         })
+        _ensure_table_columns(conn, "marketplace_shadow_intents", {
+            "reviewed_at": "reviewed_at TEXT",
+            "reviewed_by": "reviewed_by TEXT NOT NULL DEFAULT ''",
+            "review_note": "review_note TEXT NOT NULL DEFAULT ''",
+            "review_verdict": "review_verdict TEXT NOT NULL DEFAULT ''",
+            "outcome_status": "outcome_status TEXT NOT NULL DEFAULT ''",
+            "observed_buy_price": "observed_buy_price REAL NOT NULL DEFAULT 0",
+            "observed_sell_price": "observed_sell_price REAL NOT NULL DEFAULT 0",
+            "observed_extra_cost": "observed_extra_cost REAL NOT NULL DEFAULT 0",
+            "observed_net_profit": "observed_net_profit REAL NOT NULL DEFAULT 0",
+            "observed_roi": "observed_roi REAL NOT NULL DEFAULT 0",
+            "outcome_note": "outcome_note TEXT NOT NULL DEFAULT ''",
+            "outcome_at": "outcome_at TEXT",
+            "outcome_by": "outcome_by TEXT NOT NULL DEFAULT ''",
+        })
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_listings_normalized_key_status
@@ -882,6 +1143,26 @@ def init_db() -> None:
             "last_matched_count": "last_matched_count INTEGER NOT NULL DEFAULT 0",
             "last_processed_count": "last_processed_count INTEGER NOT NULL DEFAULT 0",
             "last_matched_items_json": "last_matched_items_json TEXT NOT NULL DEFAULT '[]'",
+        })
+        _ensure_table_columns(conn, "alert_signal_states", {
+            "acked_at": "acked_at TEXT",
+            "acked_by": "acked_by TEXT NOT NULL DEFAULT ''",
+            "snoozed_until": "snoozed_until TEXT",
+            "snooze_reason": "snooze_reason TEXT NOT NULL DEFAULT ''",
+            "incident_owner": "incident_owner TEXT NOT NULL DEFAULT ''",
+            "incident_status": "incident_status TEXT NOT NULL DEFAULT 'open'",
+            "incident_priority": "incident_priority TEXT NOT NULL DEFAULT ''",
+            "incident_sla_due_at": "incident_sla_due_at TEXT",
+            "latest_case_note": "latest_case_note TEXT NOT NULL DEFAULT ''",
+            "last_case_actor": "last_case_actor TEXT NOT NULL DEFAULT ''",
+            "last_case_updated_at": "last_case_updated_at TEXT",
+        })
+        _ensure_table_columns(conn, "alert_delivery_events", {
+            "provider": "provider TEXT NOT NULL DEFAULT ''",
+            "channel_label": "channel_label TEXT NOT NULL DEFAULT ''",
+            "delivery_stage": "delivery_stage TEXT NOT NULL DEFAULT ''",
+            "alert_keys_json": "alert_keys_json TEXT NOT NULL DEFAULT '[]'",
+            "alert_context_json": "alert_context_json TEXT NOT NULL DEFAULT '{}'",
         })
         _ensure_seed_admin(conn)
         _ensure_trade_uniqueness(conn)

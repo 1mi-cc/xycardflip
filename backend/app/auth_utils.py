@@ -52,27 +52,10 @@ def normalize_role(role: str | None) -> str:
 
 def role_permission_map() -> dict[str, list[str]]:
     return {
-        "admin": normalize_strings(
-            [
-                *settings.ui_role_permissions_admin,
-                "system:settings",
-                "support:ticket:view",
-                "support:ticket:create",
-                "support:ticket:manage",
-            ]
-        ),
-        "ops": normalize_strings(
-            [
-                *settings.ui_role_permissions_ops,
-                "support:ticket:view",
-            ]
-        ),
-        "viewer": normalize_strings(
-            [
-                *settings.ui_role_permissions_viewer,
-            ]
-        ),
-        "user": ["support:ticket:view", "support:ticket:create", "profile:view"],
+        "admin": normalize_strings([*settings.ui_role_permissions_admin]),
+        "ops": normalize_strings([*settings.ui_role_permissions_ops]),
+        "viewer": normalize_strings([*settings.ui_role_permissions_viewer]),
+        "user": [],
     }
 
 

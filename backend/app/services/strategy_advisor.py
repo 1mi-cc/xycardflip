@@ -24,11 +24,13 @@ def build_market_snapshot_documents(
     limit: int = 20,
     listing_hours: int = 24,
     sales_days: int = 7,
+    scope: str = "tradable",
 ) -> list[dict[str, Any]]:
     snapshots = repo.get_normalized_market_snapshots(
         limit=limit,
         listing_hours=listing_hours,
         sales_days=sales_days,
+        scope=scope,
     )
     documents: list[dict[str, Any]] = []
     for index, snapshot in enumerate(snapshots, start=1):
@@ -40,6 +42,8 @@ def build_market_snapshot_documents(
                 "",
                 f"- normalized_key: {normalized_key}",
                 f"- item_type: {snapshot.get('item_type')}",
+                f"- is_tradable: {snapshot.get('is_tradable')}",
+                f"- snapshot_scope: {scope}",
                 f"- regime_tag: {snapshot.get('regime_tag')}",
                 f"- sample_confidence: {snapshot.get('sample_confidence')}",
                 f"- open_listing_count: {snapshot.get('open_listing_count')}",
@@ -72,6 +76,7 @@ def build_market_snapshot_documents(
                 "filename": f"{index:02d}-{safe_name}.md",
                 "content": content,
                 "snapshot": snapshot,
+                "scope": scope,
             }
         )
     return documents
@@ -82,12 +87,14 @@ def write_market_snapshot_docs(
     limit: int = 20,
     listing_hours: int = 24,
     sales_days: int = 7,
+    scope: str = "tradable",
 ) -> tuple[tempfile.TemporaryDirectory[str], list[str], list[dict[str, Any]]]:
     temp_dir = tempfile.TemporaryDirectory(prefix="market-snapshots-")
     docs = build_market_snapshot_documents(
         limit=limit,
         listing_hours=listing_hours,
         sales_days=sales_days,
+        scope=scope,
     )
     paths: list[str] = []
     for item in docs:
@@ -130,13 +137,14 @@ def get_strategy_proposal(
         limit=limit,
         listing_hours=listing_hours,
         sales_days=sales_days,
+        scope="tradable",
     )
     thresholds = auto_trade_service.tuning_snapshot()
     policy = auto_trade_service.tuning_policy()
     prompt = "\n".join(
         [
             "You are a market strategy analyst for a card flipping system.",
-            "Use the normalized market snapshots below to recommend threshold changes.",
+            "Use the tradable market snapshots below to recommend threshold changes.",
             "Return strict JSON with keys: direction, min_score_delta, min_roi_delta, max_risk_score_delta, confidence, reasons, summary.",
             "Only recommend small threshold adjustments. If evidence is weak, return direction=hold with zero deltas.",
             "",
@@ -146,7 +154,7 @@ def get_strategy_proposal(
             "Auto-tune policy:",
             json.dumps(_json_safe(policy), ensure_ascii=False),
             "",
-            "Normalized market snapshots:",
+            "Tradable market snapshots:",
             json.dumps([_json_safe(item) for item in snapshots], ensure_ascii=False),
         ]
     )
@@ -156,6 +164,7 @@ def get_strategy_proposal(
         return {
             "available": False,
             "reason": ragflow_status.get("message") or "RAGFlow not configured",
+            "snapshot_scope": "tradable",
             "current_thresholds": thresholds,
             "policy": policy,
             "snapshots": snapshots,
@@ -172,6 +181,7 @@ def get_strategy_proposal(
     return {
         "available": True,
         "reason": "",
+        "snapshot_scope": "tradable",
         "current_thresholds": thresholds,
         "policy": policy,
         "snapshots": snapshots,

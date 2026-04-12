@@ -1,11 +1,108 @@
+<script setup>
+import { darkTheme } from "naive-ui";
+import { onErrorCaptured, onMounted, onUnmounted, ref } from "vue";
+
+const themeOverrides = {
+  common: {
+    primaryColor: "#0071e3",
+    primaryColorHover: "#2890ff",
+    primaryColorPressed: "#005fc0",
+    bodyColor: "#131313",
+    cardColor: "#1b1b1b",
+    modalColor: "#1b1b1b",
+    popoverColor: "#17181c",
+    tableColor: "#1b1b1b",
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    baseColor: "#111214",
+    inputColor: "#111214",
+    actionColor: "rgba(255, 255, 255, 0.04)",
+    textColorBase: "#f5f7fb",
+    textColor1: "#f5f7fb",
+    textColor2: "rgba(245, 247, 251, 0.72)",
+    textColor3: "rgba(245, 247, 251, 0.52)",
+    textColorDisabled: "rgba(245, 247, 251, 0.28)",
+    placeholderColor: "rgba(245, 247, 251, 0.28)",
+  },
+  Input: {
+    color: "#111214",
+    colorFocus: "#111214",
+    colorFocusError: "#111214",
+    textColor: "#f5f7fb",
+    placeholderColor: "rgba(245, 247, 251, 0.28)",
+    border: "1px solid rgba(255, 255, 255, 0.08)",
+    borderHover: "1px solid rgba(0, 113, 227, 0.48)",
+    borderFocus: "1px solid #0071e3",
+    boxShadowFocus: "0 0 0 2px rgba(0, 113, 227, 0.18)",
+  },
+  Button: {
+    borderRadiusMedium: "999px",
+    borderRadiusLarge: "999px",
+  },
+  Card: {
+    color: "#1b1b1b",
+    borderRadius: "20px",
+  },
+  Alert: {
+    colorInfo: "#17181c",
+    colorSuccess: "#14211a",
+    colorWarning: "#241a0d",
+    colorError: "#271416",
+    borderInfo: "1px solid rgba(255, 255, 255, 0.08)",
+    borderSuccess: "1px solid rgba(52, 211, 153, 0.24)",
+    borderWarning: "1px solid rgba(245, 158, 11, 0.24)",
+    borderError: "1px solid rgba(251, 113, 133, 0.24)",
+  },
+};
+
+const runtimeError = ref("");
+
+const applyRuntimeError = (value) => {
+  const text = String(value || "").trim();
+  const ignoredPatterns = [
+    "ResizeObserver loop completed with undelivered notifications.",
+    "ResizeObserver loop limit exceeded",
+  ];
+  if (!text || ignoredPatterns.some(pattern => text.includes(pattern)))
+    return;
+  if (text)
+    runtimeError.value = text;
+};
+
+onErrorCaptured((error) => {
+  applyRuntimeError(error instanceof Error ? error.stack || error.message : String(error));
+  return false;
+});
+
+const handleWindowError = (event) => {
+  applyRuntimeError(event?.error?.stack || event?.message || "Unknown runtime error");
+};
+
+const handleUnhandledRejection = (event) => {
+  const reason = event?.reason;
+  applyRuntimeError(reason instanceof Error ? reason.stack || reason.message : String(reason || "Unhandled rejection"));
+};
+
+onMounted(() => {
+  window.addEventListener("error", handleWindowError);
+  window.addEventListener("unhandledrejection", handleUnhandledRejection);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("error", handleWindowError);
+  window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+});
+</script>
+
 <template>
-  <n-config-provider :theme="naiveTheme">
+  <n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides">
     <n-message-provider :max="3">
       <n-loading-bar-provider>
         <n-notification-provider>
           <n-dialog-provider>
-            <div id="app">
-              <router-view></router-view>
+            <router-view></router-view>
+            <div v-if="runtimeError" class="runtime-error-panel">
+              <strong>Runtime Error</strong>
+              <pre>{{ runtimeError }}</pre>
             </div>
           </n-dialog-provider>
         </n-notification-provider>
@@ -14,248 +111,49 @@
   </n-config-provider>
 </template>
 
-<script setup>
-import { darkTheme } from "naive-ui";
-import { computed, onMounted, onUnmounted } from "vue";
-
-import { useTheme } from "@/composables/useTheme";
-
-const { isDark, initTheme, setupSystemThemeListener, updateReactiveState }
-  = useTheme();
-
-// Naive UI 主题
-const naiveTheme = computed(() => {
-  return isDark.value ? darkTheme : null;
-});
-
-// 监听主题变化事件
-const handleThemeChange = () => {
-  // 确保响应式状态同步
-  updateReactiveState();
-  // 强制重新渲染
-  setTimeout(() => {
-    updateReactiveState();
-  }, 50);
-};
-
-onMounted(() => {
-  initTheme();
-  setupSystemThemeListener();
-
-  // 监听自定义主题变化事件
-  window.addEventListener("theme-change", handleThemeChange);
-
-  // 初始化时更新状态
-  updateReactiveState();
-});
-
-onUnmounted(() => {
-  window.removeEventListener("theme-change", handleThemeChange);
-});
-</script>
-
 <style>
-/* 主题变量 */
-:root {
-  --app-background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --text-color: #333;
-  --text-secondary: #666;
-  --text-tertiary: #999;
-  --bg-color: #ffffff;
-  --border-color: #e0e0e0;
-}
-
-/* 深色主题变量 */
-.dark {
-  --app-background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
-  --text-color: #ffffff !important;
-  --text-secondary: #cbd5e0 !important;
-  --text-tertiary: #a0aec0 !important;
-  --bg-color: #1a202c !important;
-  --border-color: #4a5568 !important;
-}
-
-/* 深色主题样式优化 - 针对Naive UI组件 */
-html.dark,
-html[data-theme="dark"] {
-  color-scheme: dark;
-}
-
-/* 全局深色主题文字颜色 */
-html.dark *,
-html[data-theme="dark"] * {
-  color: #ffffff;
-}
-
-/* Naive UI 表单组件 */
-html.dark .n-form-item-label,
-html.dark .n-form-item-label__text,
-html[data-theme="dark"] .n-form-item-label,
-html[data-theme="dark"] .n-form-item-label__text {
-  color: #ffffff !important;
-}
-
-/* Naive UI 输入组件 */
-html.dark .n-input,
-html.dark .n-input__input,
-html.dark .n-input__textarea,
-html[data-theme="dark"] .n-input,
-html[data-theme="dark"] .n-input__input,
-html[data-theme="dark"] .n-input__textarea {
-  color: #ffffff !important;
-  background-color: rgba(255, 255, 255, 0.1) !important;
-}
-
-/* Naive UI 弹框组件 */
-html.dark .n-modal,
-html.dark .n-drawer,
-html.dark .n-popover,
-html.dark .n-dropdown,
-html.dark .n-tooltip,
-html.dark .n-dialog,
-html[data-theme="dark"] .n-modal,
-html[data-theme="dark"] .n-drawer,
-html[data-theme="dark"] .n-popover,
-html[data-theme="dark"] .n-dropdown,
-html[data-theme="dark"] .n-tooltip,
-html[data-theme="dark"] .n-dialog {
-  color: #ffffff !important;
-}
-
-/* Naive UI 弹框内容 */
-html.dark .n-modal .n-card,
-html.dark .n-drawer-content,
-html.dark .n-popover-content,
-html.dark .n-dropdown-option,
-html.dark .n-dialog__content,
-html[data-theme="dark"] .n-modal .n-card,
-html[data-theme="dark"] .n-drawer-content,
-html[data-theme="dark"] .n-popover-content,
-html[data-theme="dark"] .n-dropdown-option,
-html[data-theme="dark"] .n-dialog__content {
-  color: #ffffff !important;
-}
-
-/* Naive UI 下拉选项 */
-html.dark .n-dropdown-option__label,
-html.dark .n-select-option,
-html.dark .n-menu-item-content,
-html[data-theme="dark"] .n-dropdown-option__label,
-html[data-theme="dark"] .n-select-option,
-html[data-theme="dark"] .n-menu-item-content {
-  color: #ffffff !important;
-}
-
-/* 其他组件 */
-html.dark .n-collapse-item__header,
-html.dark .n-radio-button,
-html.dark .n-card,
-html.dark .n-card__content,
-html.dark .n-button,
-html.dark .n-tag,
-html[data-theme="dark"] .n-collapse-item__header,
-html[data-theme="dark"] .n-radio-button,
-html[data-theme="dark"] .n-card,
-html[data-theme="dark"] .n-card__content,
-html[data-theme="dark"] .n-button,
-html[data-theme="dark"] .n-tag {
-  color: #ffffff !important;
-}
-
-/* 标题和文本 */
-html.dark h1,
-html.dark h2,
-html.dark h3,
-html.dark h4,
-html.dark h5,
-html.dark h6,
-html.dark p,
-html.dark span,
-html.dark div,
-html.dark label,
-html[data-theme="dark"] h1,
-html[data-theme="dark"] h2,
-html[data-theme="dark"] h3,
-html[data-theme="dark"] h4,
-html[data-theme="dark"] h5,
-html[data-theme="dark"] h6,
-html[data-theme="dark"] p,
-html[data-theme="dark"] span,
-html[data-theme="dark"] div,
-html[data-theme="dark"] label {
-  color: #ffffff !important;
-}
-
-/* 占位符文本 */
-html.dark .n-input__placeholder,
-html.dark ::placeholder,
-html[data-theme="dark"] .n-input__placeholder,
-html[data-theme="dark"] ::placeholder {
-  color: rgba(255, 255, 255, 0.6) !important;
-}
-
-/* 确保Portal渲染的组件也应用深色主题 */
-body.dark .n-modal-container,
-body.dark .n-drawer-container,
-body.dark .n-popover-container,
-body[data-theme="dark"] .n-modal-container,
-body[data-theme="dark"] .n-drawer-container,
-body[data-theme="dark"] .n-popover-container {
-  color: #ffffff !important;
-}
-
+html,
+body,
 #app {
-  min-height: 100vh;
-  background: var(--app-background);
-  color: var(--text-color);
-  transition:
-    background 0.3s ease,
-    color 0.3s ease;
-}
-
-/* 全局样式重置 */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  min-height: 100%;
 }
 
 html,
 body {
-  height: 100%;
-  font-family:
-    "SF Pro Display",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "PingFang SC",
-    "Hiragino Sans GB",
-    "Microsoft YaHei",
-    "Helvetica Neue",
-    Helvetica,
-    Arial,
-    sans-serif;
-  color: var(--text-color);
-  transition: color 0.3s ease;
+  margin: 0;
+  background: #131313;
+  color: #f5f7fb;
 }
 
-/* 滚动条样式 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+* {
+  box-sizing: border-box;
 }
 
-::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+.runtime-error-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9999;
+  width: min(720px, calc(100vw - 32px));
+  max-height: 40vh;
+  overflow: auto;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(39, 20, 22, 0.96);
+  border: 1px solid rgba(251, 113, 133, 0.34);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.36);
+  color: #ffe4e8;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 3px;
+.runtime-error-panel strong {
+  display: block;
+  margin-bottom: 8px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
+.runtime-error-panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

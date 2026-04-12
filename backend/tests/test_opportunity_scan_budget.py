@@ -72,7 +72,7 @@ async def test_scan_open_listings_skips_frozen_sellers(
     monkeypatch.setattr(
         opportunity_scan_module.repo,
         "get_open_listings",
-        lambda limit=0, include_noise_filtered=False: [
+        lambda limit=0, include_noise_filtered=False, include_simulation=False: [
             {
                 "id": 1,
                 "source": "alpha",
@@ -164,7 +164,7 @@ async def test_scan_open_listings_counts_noise_filtered_rows(
     monkeypatch.setattr(
         opportunity_scan_module.repo,
         "get_open_listings",
-        lambda limit=0, include_noise_filtered=False: [
+        lambda limit=0, include_noise_filtered=False, include_simulation=False: [
             {
                 "id": 10,
                 "source": "alpha",
@@ -242,3 +242,76 @@ async def test_scan_open_listings_counts_noise_filtered_rows(
     assert result["candidate_pool_size"] == 2
     assert result["processed"] == 1
     assert result["noise_filtered"] == 1
+
+
+@pytest.mark.asyncio
+async def test_scan_open_listings_filters_thin_tradable_markets(
+    isolated_scan_budget_sqlite: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        opportunity_scan_module.repo,
+        "get_open_listings",
+        lambda limit=0, include_noise_filtered=False, include_simulation=False: [
+            {
+                "id": 21,
+                "source": "alpha",
+                "seller_id": "seller-thin",
+                "title": "Manual card",
+                "description": "",
+                "list_price": 100.0,
+                "listed_at": "2026-03-22T10:00:00+00:00",
+                "normalized_title": "Manual card",
+                "normalized_key": "manual_card:Manual card",
+                "item_type": "manual_card",
+                "normalization_blocked": 0,
+                "normalization_version": "listing_normalizer_v1",
+            },
+        ],
+    )
+    monkeypatch.setattr(opportunity_scan_module.repo, "get_dashboard_metrics", lambda: {})
+    monkeypatch.setattr(
+        opportunity_scan_module.repo,
+        "get_normalized_market_snapshots",
+        lambda **kwargs: [
+            {
+                "normalized_key": "manual_card:Manual card",
+                "item_type": "manual_card",
+                "recent_sales_count_7d": 0,
+                "regime_tag": "thin",
+                "is_tradable": True,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        opportunity_scan_module.seller_controls_service,
+        "sync_from_metrics",
+        lambda **kwargs: {"status": {}},
+    )
+    monkeypatch.setattr(
+        opportunity_scan_module.seller_controls_service,
+        "is_seller_frozen",
+        lambda **kwargs: False,
+    )
+    monkeypatch.setattr(
+        opportunity_scan_module.repo,
+        "get_opportunity_status_map_by_listing_rows",
+        lambda listing_ids: {},
+    )
+    monkeypatch.setattr(
+        opportunity_scan_module.repo,
+        "has_reject_history_for_listing_signature",
+        lambda **kwargs: False,
+    )
+    monkeypatch.setattr(
+        opportunity_scan_module.repo,
+        "has_frozen_opportunity_for_listing_fingerprint",
+        lambda **kwargs: False,
+    )
+
+    result = await opportunity_scan_module.scan_open_listings(limit=1)
+
+    assert result["processed"] == 1
+    assert result["pending_review"] == 0
+    assert result["market_quality_filtered"] == 1
+    assert result["market_quality_reasons"]["insufficient_recent_sales"] == 1

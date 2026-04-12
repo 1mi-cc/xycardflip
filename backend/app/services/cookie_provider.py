@@ -263,3 +263,115 @@ class CookieProvider:
         except Exception as exc:
             self._last_error = str(exc)
             return self._cached_cookie
+
+
+class GenericCookieProvider:
+    """Generic env/provider-url cookie loader for non-Xianyu providers."""
+
+    def __init__(
+        self,
+        *,
+        env_key: str,
+        initial_cookie: str = "",
+        provider_url: str = "",
+        refresh_url: str = "",
+        ttl_sec: int = 540,
+        refresh_min_ttl_sec: int = 1800,
+        refresh_on_start: bool = False,
+    ) -> None:
+        self._env_key = str(env_key or "").strip()
+        self._provider_url = str(provider_url or "").strip()
+        self._refresh_url = str(refresh_url or "").strip()
+        self._refresh_on_start = bool(refresh_on_start)
+        self._cached_cookie: str | None = str(initial_cookie or "").strip() or None
+        self._last_fetched: float = 0.0
+        self._ttl: int = max(60, int(ttl_sec or 540))
+        self._refresh_min_ttl_sec: int = max(30, int(refresh_min_ttl_sec or 1800))
+        self._last_error: str = ""
+        self._backend_root = Path(__file__).resolve().parents[2]
+
+    def _resolve_env_path(self) -> Path:
+        env_override = os.getenv("DOTENV_PATH", "").strip()
+        if env_override:
+            return Path(env_override).expanduser()
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent / ".env"
+        return self._backend_root / ".env"
+
+    def _read_cookie_from_env(self) -> str:
+        env_path = self._resolve_env_path()
+        if not env_path.exists() or not self._env_key:
+            return ""
+        try:
+            env_values = dotenv_values(env_path)
+        except Exception:
+            return ""
+        return str(env_values.get(self._env_key) or "").strip()
+
+    @property
+    def last_error(self) -> str:
+        return self._last_error
+
+    def has_cookie(self) -> bool:
+        env_cookie = self._read_cookie_from_env()
+        if env_cookie:
+            return True
+        return bool(str(self._cached_cookie or "").strip())
+
+    def has_provider_url(self) -> bool:
+        return bool(self._provider_url)
+
+    def refresh_cookie(self) -> str | None:
+        if self._refresh_on_start and self._refresh_url:
+            try:
+                refresh_proxies = resolve_proxy_for_url(self._refresh_url)
+                request_post(
+                    self._refresh_url,
+                    timeout=8,
+                    proxies=refresh_proxies,
+                )
+            except Exception:
+                pass
+
+        if not self._provider_url:
+            self._last_error = "cookie provider url not set"
+            return self._cached_cookie
+
+        try:
+            provider_proxies = resolve_proxy_for_url(self._provider_url)
+            resp = request_get(
+                self._provider_url,
+                timeout=8,
+                proxies=provider_proxies,
+            )
+            if resp.status_code != 200:
+                self._last_error = f"cookie provider status {resp.status_code}"
+                return self._cached_cookie
+            data = resp.json()
+            cookie_str = str(data.get("cookie_string") or "").strip()
+            if cookie_str:
+                self._cached_cookie = cookie_str
+                self._last_fetched = time.time()
+                self._last_error = ""
+                return self._cached_cookie
+            self._last_error = "cookie_string missing in provider response"
+            return self._cached_cookie
+        except Exception as exc:
+            self._last_error = str(exc)
+            return self._cached_cookie
+
+    def get_cookie(self, force_refresh: bool = False) -> str | None:
+        env_cookie = self._read_cookie_from_env()
+        if env_cookie:
+            self._cached_cookie = env_cookie
+            self._last_fetched = time.time()
+
+        if self._cached_cookie and not force_refresh:
+            if (time.time() - self._last_fetched) < self._ttl:
+                return self._cached_cookie
+            return self._cached_cookie
+
+        if env_cookie and not force_refresh:
+            return env_cookie
+
+        return self.refresh_cookie()

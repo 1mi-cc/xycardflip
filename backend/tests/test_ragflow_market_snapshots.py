@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -13,11 +13,12 @@ def test_ragflow_upload_market_snapshots_endpoint(monkeypatch) -> None:
     temp_dir = tempfile.TemporaryDirectory()
     doc_path = Path(temp_dir.name) / "snapshot.md"
     doc_path.write_text("# Snapshot\n", encoding="utf-8")
+    captured_kwargs: dict[str, object] = {}
 
     monkeypatch.setattr(
         ragflow_router_module,
         "write_market_snapshot_docs",
-        lambda **kwargs: (
+        lambda **kwargs: captured_kwargs.update(kwargs) or (
             temp_dir,
             [str(doc_path)],
             [
@@ -26,7 +27,8 @@ def test_ragflow_upload_market_snapshots_endpoint(monkeypatch) -> None:
                     "title": "功法残卷",
                     "filename": "snapshot.md",
                     "content": "# Snapshot\n",
-                    "snapshot": {"normalized_key": "manual_fragment:test"},
+                    "snapshot": {"normalized_key": "manual_fragment:test", "is_tradable": True},
+                    "scope": kwargs.get("scope", "tradable"),
                 }
             ],
         ),
@@ -66,4 +68,6 @@ def test_ragflow_upload_market_snapshots_endpoint(monkeypatch) -> None:
     assert payload["generated"] == 1
     assert payload["uploaded"] == 1
     assert payload["parsed"] == 1
+    assert payload["scope"] == "tradable"
+    assert captured_kwargs["scope"] == "tradable"
     assert parsed_ids == ["doc-1"]

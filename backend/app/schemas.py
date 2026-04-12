@@ -28,6 +28,23 @@ class ListingIn(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
+class MarketplaceOfferIn(BaseModel):
+    platform: str
+    offer_id: str | None = None
+    seller_id: str | None = None
+    title: str
+    canonical_key: str = ""
+    item_type: str = "generic"
+    list_price: float = Field(gt=0)
+    shipping_cost: float = Field(default=0.0, ge=0.0)
+    fee_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    currency: str = "CNY"
+    listed_at: datetime
+    status: Literal["open", "sold", "closed", "archived"] = "open"
+    listing_url: str = ""
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
 class FeatureData(BaseModel):
     card_name: str
     rarity: str = "unknown"
