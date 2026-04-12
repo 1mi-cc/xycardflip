@@ -780,10 +780,10 @@ Push is fail-closed:
 
 ### Marketplace shadow dry-run
 
-`POST /marketplace/shadow/run-once` is dry-run-only and limited to `virtual_goods` marketplace offers. It always evaluates virtual-only arbitrage with `shipping_cost = 0.0`; non-virtual marketplace rows are ignored by this shadow layer. Use it only after manual or Pinduoduo virtual offers are present, and keep JD fail-closed while abnormal/risk pages are present.
+`POST /marketplace/shadow/run-once` is dry-run-only and defaults to `virtual_goods` marketplace offers. Virtual-only runs evaluate arbitrage with `shipping_cost = 0.0` and use lower observation thresholds for early validation. Keep JD fail-closed while abnormal/risk pages are present.
 
 Virtual shadow uses separate observation thresholds:
 
-- `MARKETPLACE_SHADOW_VIRTUAL_MIN_NET_PROFIT=5`
+- `MARKETPLACE_SHADOW_VIRTUAL_MIN_NET_PROFIT=20`
 - `MARKETPLACE_SHADOW_VIRTUAL_MIN_ROI=0.02`
 - `MARKETPLACE_SHADOW_VIRTUAL_MIN_CONFIDENCE=0.75`

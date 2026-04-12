@@ -2139,7 +2139,7 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
     object.__setattr__(settings, "marketplace_shadow_min_net_profit", 100.0)
     object.__setattr__(settings, "marketplace_shadow_min_roi", 0.12)
     object.__setattr__(settings, "marketplace_shadow_min_confidence", 0.75)
-    object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", 5.0)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", 20.0)
     object.__setattr__(settings, "marketplace_shadow_virtual_min_roi", 0.02)
     object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", 0.75)
     object.__setattr__(settings, "marketplace_shadow_candidate_limit", 10)
@@ -2225,8 +2225,9 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
             payload = run.json()
             assert payload["accepted_count"] >= 1
             assert payload["run"]["config"]["virtual_only"] is True
-            assert payload["run"]["config"]["min_net_profit"] == 5.0
+            assert payload["run"]["config"]["min_net_profit"] == 20.0
             assert payload["run"]["config"]["min_roi"] == 0.02
+            assert payload["run"]["config"]["threshold_source"] == "virtual"
             assert payload["run"]["summary"]["arbitrage_summary"]["opportunity_count"] == 1
             accepted = [item for item in payload["intents"] if item.get("decision_status") == "accepted"]
             assert accepted
@@ -2237,6 +2238,99 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
     finally:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)
         object.__setattr__(settings, "marketplace_shadow_enabled", old_enabled)
+        object.__setattr__(settings, "marketplace_shadow_min_net_profit", old_min_net_profit)
+        object.__setattr__(settings, "marketplace_shadow_min_roi", old_min_roi)
+        object.__setattr__(settings, "marketplace_shadow_min_confidence", old_min_confidence)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", old_virtual_min_net_profit)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_roi", old_virtual_min_roi)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", old_virtual_min_confidence)
+        object.__setattr__(settings, "marketplace_shadow_candidate_limit", old_candidate_limit)
+        object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", old_cooldown)
+
+
+def test_marketplace_shadow_run_once_uses_global_threshold_when_virtual_only_disabled(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    old_min_net_profit = settings.marketplace_shadow_min_net_profit
+    old_min_roi = settings.marketplace_shadow_min_roi
+    old_min_confidence = settings.marketplace_shadow_min_confidence
+    old_virtual_min_net_profit = settings.marketplace_shadow_virtual_min_net_profit
+    old_virtual_min_roi = settings.marketplace_shadow_virtual_min_roi
+    old_virtual_min_confidence = settings.marketplace_shadow_virtual_min_confidence
+    old_candidate_limit = settings.marketplace_shadow_candidate_limit
+    old_cooldown = settings.marketplace_shadow_cooldown_minutes
+    object.__setattr__(settings, "sqlite_path", str(tmp_path / "marketplace_shadow_global_threshold.db"))
+    object.__setattr__(settings, "marketplace_shadow_min_net_profit", 100.0)
+    object.__setattr__(settings, "marketplace_shadow_min_roi", 0.12)
+    object.__setattr__(settings, "marketplace_shadow_min_confidence", 0.75)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", 20.0)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_roi", 0.02)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", 0.75)
+    object.__setattr__(settings, "marketplace_shadow_candidate_limit", 10)
+    object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", 240)
+    try:
+        init_db()
+        listed_at = datetime.now(timezone.utc)
+        repo.insert_marketplace_offers(
+            [
+                MarketplaceOfferIn(
+                    platform="pinduoduo",
+                    offer_id="pdd-virtual-shadow-global-threshold",
+                    seller_id="pdd-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=49.0,
+                    shipping_cost=0.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/pdd-virtual-shadow-global-threshold",
+                    raw={},
+                ),
+                MarketplaceOfferIn(
+                    platform="manual_virtual",
+                    offer_id="manual-virtual-shadow-global-threshold",
+                    seller_id="operator-baseline",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=79.0,
+                    shipping_cost=0.0,
+                    listed_at=listed_at,
+                    status="open",
+                    listing_url="https://example.com/manual-virtual-shadow-global-threshold",
+                    raw={"provenance": "operator_manual_virtual_baseline"},
+                ),
+            ]
+        )
+        with TestClient(create_app()) as client:
+            login = client.post(
+                "/auth/login",
+                json={
+                    "username": settings.ui_auth_username,
+                    "password": settings.ui_auth_password,
+                },
+            )
+            assert login.status_code == 200
+            admin_token = login.json()["data"]["token"]
+
+            run = client.post(
+                "/marketplace/shadow/run-once",
+                params={"virtual_only": False, "force": True},
+                headers=_bearer(admin_token),
+            )
+            assert run.status_code == 200
+            payload = run.json()
+            assert payload["accepted_count"] == 0
+            assert payload["blocked_count"] >= 1
+            assert payload["run"]["config"]["virtual_only"] is False
+            assert payload["run"]["config"]["threshold_source"] == "global"
+            assert payload["run"]["config"]["min_net_profit"] == 100.0
+            assert any(
+                item.get("blocked_reason") == "net_profit_below_threshold"
+                for item in payload["intents"]
+            )
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
         object.__setattr__(settings, "marketplace_shadow_min_net_profit", old_min_net_profit)
         object.__setattr__(settings, "marketplace_shadow_min_roi", old_min_roi)
         object.__setattr__(settings, "marketplace_shadow_min_confidence", old_min_confidence)
