@@ -795,6 +795,19 @@ def list_marketplace_shadow_intents(
     return [_serialize_marketplace_shadow_intent(row) for row in rows]
 
 
+def get_marketplace_shadow_intent(intent_id: int) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_intents
+            WHERE id = ?
+            """,
+            (int(intent_id),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_intent(row) if row else None
+
+
 def get_recent_marketplace_shadow_accept(
     *,
     intent_key: str,
@@ -855,6 +868,8 @@ def _serialize_marketplace_shadow_run(row: sqlite3.Row | None) -> dict[str, Any]
 def _serialize_marketplace_shadow_intent(row: sqlite3.Row | None) -> dict[str, Any]:
     if row is None:
         return {}
+    snapshot = _parse_json_object(row["snapshot_json"])
+    decision_pack = _build_marketplace_shadow_decision_pack(row, snapshot)
     return {
         "id": int(row["id"]),
         "run_id": int(row["run_id"]) if row["run_id"] is not None else None,
@@ -872,8 +887,46 @@ def _serialize_marketplace_shadow_intent(row: sqlite3.Row | None) -> dict[str, A
         "confidence_score": float(row["confidence_score"] or 0.0),
         "decision_status": str(row["decision_status"] or ""),
         "blocked_reason": str(row["blocked_reason"] or ""),
-        "snapshot": _parse_json_object(row["snapshot_json"]),
+        "snapshot": snapshot,
+        "decision_pack": decision_pack,
         "created_at": str(row["created_at"] or ""),
+    }
+
+
+def _build_marketplace_shadow_decision_pack(
+    row: sqlite3.Row,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    candidate = snapshot.get("candidate") if isinstance(snapshot.get("candidate"), dict) else {}
+    decision = snapshot.get("decision") if isinstance(snapshot.get("decision"), dict) else {}
+
+    def offer_leg(name: str, platform_column: str, listing_column: str) -> dict[str, Any]:
+        leg = candidate.get(name) if isinstance(candidate.get(name), dict) else {}
+        return {
+            "platform": str(leg.get("source") or row[platform_column] or ""),
+            "listing_id": str(leg.get("listing_id") or row[listing_column] or ""),
+            "title": str(leg.get("title") or ""),
+            "list_price": float(leg.get("list_price") or 0.0),
+            "listing_url": str(leg.get("listing_url") or ""),
+            "listed_at": str(leg.get("listed_at") or ""),
+        }
+
+    return {
+        "item_type": str(decision.get("item_type") or candidate.get("item_type") or ""),
+        "virtual_only": bool(decision.get("virtual_only")),
+        "threshold_source": str(decision.get("threshold_source") or ""),
+        "min_net_profit": float(decision.get("min_net_profit") or 0.0),
+        "min_roi": float(decision.get("min_roi") or 0.0),
+        "min_confidence": float(decision.get("min_confidence") or 0.0),
+        "confidence_score": float(row["confidence_score"] or 0.0),
+        "decision_status": str(row["decision_status"] or ""),
+        "blocked_reason": str(row["blocked_reason"] or ""),
+        "estimated_net_profit": float(row["estimated_net_profit"] or 0.0),
+        "estimated_roi": float(row["estimated_roi"] or 0.0),
+        "reference_title": str(row["reference_title"] or ""),
+        "arbitrage_key": str(row["arbitrage_key"] or ""),
+        "buy": offer_leg("buy", "buy_platform", "buy_listing_id"),
+        "sell": offer_leg("sell", "sell_platform", "sell_listing_id"),
     }
 
 

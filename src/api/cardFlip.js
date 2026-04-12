@@ -208,9 +208,12 @@ const cardFlipApi = {
         ...params,
         limit: Number.isFinite(Number(params.limit))
           ? Math.min(500, Math.max(1, Math.trunc(Number(params.limit))))
-          : 50,
+        : 50,
       },
     });
+  },
+  getMarketplaceShadowIntent(intentId) {
+    return request.get(`/marketplace/shadow/intents/${intentId}`);
   },
   listMarketplaceShadowRuns(params = {}) {
     return request.get("/marketplace/shadow/runs", {

@@ -238,7 +238,11 @@
           </div>
           <div class="result-list">
             <div class="result-row"><span>Platforms</span><strong>{{ item.buy_platform || "--" }} / {{ item.sell_platform || "--" }}</strong></div>
+            <div class="result-row"><span>Type / Mode</span><strong>{{ shadowDecision(item).itemType }} / {{ shadowDecision(item).virtualOnly }}</strong></div>
             <div class="result-row"><span>Net / ROI</span><strong>{{ formatMoney(item.estimated_net_profit || 0) }} / {{ formatPercent(item.estimated_roi || 0) }}</strong></div>
+            <div class="result-row"><span>Threshold</span><strong>{{ shadowDecision(item).threshold }}</strong></div>
+            <div class="result-row"><span>Buy</span><strong>{{ shadowDecision(item).buy }}</strong></div>
+            <div class="result-row"><span>Sell</span><strong>{{ shadowDecision(item).sell }}</strong></div>
             <div class="result-row"><span>Confidence</span><strong>{{ formatPercent(item.confidence_score || 0) }}</strong></div>
             <div class="result-row"><span>Created</span><strong>{{ item.created_at || "--" }}</strong></div>
           </div>
@@ -617,6 +621,27 @@ function formatScore(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
+}
+
+function shadowDecision(item) {
+  const snapshot = item?.snapshot || {};
+  const candidate = snapshot.candidate || {};
+  const decision = snapshot.decision || {};
+  const buy = candidate.buy || {};
+  const sell = candidate.sell || {};
+  const thresholdParts = [
+    decision.threshold_source || "--",
+    formatMoney(decision.min_net_profit || 0),
+    formatPercent(decision.min_roi || 0),
+    formatPercent(decision.min_confidence || 0),
+  ];
+  return {
+    itemType: candidate.item_type || decision.item_type || "--",
+    virtualOnly: decision.virtual_only ? "virtual-only" : "mixed",
+    threshold: thresholdParts.join(" / "),
+    buy: `${buy.source || item?.buy_platform || "--"} ${formatMoney(buy.list_price || 0)}`,
+    sell: `${sell.source || item?.sell_platform || "--"} ${formatMoney(sell.list_price || 0)}`,
+  };
 }
 </script>
 

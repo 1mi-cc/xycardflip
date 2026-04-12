@@ -202,6 +202,53 @@ def marketplace_shadow_intents(
     return {"items": items, "count": len(items)}
 
 
+def _shadow_decision_pack(intent: dict) -> dict:
+    snapshot = dict(intent.get("snapshot") or {})
+    candidate = dict(snapshot.get("candidate") or {})
+    decision = dict(snapshot.get("decision") or {})
+    buy = dict(candidate.get("buy") or {})
+    sell = dict(candidate.get("sell") or {})
+    return {
+        "intent_id": int(intent.get("id") or 0),
+        "decision_status": str(intent.get("decision_status") or ""),
+        "blocked_reason": str(intent.get("blocked_reason") or ""),
+        "item_type": str(candidate.get("item_type") or decision.get("item_type") or ""),
+        "virtual_only": bool(decision.get("virtual_only")),
+        "threshold_source": str(decision.get("threshold_source") or ""),
+        "min_net_profit": float(decision.get("min_net_profit") or 0.0),
+        "min_roi": float(decision.get("min_roi") or 0.0),
+        "min_confidence": float(decision.get("min_confidence") or 0.0),
+        "confidence_score": float(intent.get("confidence_score") or 0.0),
+        "estimated_net_profit": float(intent.get("estimated_net_profit") or 0.0),
+        "estimated_roi": float(intent.get("estimated_roi") or 0.0),
+        "buy": {
+            "platform": str(buy.get("source") or intent.get("buy_platform") or ""),
+            "listing_id": str(buy.get("listing_id") or intent.get("buy_listing_id") or ""),
+            "title": str(buy.get("title") or ""),
+            "list_price": float(buy.get("list_price") or 0.0),
+            "listed_at": str(buy.get("listed_at") or ""),
+        },
+        "sell": {
+            "platform": str(sell.get("source") or intent.get("sell_platform") or ""),
+            "listing_id": str(sell.get("listing_id") or intent.get("sell_listing_id") or ""),
+            "title": str(sell.get("title") or ""),
+            "list_price": float(sell.get("list_price") or 0.0),
+            "listed_at": str(sell.get("listed_at") or ""),
+        },
+    }
+
+
+@router.get("/shadow/intents/{intent_id}")
+def marketplace_shadow_intent_detail(intent_id: int) -> dict:
+    intent = repo.get_marketplace_shadow_intent(intent_id)
+    if not intent:
+        raise HTTPException(status_code=404, detail="marketplace shadow intent not found")
+    return {
+        **intent,
+        "decision_pack": _shadow_decision_pack(intent),
+    }
+
+
 @router.get("/shadow/runs")
 def marketplace_shadow_runs(
     limit: int = Query(default=20, ge=1, le=200),

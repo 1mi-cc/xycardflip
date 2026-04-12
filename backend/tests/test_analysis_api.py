@@ -2235,6 +2235,24 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
             assert candidate["item_type"] == "virtual_goods"
             assert candidate["sources"] == ["manual_virtual", "pinduoduo"]
             assert "Pokemon" not in candidate["reference_title"]
+
+            intent_id = int(accepted[0]["id"])
+            detail = client.get(
+                f"/marketplace/shadow/intents/{intent_id}",
+                headers=_bearer(admin_token),
+            )
+            assert detail.status_code == 200
+            detail_payload = detail.json()
+            assert detail_payload["id"] == intent_id
+            assert detail_payload["decision_pack"]["item_type"] == "virtual_goods"
+            assert detail_payload["decision_pack"]["virtual_only"] is True
+            assert detail_payload["decision_pack"]["threshold_source"] == "virtual"
+            assert detail_payload["decision_pack"]["buy"]["platform"] == "pinduoduo"
+            assert detail_payload["decision_pack"]["sell"]["platform"] == "manual_virtual"
+            serialized = str(detail_payload).lower()
+            assert "cookie" not in serialized
+            assert "authorization" not in serialized
+            assert "raw html" not in serialized
     finally:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)
         object.__setattr__(settings, "marketplace_shadow_enabled", old_enabled)
