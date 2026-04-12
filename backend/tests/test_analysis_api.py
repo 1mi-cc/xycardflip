@@ -2299,6 +2299,9 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
             assert report_payload["item_type"] == "virtual_goods"
             assert report_payload["accepted_count"] >= 1
             assert report_payload["valid_profit_count"] >= 1
+            assert report_payload["profitable_outcome_count"] >= 1
+            assert report_payload["recent_items"][0]["outcome_status"] == "profitable"
+            assert report_payload["recent_items"][0]["observed_net_profit"] == 29.0
             assert report_payload["recent_items"][0]["review_verdict"] == "valid_profit"
             serialized = str(report_payload).lower()
             assert "cookie" not in serialized
