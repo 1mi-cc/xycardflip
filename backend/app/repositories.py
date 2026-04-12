@@ -512,7 +512,7 @@ def backfill_marketplace_offers_from_listings(
     listed_after = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(listing_hours)))).isoformat()
     placeholders = ",".join("?" for _ in source_values)
     sql = f"""
-    SELECT source, listing_id, seller_id, title, normalized_key, item_type, list_price, listed_at, status, raw_json
+    SELECT source, listing_id, seller_id, title, description, normalized_key, item_type, list_price, listed_at, status, raw_json
     FROM listings_raw
     WHERE status = 'open'
       AND COALESCE(source, '') IN ({placeholders})
@@ -523,25 +523,33 @@ def backfill_marketplace_offers_from_listings(
     params: list[Any] = [*source_values, listed_after, max(1, int(limit))]
     with get_conn() as conn:
         rows = conn.execute(sql, tuple(params)).fetchall()
-    payload = [
-        MarketplaceOfferIn(
-            platform=_normalize_marketplace_platform(row["source"]),
-            offer_id=_normalize_optional_id(row["listing_id"]),
-            seller_id=_normalize_optional_id(row["seller_id"]),
-            title=str(row["title"] or "").strip(),
-            canonical_key=str(row["normalized_key"] or "").strip(),
-            item_type=str(row["item_type"] or "generic").strip() or "generic",
-            list_price=float(row["list_price"] or 0.0),
-            shipping_cost=0.0,
-            fee_rate=0.0,
-            currency="CNY",
-            listed_at=_parse_event_timestamp(str(row["listed_at"] or "")).astimezone(timezone.utc),
-            status="open",
-            listing_url="",
-            raw=_parse_json_object(row["raw_json"]),
+    payload: list[MarketplaceOfferIn] = []
+    for row in rows:
+        title = str(row["title"] or "").strip()
+        normalization = _listing_normalization_payload(
+            title=title,
+            description=str(row["description"] or ""),
         )
-        for row in rows
-    ]
+        item_type = str(normalization["item_type"] or row["item_type"] or "generic").strip() or "generic"
+        canonical_key = str(normalization["normalized_key"] or row["normalized_key"] or title).strip()
+        payload.append(
+            MarketplaceOfferIn(
+                platform=_normalize_marketplace_platform(row["source"]),
+                offer_id=_normalize_optional_id(row["listing_id"]),
+                seller_id=_normalize_optional_id(row["seller_id"]),
+                title=title,
+                canonical_key=canonical_key,
+                item_type=item_type,
+                list_price=float(row["list_price"] or 0.0),
+                shipping_cost=0.0,
+                fee_rate=0.0,
+                currency="CNY",
+                listed_at=_parse_event_timestamp(str(row["listed_at"] or "")).astimezone(timezone.utc),
+                status="open",
+                listing_url="",
+                raw=_parse_json_object(row["raw_json"]),
+            )
+        )
     return insert_marketplace_offers(payload)
 
 

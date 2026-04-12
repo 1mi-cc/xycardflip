@@ -807,6 +807,29 @@ def test_marketplace_backfill_from_xianyu_listings(tmp_path: Path) -> None:
                 raw={},
             )
         )
+        repo.upsert_listing(
+            ListingIn(
+                source="xianyu_monitor",
+                listing_id="xy-backfill-virtual-1",
+                seller_id="xy-seller-virtual",
+                title="咸鱼之王功法卡 虚拟道具 游戏内直接交易 秒发 售出不退",
+                description="虚拟商品，拍下发区服和ID",
+                list_price=6.0,
+                listed_at=listed_at,
+                status="open",
+                raw={},
+            )
+        )
+        with get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE listings_raw
+                SET item_type = 'manual_card',
+                    normalized_key = 'manual_card:legacy',
+                    normalized_title = 'legacy'
+                WHERE listing_id = 'xy-backfill-virtual-1'
+                """
+            )
 
         with TestClient(create_app()) as client:
             login = client.post(
@@ -825,19 +848,21 @@ def test_marketplace_backfill_from_xianyu_listings(tmp_path: Path) -> None:
                 headers=_bearer(admin_token),
             )
             assert backfill.status_code == 200
-            assert backfill.json()["inserted"] == 1
+            assert backfill.json()["inserted"] == 2
 
             offers = client.get("/marketplace/offers", headers=_bearer(admin_token))
             assert offers.status_code == 200
             offers_payload = offers.json()
-            assert offers_payload["count"] == 1
-            assert offers_payload["items"][0]["platform"] == "xianyu"
+            assert offers_payload["count"] == 2
+            assert {item["platform"] for item in offers_payload["items"]} == {"xianyu"}
+            virtual_offer = next(item for item in offers_payload["items"] if item["offer_id"] == "xy-backfill-virtual-1")
+            assert virtual_offer["item_type"] == "virtual_goods"
 
             readiness = client.get("/marketplace/providers/status", headers=_bearer(admin_token))
             assert readiness.status_code == 200
             readiness_payload = readiness.json()["items"]
             xianyu_row = next(item for item in readiness_payload if item["provider"] == "xianyu")
-            assert xianyu_row["offer_count"] == 1
+            assert xianyu_row["offer_count"] == 2
             assert xianyu_row["legacy_open_listing_count"] >= 1
             assert xianyu_row["backfill_ready"] is True
     finally:
