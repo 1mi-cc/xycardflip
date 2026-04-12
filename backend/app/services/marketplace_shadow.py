@@ -64,6 +64,8 @@ class MarketplaceShadowService:
         min_platform_count = max(2, int(settings.marketplace_shadow_min_platform_count))
         cooldown_minutes = max(1, int(settings.marketplace_shadow_cooldown_minutes))
         effective_virtual_only = bool(virtual_only)
+        if not effective_virtual_only:
+            raise ValueError("marketplace shadow runs are virtual-only; virtual_only=false is disabled")
         threshold_source = "virtual" if effective_virtual_only else "global"
         shipping_cost = 0.0 if effective_virtual_only else float(settings.default_shipping_cost)
         min_net_profit = float(

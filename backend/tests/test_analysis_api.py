@@ -2248,7 +2248,7 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
         object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", old_cooldown)
 
 
-def test_marketplace_shadow_run_once_uses_global_threshold_when_virtual_only_disabled(tmp_path: Path) -> None:
+def test_marketplace_shadow_run_once_rejects_non_virtual_runs(tmp_path: Path) -> None:
     old_sqlite_path = settings.sqlite_path
     old_min_net_profit = settings.marketplace_shadow_min_net_profit
     old_min_roi = settings.marketplace_shadow_min_roi
@@ -2318,17 +2318,11 @@ def test_marketplace_shadow_run_once_uses_global_threshold_when_virtual_only_dis
                 params={"virtual_only": False, "force": True},
                 headers=_bearer(admin_token),
             )
-            assert run.status_code == 200
+            assert run.status_code == 400
             payload = run.json()
-            assert payload["accepted_count"] == 0
-            assert payload["blocked_count"] >= 1
-            assert payload["run"]["config"]["virtual_only"] is False
-            assert payload["run"]["config"]["threshold_source"] == "global"
-            assert payload["run"]["config"]["min_net_profit"] == 100.0
-            assert any(
-                item.get("blocked_reason") == "net_profit_below_threshold"
-                for item in payload["intents"]
-            )
+            assert payload["detail"] == "marketplace shadow runs are virtual-only; virtual_only=false is disabled"
+            assert repo.list_marketplace_shadow_runs(limit=10) == []
+            assert repo.list_marketplace_shadow_intents(limit=10) == []
     finally:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)
         object.__setattr__(settings, "marketplace_shadow_min_net_profit", old_min_net_profit)

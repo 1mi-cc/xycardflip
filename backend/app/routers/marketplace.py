@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import repositories as repo
 from ..route_guard import require_cardflip_operate
@@ -180,6 +180,11 @@ def marketplace_shadow_run_once(
     virtual_only: bool = Query(default=True),
     trigger_source: str = Query(default="operator"),
 ) -> dict:
+    if not virtual_only:
+        raise HTTPException(
+            status_code=400,
+            detail="marketplace shadow runs are virtual-only; virtual_only=false is disabled",
+        )
     return marketplace_shadow_service.run_once(
         limit=limit if limit > 0 else None,
         trigger_source=trigger_source,
