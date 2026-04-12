@@ -820,6 +820,19 @@ def test_marketplace_backfill_from_xianyu_listings(tmp_path: Path) -> None:
                 raw={},
             )
         )
+        repo.upsert_listing(
+            ListingIn(
+                source="xianyu_vnpy",
+                listing_id="xy-backfill-vnpy-1",
+                seller_id="xy-seller-vnpy",
+                title="Q coin auto recharge instant delivery",
+                description="vnpy xianyu collector path",
+                list_price=48.0,
+                listed_at=listed_at,
+                status="open",
+                raw={},
+            )
+        )
         with get_conn() as conn:
             conn.execute(
                 """
@@ -844,16 +857,16 @@ def test_marketplace_backfill_from_xianyu_listings(tmp_path: Path) -> None:
 
             backfill = client.post(
                 "/marketplace/offers/backfill",
-                params={"sources": "xianyu_monitor", "limit": 20, "listing_hours": 72},
+                params={"sources": "xianyu_monitor,xianyu_vnpy", "limit": 20, "listing_hours": 72},
                 headers=_bearer(admin_token),
             )
             assert backfill.status_code == 200
-            assert backfill.json()["inserted"] == 2
+            assert backfill.json()["inserted"] == 3
 
             offers = client.get("/marketplace/offers", headers=_bearer(admin_token))
             assert offers.status_code == 200
             offers_payload = offers.json()
-            assert offers_payload["count"] == 2
+            assert offers_payload["count"] == 3
             assert {item["platform"] for item in offers_payload["items"]} == {"xianyu"}
             virtual_offer = next(item for item in offers_payload["items"] if item["offer_id"] == "xy-backfill-virtual-1")
             assert virtual_offer["item_type"] == "virtual_goods"
@@ -862,8 +875,8 @@ def test_marketplace_backfill_from_xianyu_listings(tmp_path: Path) -> None:
             assert readiness.status_code == 200
             readiness_payload = readiness.json()["items"]
             xianyu_row = next(item for item in readiness_payload if item["provider"] == "xianyu")
-            assert xianyu_row["offer_count"] == 2
-            assert xianyu_row["legacy_open_listing_count"] >= 1
+            assert xianyu_row["offer_count"] == 3
+            assert xianyu_row["legacy_open_listing_count"] >= 2
             assert xianyu_row["backfill_ready"] is True
     finally:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)

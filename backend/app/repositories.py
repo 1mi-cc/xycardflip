@@ -73,7 +73,7 @@ def _normalize_text_key(raw: str | None) -> str:
 
 def _normalize_marketplace_platform(raw: str | None) -> str:
     text = _normalize_text_key(raw)
-    if text in {"xianyu_monitor", "market_monitor", "goofish"}:
+    if text in {"xianyu_monitor", "xianyu_vnpy", "market_monitor", "goofish"}:
         return "xianyu"
     return text
 
