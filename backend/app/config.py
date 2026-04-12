@@ -700,6 +700,10 @@ class Settings:
     marketplace_shadow_virtual_min_confidence: float = _get_float("MARKETPLACE_SHADOW_VIRTUAL_MIN_CONFIDENCE", 0.75)
     marketplace_shadow_min_platform_count: int = _get_int("MARKETPLACE_SHADOW_MIN_PLATFORM_COUNT", 2)
     marketplace_shadow_cooldown_minutes: int = _get_int("MARKETPLACE_SHADOW_COOLDOWN_MINUTES", 240)
+    marketplace_shadow_manual_virtual_max_age_hours: int = _get_int(
+        "MARKETPLACE_SHADOW_MANUAL_VIRTUAL_MAX_AGE_HOURS",
+        48,
+    )
     auto_approve_max_consecutive_losses: int = _get_int("AUTO_APPROVE_MAX_CONSECUTIVE_LOSSES", 3)
     auto_approve_daily_loss_limit: float = _get_float("AUTO_APPROVE_DAILY_LOSS_LIMIT", 100.0)
     auto_approve_loss_recovery_enabled: bool = _get_bool("AUTO_APPROVE_LOSS_RECOVERY_ENABLED", True)

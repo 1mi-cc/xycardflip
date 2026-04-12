@@ -229,6 +229,23 @@
       </div>
       <div class="hero-actions review-note-row">
         <n-input v-model:value="shadowReviewNote" placeholder="Optional note for marking a shadow intent reviewed" />
+        <n-select v-model:value="shadowReviewVerdict" :options="shadowReviewVerdictOptions" placeholder="Review verdict" />
+      </div>
+      <div class="hero-actions review-note-row">
+        <n-input-number v-model:value="shadowOutcomeBuyPrice" :min="0" placeholder="Observed buy price" />
+        <n-input-number v-model:value="shadowOutcomeSellPrice" :min="0" placeholder="Observed sell price" />
+        <n-input-number v-model:value="shadowOutcomeExtraCost" :min="0" placeholder="Extra cost" />
+        <n-select v-model:value="shadowOutcomeStatus" :options="shadowOutcomeStatusOptions" placeholder="Outcome" />
+        <n-input v-model:value="shadowOutcomeNote" placeholder="Optional outcome note" />
+      </div>
+      <div v-if="shadowVirtualReport" class="result-list report-grid">
+        <div class="result-row"><span>Virtual Report</span><strong>{{ shadowVirtualReport.accepted_count || 0 }} accepted / {{ shadowVirtualReport.blocked_count || 0 }} blocked</strong></div>
+        <div class="result-row"><span>Stable Groups</span><strong>{{ shadowVirtualReport.stable_group_count || 0 }} / {{ shadowVirtualReport.stable_accept_count || 2 }} accepts</strong></div>
+        <div class="result-row"><span>Baseline Gate</span><strong>{{ shadowGateLabel(shadowVirtualReport.baseline_gate) }}</strong></div>
+        <div class="result-row"><span>Profitability Gate</span><strong>{{ shadowGateLabel(shadowVirtualReport.profitability_gate) }}</strong></div>
+        <div class="result-row"><span>Manual / Live</span><strong>{{ shadowVirtualReport.manual_baseline_accepted_count || 0 }} / {{ shadowVirtualReport.live_platform_accepted_count || 0 }}</strong></div>
+        <div class="result-row"><span>Net Avg / Max</span><strong>{{ formatMoney(shadowVirtualReport.net_profit_avg || 0) }} / {{ formatMoney(shadowVirtualReport.net_profit_max || 0) }}</strong></div>
+        <div class="result-row"><span>Valid / Observed Profit</span><strong>{{ shadowVirtualReport.valid_profit_count || 0 }} / {{ shadowVirtualReport.profitable_outcome_count || 0 }}</strong></div>
       </div>
       <div v-if="shadowIntentsRows.length" class="preview-list">
         <article v-for="item in shadowIntentsRows" :key="`shadow-${item.id}`" class="preview-card">
@@ -247,6 +264,8 @@
             <div class="result-row"><span>Buy</span><strong>{{ shadowDecision(item).buy }}</strong></div>
             <div class="result-row"><span>Sell</span><strong>{{ shadowDecision(item).sell }}</strong></div>
             <div class="result-row"><span>Confidence</span><strong>{{ formatPercent(item.confidence_score || 0) }}</strong></div>
+            <div class="result-row"><span>Verdict</span><strong>{{ shadowDecision(item).verdict }}</strong></div>
+            <div class="result-row"><span>Outcome</span><strong>{{ shadowDecision(item).outcome }}</strong></div>
             <div class="result-row"><span>Reviewed</span><strong>{{ shadowDecision(item).reviewed }}</strong></div>
             <div class="result-row"><span>Created</span><strong>{{ item.created_at || "--" }}</strong></div>
           </div>
@@ -258,6 +277,15 @@
               @click="markShadowReviewed(item.id)"
             >
               Mark Reviewed
+            </n-button>
+            <n-button
+              size="small"
+              tertiary
+              :disabled="item.decision_status !== 'accepted'"
+              :loading="markingOutcomeId === item.id"
+              @click="markShadowOutcome(item)"
+            >
+              Mark Outcome
             </n-button>
           </div>
         </article>
@@ -392,6 +420,7 @@ const result = ref(null);
 const previewRows = ref([]);
 const reviewQueueRows = ref([]);
 const shadowIntentsRows = ref([]);
+const shadowVirtualReport = ref(null);
 const batchJson = ref(
   JSON.stringify(
     [
@@ -409,6 +438,12 @@ const sampleVerdict = ref("same_group");
 const sampleNote = ref("");
 const reviewNote = ref("");
 const shadowReviewNote = ref("");
+const shadowReviewVerdict = ref("valid_profit");
+const shadowOutcomeBuyPrice = ref(null);
+const shadowOutcomeSellPrice = ref(null);
+const shadowOutcomeExtraCost = ref(0);
+const shadowOutcomeStatus = ref("profitable");
+const shadowOutcomeNote = ref("");
 const sampleRows = ref([]);
 const report = ref(null);
 const lastError = ref("");
@@ -422,6 +457,19 @@ const loadingSamples = ref(false);
 const loadingReport = ref(false);
 const labelingReviewId = ref("");
 const reviewingShadowId = ref(null);
+const markingOutcomeId = ref(null);
+const shadowReviewVerdictOptions = [
+  { label: "Valid profit", value: "valid_profit" },
+  { label: "Bad match", value: "bad_match" },
+  { label: "Stale price", value: "stale_price" },
+  { label: "Bad baseline", value: "bad_baseline" },
+];
+const shadowOutcomeStatusOptions = [
+  { label: "Profitable", value: "profitable" },
+  { label: "Unprofitable", value: "unprofitable" },
+  { label: "Stale", value: "stale" },
+  { label: "Invalid", value: "invalid" },
+];
 
 const reportStatusLabel = computed(() => {
   if (!report.value?.gate?.ready)
@@ -509,6 +557,15 @@ const loadShadowIntents = async () => {
   }
 };
 
+const loadShadowVirtualReport = async () => {
+  clearError();
+  try {
+    shadowVirtualReport.value = await cardFlipApi.getMarketplaceShadowVirtualReport({ limit: 200 });
+  } catch (error) {
+    captureError(error);
+  }
+};
+
 const labelReviewQueue = async (reviewId, expectedVerdict) => {
   clearError();
   labelingReviewId.value = `${reviewId}:${expectedVerdict}`;
@@ -540,13 +597,37 @@ const markShadowReviewed = async (intentId) => {
   try {
     await cardFlipApi.markMarketplaceShadowIntentReviewed(intentId, {
       note: shadowReviewNote.value,
+      verdict: shadowReviewVerdict.value,
     });
     shadowReviewNote.value = "";
-    await loadShadowIntents();
+    await Promise.all([loadShadowIntents(), loadShadowVirtualReport()]);
   } catch (error) {
     captureError(error);
   } finally {
     reviewingShadowId.value = null;
+  }
+};
+
+const markShadowOutcome = async (item) => {
+  clearError();
+  markingOutcomeId.value = item.id;
+  try {
+    const pack = item?.decision_pack || {};
+    const buy = pack.buy || {};
+    const sell = pack.sell || {};
+    await cardFlipApi.markMarketplaceShadowIntentOutcome(item.id, {
+      observed_buy_price: Number(shadowOutcomeBuyPrice.value ?? buy.list_price ?? item.estimated_net_profit ?? 0),
+      observed_sell_price: Number(shadowOutcomeSellPrice.value ?? sell.list_price ?? 0),
+      extra_cost: Number(shadowOutcomeExtraCost.value || 0),
+      outcome_status: shadowOutcomeStatus.value,
+      note: shadowOutcomeNote.value,
+    });
+    shadowOutcomeNote.value = "";
+    await Promise.all([loadShadowIntents(), loadShadowVirtualReport()]);
+  } catch (error) {
+    captureError(error);
+  } finally {
+    markingOutcomeId.value = null;
   }
 };
 
@@ -624,6 +705,7 @@ onMounted(() => {
     loadPreview(),
     loadReviewQueue(),
     loadShadowIntents(),
+    loadShadowVirtualReport(),
     loadSamples(),
     loadReport(),
   ]);
@@ -655,6 +737,15 @@ function formatScore(value) {
   }).format(Number(value || 0));
 }
 
+function shadowGateLabel(gate) {
+  if (!gate?.ready)
+    return "Not ready";
+  if (gate?.passed)
+    return "Passed";
+  const blockers = Array.isArray(gate?.blockers) ? gate.blockers : [];
+  return blockers.length ? `Blocked: ${blockers.join(", ")}` : "Blocked";
+}
+
 function shadowDecision(item) {
   const pack = item?.decision_pack || {};
   const snapshot = item?.snapshot || {};
@@ -670,12 +761,19 @@ function shadowDecision(item) {
   ];
   const reviewedAt = item?.reviewed_at || pack.reviewed_at || "";
   const reviewNoteText = item?.review_note || pack.review_note || "";
+  const reviewVerdict = item?.review_verdict || pack.review_verdict || "";
+  const outcome = pack.outcome || {};
+  const outcomeLabel = outcome.status
+    ? `${outcome.status} / ${formatMoney(outcome.observed_net_profit || 0)} / ${formatPercent(outcome.observed_roi || 0)}`
+    : "Not set";
   return {
     itemType: pack.item_type || candidate.item_type || decision.item_type || "--",
     virtualOnly: (pack.virtual_only ?? decision.virtual_only) ? "virtual-only" : "mixed",
     threshold: thresholdParts.join(" / "),
     buy: `${buy.platform || buy.source || item?.buy_platform || "--"} ${formatMoney(buy.list_price || 0)}`,
     sell: `${sell.platform || sell.source || item?.sell_platform || "--"} ${formatMoney(sell.list_price || 0)}`,
+    verdict: reviewVerdict || "Not set",
+    outcome: outcomeLabel,
     reviewed: reviewedAt ? `${reviewedAt}${reviewNoteText ? ` / ${reviewNoteText}` : ""}` : "Not reviewed",
   };
 }

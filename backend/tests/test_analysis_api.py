@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -2134,6 +2134,7 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
     old_virtual_min_confidence = settings.marketplace_shadow_virtual_min_confidence
     old_candidate_limit = settings.marketplace_shadow_candidate_limit
     old_cooldown = settings.marketplace_shadow_cooldown_minutes
+    old_manual_age = settings.marketplace_shadow_manual_virtual_max_age_hours
     object.__setattr__(settings, "sqlite_path", str(tmp_path / "marketplace_shadow_virtual.db"))
     object.__setattr__(settings, "marketplace_shadow_enabled", True)
     object.__setattr__(settings, "marketplace_shadow_min_net_profit", 100.0)
@@ -2144,6 +2145,7 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
     object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", 0.75)
     object.__setattr__(settings, "marketplace_shadow_candidate_limit", 10)
     object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", 240)
+    object.__setattr__(settings, "marketplace_shadow_manual_virtual_max_age_hours", 48)
     try:
         init_db()
         listed_at = datetime.now(timezone.utc)
@@ -2256,15 +2258,52 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
 
             review = client.post(
                 f"/marketplace/shadow/intents/{intent_id}/review",
-                json={"note": "reviewed virtual baseline decision"},
+                json={"note": "reviewed virtual baseline decision", "verdict": "valid_profit"},
                 headers=_bearer(admin_token),
             )
             assert review.status_code == 200
             reviewed_payload = review.json()
             assert reviewed_payload["review_note"] == "reviewed virtual baseline decision"
+            assert reviewed_payload["review_verdict"] == "valid_profit"
             assert reviewed_payload["reviewed_at"]
             assert reviewed_payload["reviewed_by"] in {settings.ui_auth_username, "test-bypass"}
             assert reviewed_payload["decision_pack"]["review_note"] == "reviewed virtual baseline decision"
+            assert reviewed_payload["decision_pack"]["review_verdict"] == "valid_profit"
+
+            outcome = client.post(
+                f"/marketplace/shadow/intents/{intent_id}/outcome",
+                json={
+                    "observed_buy_price": 50.0,
+                    "observed_sell_price": 80.0,
+                    "extra_cost": 1.0,
+                    "outcome_status": "profitable",
+                    "note": "manual observed virtual outcome",
+                },
+                headers=_bearer(admin_token),
+            )
+            assert outcome.status_code == 200
+            outcome_payload = outcome.json()
+            assert outcome_payload["outcome_status"] == "profitable"
+            assert outcome_payload["observed_net_profit"] == 29.0
+            assert outcome_payload["observed_roi"] == 0.58
+            assert outcome_payload["decision_pack"]["outcome"]["status"] == "profitable"
+            assert outcome_payload["decision_pack"]["outcome"]["observed_net_profit"] == 29.0
+
+            report = client.get(
+                "/marketplace/shadow/virtual-report",
+                headers=_bearer(admin_token),
+            )
+            assert report.status_code == 200
+            report_payload = report.json()
+            assert report_payload["virtual_only"] is True
+            assert report_payload["item_type"] == "virtual_goods"
+            assert report_payload["accepted_count"] >= 1
+            assert report_payload["valid_profit_count"] >= 1
+            assert report_payload["recent_items"][0]["review_verdict"] == "valid_profit"
+            serialized = str(report_payload).lower()
+            assert "cookie" not in serialized
+            assert "authorization" not in serialized
+            assert "raw html" not in serialized
     finally:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)
         object.__setattr__(settings, "marketplace_shadow_enabled", old_enabled)
@@ -2276,6 +2315,7 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
         object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", old_virtual_min_confidence)
         object.__setattr__(settings, "marketplace_shadow_candidate_limit", old_candidate_limit)
         object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", old_cooldown)
+        object.__setattr__(settings, "marketplace_shadow_manual_virtual_max_age_hours", old_manual_age)
 
 
 def test_marketplace_shadow_run_once_rejects_non_virtual_runs(tmp_path: Path) -> None:
@@ -2363,6 +2403,150 @@ def test_marketplace_shadow_run_once_rejects_non_virtual_runs(tmp_path: Path) ->
         object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", old_virtual_min_confidence)
         object.__setattr__(settings, "marketplace_shadow_candidate_limit", old_candidate_limit)
         object.__setattr__(settings, "marketplace_shadow_cooldown_minutes", old_cooldown)
+
+
+def test_marketplace_shadow_outcome_rejects_blocked_intent(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    object.__setattr__(settings, "sqlite_path", str(tmp_path / "marketplace_shadow_blocked_outcome.db"))
+    try:
+        init_db()
+        intent = repo.create_marketplace_shadow_intent(
+            run_id=None,
+            intent_key="blocked-virtual-intent",
+            arbitrage_key="q coin auto recharge",
+            reference_title="Q coin auto recharge instant delivery direct topup",
+            buy_platform="pinduoduo",
+            sell_platform="manual_virtual",
+            buy_listing_id="pdd-blocked",
+            sell_listing_id="manual-blocked",
+            platform_count=2,
+            listing_count=2,
+            estimated_net_profit=12.0,
+            estimated_roi=0.1,
+            confidence_score=0.78,
+            decision_status="blocked",
+            blocked_reason="net_profit_below_threshold",
+            snapshot={
+                "candidate": {
+                    "item_type": "virtual_goods",
+                    "buy": {"source": "pinduoduo", "listing_id": "pdd-blocked", "title": "Q coin", "list_price": 49.0},
+                    "sell": {"source": "manual_virtual", "listing_id": "manual-blocked", "title": "Q coin", "list_price": 79.0},
+                },
+                "decision": {"virtual_only": True, "item_type": "virtual_goods"},
+            },
+        )
+        with TestClient(create_app()) as client:
+            login = client.post(
+                "/auth/login",
+                json={
+                    "username": settings.ui_auth_username,
+                    "password": settings.ui_auth_password,
+                },
+            )
+            assert login.status_code == 200
+            admin_token = login.json()["data"]["token"]
+
+            outcome = client.post(
+                f"/marketplace/shadow/intents/{int(intent['id'])}/outcome",
+                json={
+                    "observed_buy_price": 50.0,
+                    "observed_sell_price": 80.0,
+                    "extra_cost": 0.0,
+                    "outcome_status": "profitable",
+                },
+                headers=_bearer(admin_token),
+            )
+            assert outcome.status_code == 400
+            assert outcome.json()["detail"] == "only accepted virtual shadow intents can record an outcome"
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+
+
+def test_marketplace_shadow_blocks_stale_manual_virtual_baseline(tmp_path: Path) -> None:
+    old_sqlite_path = settings.sqlite_path
+    old_virtual_min_net_profit = settings.marketplace_shadow_virtual_min_net_profit
+    old_virtual_min_roi = settings.marketplace_shadow_virtual_min_roi
+    old_virtual_min_confidence = settings.marketplace_shadow_virtual_min_confidence
+    old_candidate_limit = settings.marketplace_shadow_candidate_limit
+    old_manual_age = settings.marketplace_shadow_manual_virtual_max_age_hours
+    object.__setattr__(settings, "sqlite_path", str(tmp_path / "marketplace_shadow_stale_manual.db"))
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", 20.0)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_roi", 0.02)
+    object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", 0.75)
+    object.__setattr__(settings, "marketplace_shadow_candidate_limit", 10)
+    object.__setattr__(settings, "marketplace_shadow_manual_virtual_max_age_hours", 24)
+    try:
+        init_db()
+        fresh_listed_at = datetime.now(timezone.utc)
+        stale_listed_at = fresh_listed_at - timedelta(hours=36)
+        repo.insert_marketplace_offers(
+            [
+                MarketplaceOfferIn(
+                    platform="pinduoduo",
+                    offer_id="pdd-stale-manual-shadow",
+                    seller_id="pdd-seller",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=49.0,
+                    shipping_cost=0.0,
+                    listed_at=fresh_listed_at,
+                    status="open",
+                    listing_url="https://example.com/pdd-stale-manual-shadow",
+                    raw={},
+                ),
+                MarketplaceOfferIn(
+                    platform="manual_virtual",
+                    offer_id="manual-stale-shadow",
+                    seller_id="operator-baseline",
+                    title="Q coin auto recharge instant delivery direct topup",
+                    canonical_key="q coin auto recharge instant delivery direct topup",
+                    item_type="virtual_goods",
+                    list_price=79.0,
+                    shipping_cost=0.0,
+                    listed_at=stale_listed_at,
+                    status="open",
+                    listing_url="https://example.com/manual-stale-shadow",
+                    raw={"provenance": "operator_manual_virtual_baseline"},
+                ),
+            ]
+        )
+        with TestClient(create_app()) as client:
+            login = client.post(
+                "/auth/login",
+                json={"username": settings.ui_auth_username, "password": settings.ui_auth_password},
+            )
+            assert login.status_code == 200
+            admin_token = login.json()["data"]["token"]
+
+            run = client.post(
+                "/marketplace/shadow/run-once",
+                params={"virtual_only": True, "force": True},
+                headers=_bearer(admin_token),
+            )
+            assert run.status_code == 200
+            payload = run.json()
+            assert payload["accepted_count"] == 0
+            assert payload["blocked_count"] == 1
+            intent = payload["intents"][0]
+            assert intent["blocked_reason"] == "manual_virtual_baseline_stale"
+            freshness = intent["snapshot"]["decision"]["manual_virtual_freshness"]
+            assert freshness["stale"] is True
+            assert freshness["max_age_hours"] == 24
+
+            report = client.get("/marketplace/shadow/virtual-report", headers=_bearer(admin_token))
+            assert report.status_code == 200
+            report_payload = report.json()
+            assert report_payload["accepted_count"] == 0
+            assert report_payload["blocked_count"] == 1
+            assert report_payload["recent_items"][0]["blocked_reason"] == "manual_virtual_baseline_stale"
+    finally:
+        object.__setattr__(settings, "sqlite_path", old_sqlite_path)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_net_profit", old_virtual_min_net_profit)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_roi", old_virtual_min_roi)
+        object.__setattr__(settings, "marketplace_shadow_virtual_min_confidence", old_virtual_min_confidence)
+        object.__setattr__(settings, "marketplace_shadow_candidate_limit", old_candidate_limit)
+        object.__setattr__(settings, "marketplace_shadow_manual_virtual_max_age_hours", old_manual_age)
 
 
 def test_marketplace_shadow_run_once_respects_cooldown(tmp_path: Path) -> None:

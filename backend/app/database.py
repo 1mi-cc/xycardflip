@@ -640,6 +640,16 @@ def init_db() -> None:
         reviewed_at TEXT,
         reviewed_by TEXT NOT NULL DEFAULT '',
         review_note TEXT NOT NULL DEFAULT '',
+        review_verdict TEXT NOT NULL DEFAULT '',
+        outcome_status TEXT NOT NULL DEFAULT '',
+        observed_buy_price REAL NOT NULL DEFAULT 0,
+        observed_sell_price REAL NOT NULL DEFAULT 0,
+        observed_extra_cost REAL NOT NULL DEFAULT 0,
+        observed_net_profit REAL NOT NULL DEFAULT 0,
+        observed_roi REAL NOT NULL DEFAULT 0,
+        outcome_note TEXT NOT NULL DEFAULT '',
+        outcome_at TEXT,
+        outcome_by TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(run_id) REFERENCES marketplace_shadow_runs(id) ON DELETE SET NULL
     );
@@ -1109,6 +1119,16 @@ def init_db() -> None:
             "reviewed_at": "reviewed_at TEXT",
             "reviewed_by": "reviewed_by TEXT NOT NULL DEFAULT ''",
             "review_note": "review_note TEXT NOT NULL DEFAULT ''",
+            "review_verdict": "review_verdict TEXT NOT NULL DEFAULT ''",
+            "outcome_status": "outcome_status TEXT NOT NULL DEFAULT ''",
+            "observed_buy_price": "observed_buy_price REAL NOT NULL DEFAULT 0",
+            "observed_sell_price": "observed_sell_price REAL NOT NULL DEFAULT 0",
+            "observed_extra_cost": "observed_extra_cost REAL NOT NULL DEFAULT 0",
+            "observed_net_profit": "observed_net_profit REAL NOT NULL DEFAULT 0",
+            "observed_roi": "observed_roi REAL NOT NULL DEFAULT 0",
+            "outcome_note": "outcome_note TEXT NOT NULL DEFAULT ''",
+            "outcome_at": "outcome_at TEXT",
+            "outcome_by": "outcome_by TEXT NOT NULL DEFAULT ''",
         })
         conn.execute(
             """

@@ -29,6 +29,53 @@ class MarketplaceShadowService:
         )
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
+    def _parse_timestamp(self, value: Any) -> datetime | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    def _manual_virtual_freshness(self, candidate: dict[str, Any]) -> dict[str, Any]:
+        max_age_hours = max(1, int(settings.marketplace_shadow_manual_virtual_max_age_hours))
+        now = datetime.now(timezone.utc)
+        manual_legs: list[dict[str, Any]] = []
+        for leg_name in ("buy", "sell"):
+            leg = candidate.get(leg_name)
+            if not isinstance(leg, dict):
+                continue
+            if str(leg.get("source") or "").strip() != "manual_virtual":
+                continue
+            parsed = self._parse_timestamp(leg.get("listed_at"))
+            age_hours = None
+            stale = True
+            reason = "manual_virtual_listed_at_missing"
+            if parsed is not None:
+                age_hours = max(0.0, (now - parsed).total_seconds() / 3600.0)
+                stale = age_hours > max_age_hours
+                reason = "manual_virtual_baseline_stale" if stale else ""
+            manual_legs.append(
+                {
+                    "leg": leg_name,
+                    "listed_at": str(leg.get("listed_at") or ""),
+                    "age_hours": round(age_hours, 2) if age_hours is not None else None,
+                    "max_age_hours": max_age_hours,
+                    "stale": stale,
+                    "reason": reason,
+                }
+            )
+        return {
+            "applied": bool(manual_legs),
+            "max_age_hours": max_age_hours,
+            "stale": any(bool(item["stale"]) for item in manual_legs),
+            "legs": manual_legs,
+        }
+
     def status(self) -> dict[str, Any]:
         snapshot = repo.get_marketplace_shadow_status()
         return {
@@ -44,9 +91,157 @@ class MarketplaceShadowService:
             "fallback_min_roi": float(settings.marketplace_shadow_min_roi),
             "fallback_min_confidence": float(settings.marketplace_shadow_min_confidence),
             "threshold_source": "virtual",
+            "manual_virtual_max_age_hours": int(settings.marketplace_shadow_manual_virtual_max_age_hours),
             "min_platform_count": int(settings.marketplace_shadow_min_platform_count),
             "cooldown_minutes": int(settings.marketplace_shadow_cooldown_minutes),
             **snapshot,
+        }
+
+    def virtual_report(self, *, limit: int = 200, stable_accept_count: int = 2) -> dict[str, Any]:
+        items = repo.list_marketplace_shadow_intents(limit=max(1, int(limit)))
+        virtual_items = [
+            item
+            for item in items
+            if bool((item.get("decision_pack") or {}).get("virtual_only"))
+            and str((item.get("decision_pack") or {}).get("item_type") or "") == "virtual_goods"
+        ]
+        accepted = [item for item in virtual_items if str(item.get("decision_status") or "") == "accepted"]
+        blocked = [item for item in virtual_items if str(item.get("decision_status") or "") == "blocked"]
+        reviewed = [item for item in accepted if str(item.get("reviewed_at") or "")]
+        valid_profit = [item for item in accepted if str(item.get("review_verdict") or "") == "valid_profit"]
+        profitable_outcomes = [item for item in accepted if str(item.get("outcome_status") or "") == "profitable"]
+        manual_baseline = [
+            item
+            for item in accepted
+            if str(item.get("buy_platform") or "") == "manual_virtual"
+            or str(item.get("sell_platform") or "") == "manual_virtual"
+        ]
+        live_platform = [item for item in accepted if item not in manual_baseline]
+        net_values = [float(item.get("estimated_net_profit") or 0.0) for item in virtual_items]
+        roi_values = [float(item.get("estimated_roi") or 0.0) for item in virtual_items]
+        grouped: dict[str, dict[str, Any]] = {}
+        for item in virtual_items:
+            pack = dict(item.get("decision_pack") or {})
+            key = "|".join(
+                [
+                    str(pack.get("arbitrage_key") or item.get("arbitrage_key") or ""),
+                    str(item.get("buy_platform") or ""),
+                    str(item.get("sell_platform") or ""),
+                ]
+            )
+            bucket = grouped.setdefault(
+                key,
+                {
+                    "stability_key": key,
+                    "arbitrage_key": str(pack.get("arbitrage_key") or item.get("arbitrage_key") or ""),
+                    "buy_platform": str(item.get("buy_platform") or ""),
+                    "sell_platform": str(item.get("sell_platform") or ""),
+                    "accepted_count": 0,
+                    "blocked_count": 0,
+                    "reviewed_count": 0,
+                    "valid_profit_count": 0,
+                    "profitable_outcome_count": 0,
+                    "latest_intent_id": int(item.get("id") or 0),
+                    "latest_created_at": str(item.get("created_at") or ""),
+                    "latest_net_profit": float(item.get("estimated_net_profit") or 0.0),
+                    "latest_roi": float(item.get("estimated_roi") or 0.0),
+                },
+            )
+            if int(item.get("id") or 0) > int(bucket.get("latest_intent_id") or 0):
+                bucket["latest_intent_id"] = int(item.get("id") or 0)
+                bucket["latest_created_at"] = str(item.get("created_at") or "")
+                bucket["latest_net_profit"] = float(item.get("estimated_net_profit") or 0.0)
+                bucket["latest_roi"] = float(item.get("estimated_roi") or 0.0)
+            if str(item.get("decision_status") or "") == "accepted":
+                bucket["accepted_count"] += 1
+            if str(item.get("decision_status") or "") == "blocked":
+                bucket["blocked_count"] += 1
+            if str(item.get("reviewed_at") or ""):
+                bucket["reviewed_count"] += 1
+            if str(item.get("review_verdict") or "") == "valid_profit":
+                bucket["valid_profit_count"] += 1
+            if str(item.get("outcome_status") or "") == "profitable":
+                bucket["profitable_outcome_count"] += 1
+
+        stability_items = []
+        for bucket in grouped.values():
+            bucket["stable"] = int(bucket["accepted_count"]) >= max(2, int(stable_accept_count))
+            stability_items.append(bucket)
+        stability_items.sort(
+            key=lambda item: (
+                bool(item["stable"]),
+                int(item["accepted_count"]),
+                float(item["latest_net_profit"]),
+                int(item["latest_intent_id"]),
+            ),
+            reverse=True,
+        )
+        stable_group_count = sum(1 for item in stability_items if item["stable"])
+        baseline_blockers: list[str] = []
+        if not accepted:
+            baseline_blockers.append("no_accepted_virtual_shadow_intents")
+        if accepted and not valid_profit:
+            baseline_blockers.append("accepted_intents_need_valid_profit_review")
+        if sum(float(item.get("estimated_net_profit") or 0.0) for item in accepted) <= 0:
+            baseline_blockers.append("non_positive_accepted_net_profit")
+
+        profitability_blockers = list(baseline_blockers)
+        if stable_group_count <= 0:
+            profitability_blockers.append("needs_stable_repeated_acceptance")
+        if not profitable_outcomes:
+            profitability_blockers.append("needs_observed_profitable_outcome")
+        if manual_baseline and not live_platform:
+            profitability_blockers.append("manual_virtual_baseline_only")
+        if not live_platform:
+            profitability_blockers.append("needs_non_manual_second_virtual_source")
+        return {
+            "virtual_only": True,
+            "item_type": "virtual_goods",
+            "sample_size": len(virtual_items),
+            "accepted_count": len(accepted),
+            "blocked_count": len(blocked),
+            "reviewed_count": len(reviewed),
+            "valid_profit_count": len(valid_profit),
+            "profitable_outcome_count": len(profitable_outcomes),
+            "manual_baseline_accepted_count": len(manual_baseline),
+            "live_platform_accepted_count": len(live_platform),
+            "stable_group_count": stable_group_count,
+            "stable_accept_count": max(2, int(stable_accept_count)),
+            "baseline_gate": {
+                "ready": bool(accepted),
+                "passed": not baseline_blockers,
+                "blockers": baseline_blockers,
+            },
+            "profitability_gate": {
+                "ready": bool(accepted),
+                "passed": not profitability_blockers,
+                "blockers": profitability_blockers,
+            },
+            "net_profit_min": round(min(net_values), 2) if net_values else 0.0,
+            "net_profit_max": round(max(net_values), 2) if net_values else 0.0,
+            "net_profit_avg": round(sum(net_values) / len(net_values), 2) if net_values else 0.0,
+            "roi_min": round(min(roi_values), 4) if roi_values else 0.0,
+            "roi_max": round(max(roi_values), 4) if roi_values else 0.0,
+            "roi_avg": round(sum(roi_values) / len(roi_values), 4) if roi_values else 0.0,
+            "threshold_source": "virtual",
+            "manual_virtual_max_age_hours": int(settings.marketplace_shadow_manual_virtual_max_age_hours),
+            "stability_items": stability_items[:20],
+            "recent_items": [
+                {
+                    "id": int(item.get("id") or 0),
+                    "decision_status": str(item.get("decision_status") or ""),
+                    "blocked_reason": str(item.get("blocked_reason") or ""),
+                    "review_verdict": str(item.get("review_verdict") or ""),
+                    "outcome_status": str(item.get("outcome_status") or ""),
+                    "observed_net_profit": float(item.get("observed_net_profit") or 0.0),
+                    "buy_platform": str(item.get("buy_platform") or ""),
+                    "sell_platform": str(item.get("sell_platform") or ""),
+                    "estimated_net_profit": float(item.get("estimated_net_profit") or 0.0),
+                    "estimated_roi": float(item.get("estimated_roi") or 0.0),
+                    "created_at": str(item.get("created_at") or ""),
+                }
+                for item in virtual_items[:20]
+            ],
         }
 
     def run_once(
@@ -83,6 +278,7 @@ class MarketplaceShadowService:
             if effective_virtual_only
             else settings.marketplace_shadow_min_confidence
         )
+        manual_virtual_max_age_hours = max(1, int(settings.marketplace_shadow_manual_virtual_max_age_hours))
 
         opportunity_payload = build_arbitrage_opportunities(
             limit=candidate_limit,
@@ -125,6 +321,7 @@ class MarketplaceShadowService:
                 "virtual_only": effective_virtual_only,
                 "shipping_cost": shipping_cost,
                 "threshold_source": threshold_source,
+                "manual_virtual_max_age_hours": manual_virtual_max_age_hours,
                 "force": bool(force),
             },
             summary={
@@ -142,10 +339,13 @@ class MarketplaceShadowService:
                 listing_count = max(0, int(candidate.get("listing_count") or 0))
                 estimated_net_profit = float(candidate.get("estimated_net_profit") or 0.0)
                 estimated_roi = float(candidate.get("estimated_roi") or 0.0)
+                freshness = self._manual_virtual_freshness(candidate)
 
                 blocked_reason = ""
                 if platform_count < min_platform_count:
                     blocked_reason = "platform_count_below_threshold"
+                elif freshness.get("stale"):
+                    blocked_reason = "manual_virtual_baseline_stale"
                 elif estimated_net_profit < min_net_profit:
                     blocked_reason = "net_profit_below_threshold"
                 elif estimated_roi < min_roi:
@@ -188,6 +388,7 @@ class MarketplaceShadowService:
                             "min_net_profit": min_net_profit,
                             "min_roi": min_roi,
                             "min_confidence": min_confidence,
+                            "manual_virtual_freshness": freshness,
                         },
                     },
                 )
@@ -224,6 +425,7 @@ class MarketplaceShadowService:
                 "virtual_only": effective_virtual_only,
                 "shipping_cost": shipping_cost,
                 "threshold_source": threshold_source,
+                "manual_virtual_max_age_hours": manual_virtual_max_age_hours,
                 "force": bool(force),
             },
             summary={

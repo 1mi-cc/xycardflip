@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import sys
 from pathlib import Path
 
@@ -85,6 +85,33 @@ def test_manual_virtual_import_rejects_invalid_price() -> None:
                 }
             ]
         )
+
+
+def test_manual_virtual_import_summary_flags_duplicates_and_stale_rows() -> None:
+    old_listed_at = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+    rows = manual_import.normalize_manual_virtual_offers(
+        [
+            {
+                "offer_id": "manual-q-coin",
+                "title": "Q coin auto recharge instant delivery direct topup",
+                "list_price": 58.5,
+                "listing_url": "https://example.com/manual-q-coin",
+                "listed_at": old_listed_at,
+            },
+            {
+                "offer_id": "manual-q-coin",
+                "title": "Q coin auto recharge instant delivery direct topup",
+                "list_price": 59.5,
+                "listing_url": "https://example.com/manual-q-coin-dup",
+            },
+        ]
+    )
+
+    summary = manual_import.summarize_manual_virtual_offers(rows, max_age_hours=48)
+
+    assert summary["duplicate_count"] == 1
+    assert summary["stale_count"] == 1
+    assert summary["stale_rows"][0]["offer_id"] == "manual-q-coin"
 
 
 def test_manual_virtual_offer_ingest_creates_virtual_only_arbitrage(tmp_path: Path) -> None:

@@ -30,6 +30,7 @@ PHYSICAL_KEYWORDS = (
     "\u94dc\u94b1",
     "\u76f8\u6846",
 )
+DEFAULT_MAX_AGE_HOURS = 48
 
 
 def _text(value: Any) -> str:
@@ -56,6 +57,19 @@ def _price(value: Any) -> float:
         return round(float(value), 2)
     except (TypeError, ValueError) as exc:
         raise ValueError("Each manual virtual offer needs a positive list_price.") from exc
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _validate_no_physical_terms(title: str) -> None:
@@ -116,6 +130,39 @@ def normalize_manual_virtual_offers(rows: list[dict[str, Any]]) -> list[dict[str
     return normalized
 
 
+def summarize_manual_virtual_offers(rows: list[dict[str, Any]], *, max_age_hours: int = DEFAULT_MAX_AGE_HOURS) -> dict[str, Any]:
+    seen: set[str] = set()
+    duplicate_keys: list[str] = []
+    stale_rows: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
+    for index, row in enumerate(rows, start=1):
+        dedupe_key = _text(row.get("offer_id")) or _text(row.get("listing_url")) or _text(row.get("title"))
+        if dedupe_key in seen:
+            duplicate_keys.append(dedupe_key)
+        seen.add(dedupe_key)
+        listed_at = _parse_timestamp(row.get("listed_at"))
+        if listed_at is None:
+            continue
+        age_hours = max(0.0, (now - listed_at).total_seconds() / 3600.0)
+        if age_hours > max(1, int(max_age_hours)):
+            stale_rows.append(
+                {
+                    "row": index,
+                    "offer_id": _text(row.get("offer_id")),
+                    "listing_url": _text(row.get("listing_url")),
+                    "age_hours": round(age_hours, 2),
+                }
+            )
+    return {
+        "count": len(rows),
+        "duplicate_count": len(duplicate_keys),
+        "duplicate_keys": duplicate_keys[:10],
+        "stale_count": len(stale_rows),
+        "stale_rows": stale_rows[:10],
+        "max_age_hours": max(1, int(max_age_hours)),
+    }
+
+
 def _resolve_auth_value(explicit: str, env_key: str, fallback: str) -> str:
     return explicit or os.environ.get(env_key, "").strip() or fallback
 
@@ -158,14 +205,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--username", default="")
     parser.add_argument("--password", default="")
     parser.add_argument("--timeout-sec", type=float, default=20.0)
+    parser.add_argument("--max-age-hours", type=int, default=DEFAULT_MAX_AGE_HOURS)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     rows = normalize_manual_virtual_offers(_load_input(args.input))
+    summary = summarize_manual_virtual_offers(rows, max_age_hours=int(args.max_age_hours))
     if not args.push:
-        print(json.dumps({"dry_run": True, "count": len(rows), "rows": rows}, ensure_ascii=True, indent=2))
+        print(json.dumps({"dry_run": True, "count": len(rows), "summary": summary, "rows": rows}, ensure_ascii=True, indent=2))
         return 0
 
     result = _push_rows(
@@ -176,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
         password=_resolve_auth_value(args.password, "CARD_FLIP_PASSWORD", "Ccj666888.qwer1013"),
         timeout_sec=float(args.timeout_sec),
     )
-    print(json.dumps({"dry_run": False, "count": len(rows), "result": result}, ensure_ascii=True, indent=2))
+    print(json.dumps({"dry_run": False, "count": len(rows), "summary": summary, "result": result}, ensure_ascii=True, indent=2))
     return 0
 
 

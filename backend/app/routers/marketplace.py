@@ -21,6 +21,9 @@ router = APIRouter(
     dependencies=[Depends(require_cardflip_view)],
 )
 
+SHADOW_REVIEW_VERDICTS = {"", "valid_profit", "bad_match", "stale_price", "bad_baseline"}
+SHADOW_OUTCOME_STATUSES = {"profitable", "unprofitable", "stale", "invalid"}
+
 
 @router.post("/offers/ingest", dependencies=[Depends(require_cardflip_operate)])
 def ingest_marketplace_offers(rows: list[MarketplaceOfferIn]) -> dict:
@@ -173,6 +176,17 @@ def marketplace_shadow_status() -> dict:
     return marketplace_shadow_service.status()
 
 
+@router.get("/shadow/virtual-report")
+def marketplace_shadow_virtual_report(
+    limit: int = Query(default=200, ge=1, le=500),
+    stable_accept_count: int = Query(default=2, ge=2, le=20),
+) -> dict:
+    return marketplace_shadow_service.virtual_report(
+        limit=limit,
+        stable_accept_count=stable_accept_count,
+    )
+
+
 @router.post("/shadow/run-once", dependencies=[Depends(require_cardflip_operate)])
 def marketplace_shadow_run_once(
     limit: int = Query(default=0, ge=0, le=100),
@@ -215,6 +229,18 @@ def _shadow_decision_pack(intent: dict) -> dict:
         "reviewed_at": str(intent.get("reviewed_at") or ""),
         "reviewed_by": str(intent.get("reviewed_by") or ""),
         "review_note": str(intent.get("review_note") or ""),
+        "review_verdict": str(intent.get("review_verdict") or ""),
+        "outcome": {
+            "status": str(intent.get("outcome_status") or ""),
+            "observed_buy_price": float(intent.get("observed_buy_price") or 0.0),
+            "observed_sell_price": float(intent.get("observed_sell_price") or 0.0),
+            "extra_cost": float(intent.get("observed_extra_cost") or 0.0),
+            "observed_net_profit": float(intent.get("observed_net_profit") or 0.0),
+            "observed_roi": float(intent.get("observed_roi") or 0.0),
+            "note": str(intent.get("outcome_note") or ""),
+            "at": str(intent.get("outcome_at") or ""),
+            "by": str(intent.get("outcome_by") or ""),
+        },
         "item_type": str(candidate.get("item_type") or decision.get("item_type") or ""),
         "virtual_only": bool(decision.get("virtual_only")),
         "threshold_source": str(decision.get("threshold_source") or ""),
@@ -259,17 +285,71 @@ def marketplace_shadow_intent_review(
     reviewer: dict = Depends(require_cardflip_operate),
 ) -> dict:
     note = str((payload or {}).get("note") or "").strip()[:500]
+    verdict = str((payload or {}).get("verdict") or "").strip()
+    if verdict not in SHADOW_REVIEW_VERDICTS:
+        raise HTTPException(status_code=422, detail="invalid shadow review verdict")
     actor = str(reviewer.get("username") or reviewer.get("nickname") or "operator").strip()
     intent = repo.mark_marketplace_shadow_intent_reviewed(
         intent_id,
         reviewed_by=actor,
         review_note=note,
+        review_verdict=verdict,
     )
     if not intent:
         raise HTTPException(status_code=404, detail="marketplace shadow intent not found")
     return {
         **intent,
         "decision_pack": _shadow_decision_pack(intent),
+    }
+
+
+@router.post("/shadow/intents/{intent_id}/outcome")
+def marketplace_shadow_intent_outcome(
+    intent_id: int,
+    payload: dict,
+    reviewer: dict = Depends(require_cardflip_operate),
+) -> dict:
+    intent = repo.get_marketplace_shadow_intent(intent_id)
+    if not intent:
+        raise HTTPException(status_code=404, detail="marketplace shadow intent not found")
+    pack = _shadow_decision_pack(intent)
+    if (
+        str(intent.get("decision_status") or "") != "accepted"
+        or not bool(pack.get("virtual_only"))
+        or str(pack.get("item_type") or "") != "virtual_goods"
+    ):
+        raise HTTPException(status_code=400, detail="only accepted virtual shadow intents can record an outcome")
+
+    outcome_status = str((payload or {}).get("outcome_status") or "").strip()
+    if outcome_status not in SHADOW_OUTCOME_STATUSES:
+        raise HTTPException(status_code=422, detail="invalid shadow outcome status")
+    try:
+        observed_buy_price = float((payload or {}).get("observed_buy_price") or 0.0)
+        observed_sell_price = float((payload or {}).get("observed_sell_price") or 0.0)
+        extra_cost = float((payload or {}).get("extra_cost") or 0.0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="invalid observed outcome prices") from exc
+    if observed_buy_price <= 0 or observed_sell_price <= 0 or extra_cost < 0:
+        raise HTTPException(status_code=422, detail="observed prices must be positive and extra_cost must be non-negative")
+    observed_net_profit = round(observed_sell_price - observed_buy_price - extra_cost, 4)
+    observed_roi = round(observed_net_profit / observed_buy_price, 4)
+    actor = str(reviewer.get("username") or reviewer.get("nickname") or "operator").strip()
+    updated = repo.mark_marketplace_shadow_intent_outcome(
+        intent_id,
+        outcome_status=outcome_status,
+        observed_buy_price=observed_buy_price,
+        observed_sell_price=observed_sell_price,
+        observed_extra_cost=extra_cost,
+        observed_net_profit=observed_net_profit,
+        observed_roi=observed_roi,
+        outcome_by=actor,
+        outcome_note=str((payload or {}).get("note") or "").strip()[:500],
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="marketplace shadow intent not found")
+    return {
+        **updated,
+        "decision_pack": _shadow_decision_pack(updated),
     }
 
 

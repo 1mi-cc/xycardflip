@@ -197,6 +197,16 @@ const cardFlipApi = {
   getMarketplaceShadowStatus() {
     return request.get("/marketplace/shadow/status");
   },
+  getMarketplaceShadowVirtualReport(params = {}) {
+    return request.get("/marketplace/shadow/virtual-report", {
+      params: {
+        ...params,
+        limit: Number.isFinite(Number(params.limit))
+          ? Math.min(500, Math.max(1, Math.trunc(Number(params.limit))))
+          : 200,
+      },
+    });
+  },
   runMarketplaceShadowOnce(params = {}) {
     return request.post("/marketplace/shadow/run-once", null, {
       params,
@@ -217,6 +227,9 @@ const cardFlipApi = {
   },
   markMarketplaceShadowIntentReviewed(intentId, payload = {}) {
     return request.post(`/marketplace/shadow/intents/${intentId}/review`, payload);
+  },
+  markMarketplaceShadowIntentOutcome(intentId, payload = {}) {
+    return request.post(`/marketplace/shadow/intents/${intentId}/outcome`, payload);
   },
   listMarketplaceShadowRuns(params = {}) {
     return request.get("/marketplace/shadow/runs", {

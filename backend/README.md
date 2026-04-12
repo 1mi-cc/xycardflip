@@ -787,3 +787,6 @@ Virtual shadow uses separate observation thresholds:
 - `MARKETPLACE_SHADOW_VIRTUAL_MIN_NET_PROFIT=20`
 - `MARKETPLACE_SHADOW_VIRTUAL_MIN_ROI=0.02`
 - `MARKETPLACE_SHADOW_VIRTUAL_MIN_CONFIDENCE=0.75`
+- `MARKETPLACE_SHADOW_MANUAL_VIRTUAL_MAX_AGE_HOURS=48`
+
+`GET /marketplace/shadow/virtual-report` summarizes virtual-only dry-run quality without exposing raw cookies, headers, or HTML. It is the stability report to check before any future execution work: look for repeated accepted `virtual_goods` groups and `valid_profit` review verdicts.
