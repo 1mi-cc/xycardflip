@@ -857,7 +857,7 @@ def test_marketplace_backfill_from_xianyu_listings(tmp_path: Path) -> None:
 
             backfill = client.post(
                 "/marketplace/offers/backfill",
-                params={"sources": "xianyu_monitor,xianyu_vnpy", "limit": 20, "listing_hours": 72},
+                params={"limit": 20, "listing_hours": 72},
                 headers=_bearer(admin_token),
             )
             assert backfill.status_code == 200

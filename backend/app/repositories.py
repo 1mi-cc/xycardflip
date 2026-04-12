@@ -502,7 +502,7 @@ def list_marketplace_offers(
 
 def backfill_marketplace_offers_from_listings(
     *,
-    sources: tuple[str, ...] = ("xianyu_monitor",),
+    sources: tuple[str, ...] = ("xianyu_monitor", "xianyu_vnpy"),
     limit: int = 500,
     listing_hours: int = 24 * 30,
 ) -> int:

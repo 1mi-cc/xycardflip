@@ -363,7 +363,7 @@ def marketplace_shadow_runs(
 
 @router.post("/offers/backfill", dependencies=[Depends(require_cardflip_operate)])
 def backfill_marketplace_offers(
-    sources: str = Query(default="xianyu_monitor"),
+    sources: str = Query(default="xianyu_monitor,xianyu_vnpy"),
     limit: int = Query(default=500, ge=1, le=5000),
     listing_hours: int = Query(default=24 * 30, ge=1, le=24 * 30),
 ) -> dict:
