@@ -8,6 +8,20 @@ NORMALIZATION_VERSION = "listing_normalizer_v1"
 TRADABLE_ITEM_TYPES = frozenset({"manual_fragment", "manual_page", "manual_card"})
 BLOCKED_ITEM_TYPES = frozenset({"account_service", "catalog_bundle"})
 
+_VIRTUAL_GOODS_TOKENS = (
+    "\u865a\u62df\u9053\u5177",
+    "\u865a\u62df\u5546\u54c1",
+    "\u865a\u62df\u7269\u54c1",
+)
+_VIRTUAL_GOODS_STRONG_TOKENS = (
+    "\u6e38\u620f\u5185\u76f4\u63a5\u4ea4\u6613",
+    "\u6e38\u620f\u5185\u4ea4\u6613",
+    "\u552e\u51fa\u4e0d\u9000",
+    "\u4e0d\u9000\u4e0d\u6362",
+    "\u62cd\u4e0b\u53d1\u533a\u670d",
+    "\u62cd\u4e0b\u7559\u533a\u53f7",
+)
+
 _ACCOUNT_SERVICE_TOKENS = (
     "\u626b\u7801",
     "\u4e0a\u53f7",
@@ -113,6 +127,12 @@ def _sanitize_title(raw_title: str) -> str:
 def _item_type_from_text(text: str) -> str:
     if _contains_any(text, _ACCOUNT_SERVICE_TOKENS):
         return "account_service"
+    if (
+        _contains_any(text, _VIRTUAL_GOODS_TOKENS)
+        and _contains_any(text, _VIRTUAL_GOODS_STRONG_TOKENS)
+        and _contains_any(text, ("\u79d2\u53d1", "\u76f4\u53d1", "\u53d1id", "\u53d1\u533a\u670d"))
+    ):
+        return "virtual_goods"
     if _contains_any(text, _CATALOG_BUNDLE_TOKENS):
         return "catalog_bundle"
     if "\u6b8b\u5377" in text:
@@ -146,6 +166,8 @@ def _normalized_title_from_type(item_type: str, sanitized_title: str) -> str:
         return "\u529f\u6cd5\u4e66\u9875"
     if item_type == "manual_card":
         return "\u529f\u6cd5\u5361"
+    if item_type == "virtual_goods":
+        return sanitized_title[:48] or "\u865a\u62df\u5546\u54c1"
     if item_type == "catalog_bundle":
         return "\u56fe\u9274\u793c\u5305"
     if item_type == "account_service":
