@@ -808,6 +808,38 @@ def get_marketplace_shadow_intent(intent_id: int) -> dict[str, Any] | None:
     return _serialize_marketplace_shadow_intent(row) if row else None
 
 
+def mark_marketplace_shadow_intent_reviewed(
+    intent_id: int,
+    *,
+    reviewed_by: str,
+    review_note: str = "",
+) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE marketplace_shadow_intents
+            SET reviewed_at = CURRENT_TIMESTAMP,
+                reviewed_by = ?,
+                review_note = ?
+            WHERE id = ?
+            """,
+            (
+                str(reviewed_by or "").strip() or "operator",
+                str(review_note or "").strip(),
+                int(intent_id),
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT *
+            FROM marketplace_shadow_intents
+            WHERE id = ?
+            """,
+            (int(intent_id),),
+        ).fetchone()
+    return _serialize_marketplace_shadow_intent(row) if row else None
+
+
 def get_recent_marketplace_shadow_accept(
     *,
     intent_key: str,
@@ -889,6 +921,9 @@ def _serialize_marketplace_shadow_intent(row: sqlite3.Row | None) -> dict[str, A
         "blocked_reason": str(row["blocked_reason"] or ""),
         "snapshot": snapshot,
         "decision_pack": decision_pack,
+        "reviewed_at": str(row["reviewed_at"] or ""),
+        "reviewed_by": str(row["reviewed_by"] or ""),
+        "review_note": str(row["review_note"] or ""),
         "created_at": str(row["created_at"] or ""),
     }
 
@@ -921,6 +956,9 @@ def _build_marketplace_shadow_decision_pack(
         "confidence_score": float(row["confidence_score"] or 0.0),
         "decision_status": str(row["decision_status"] or ""),
         "blocked_reason": str(row["blocked_reason"] or ""),
+        "reviewed_at": str(row["reviewed_at"] or ""),
+        "reviewed_by": str(row["reviewed_by"] or ""),
+        "review_note": str(row["review_note"] or ""),
         "estimated_net_profit": float(row["estimated_net_profit"] or 0.0),
         "estimated_roi": float(row["estimated_roi"] or 0.0),
         "reference_title": str(row["reference_title"] or ""),

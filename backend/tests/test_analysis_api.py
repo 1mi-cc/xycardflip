@@ -2253,6 +2253,18 @@ def test_marketplace_shadow_run_once_can_target_virtual_only_candidates(tmp_path
             assert "cookie" not in serialized
             assert "authorization" not in serialized
             assert "raw html" not in serialized
+
+            review = client.post(
+                f"/marketplace/shadow/intents/{intent_id}/review",
+                json={"note": "reviewed virtual baseline decision"},
+                headers=_bearer(admin_token),
+            )
+            assert review.status_code == 200
+            reviewed_payload = review.json()
+            assert reviewed_payload["review_note"] == "reviewed virtual baseline decision"
+            assert reviewed_payload["reviewed_at"]
+            assert reviewed_payload["reviewed_by"] in {settings.ui_auth_username, "test-bypass"}
+            assert reviewed_payload["decision_pack"]["review_note"] == "reviewed virtual baseline decision"
     finally:
         object.__setattr__(settings, "sqlite_path", old_sqlite_path)
         object.__setattr__(settings, "marketplace_shadow_enabled", old_enabled)

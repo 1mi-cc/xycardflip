@@ -212,6 +212,9 @@ def _shadow_decision_pack(intent: dict) -> dict:
         "intent_id": int(intent.get("id") or 0),
         "decision_status": str(intent.get("decision_status") or ""),
         "blocked_reason": str(intent.get("blocked_reason") or ""),
+        "reviewed_at": str(intent.get("reviewed_at") or ""),
+        "reviewed_by": str(intent.get("reviewed_by") or ""),
+        "review_note": str(intent.get("review_note") or ""),
         "item_type": str(candidate.get("item_type") or decision.get("item_type") or ""),
         "virtual_only": bool(decision.get("virtual_only")),
         "threshold_source": str(decision.get("threshold_source") or ""),
@@ -241,6 +244,27 @@ def _shadow_decision_pack(intent: dict) -> dict:
 @router.get("/shadow/intents/{intent_id}")
 def marketplace_shadow_intent_detail(intent_id: int) -> dict:
     intent = repo.get_marketplace_shadow_intent(intent_id)
+    if not intent:
+        raise HTTPException(status_code=404, detail="marketplace shadow intent not found")
+    return {
+        **intent,
+        "decision_pack": _shadow_decision_pack(intent),
+    }
+
+
+@router.post("/shadow/intents/{intent_id}/review")
+def marketplace_shadow_intent_review(
+    intent_id: int,
+    payload: dict | None = None,
+    reviewer: dict = Depends(require_cardflip_operate),
+) -> dict:
+    note = str((payload or {}).get("note") or "").strip()[:500]
+    actor = str(reviewer.get("username") or reviewer.get("nickname") or "operator").strip()
+    intent = repo.mark_marketplace_shadow_intent_reviewed(
+        intent_id,
+        reviewed_by=actor,
+        review_note=note,
+    )
     if not intent:
         raise HTTPException(status_code=404, detail="marketplace shadow intent not found")
     return {

@@ -227,6 +227,9 @@
         </div>
         <div class="panel-tag">{{ shadowStatusLabel }}</div>
       </div>
+      <div class="hero-actions review-note-row">
+        <n-input v-model:value="shadowReviewNote" placeholder="Optional note for marking a shadow intent reviewed" />
+      </div>
       <div v-if="shadowIntentsRows.length" class="preview-list">
         <article v-for="item in shadowIntentsRows" :key="`shadow-${item.id}`" class="preview-card">
           <div class="preview-top">
@@ -244,7 +247,18 @@
             <div class="result-row"><span>Buy</span><strong>{{ shadowDecision(item).buy }}</strong></div>
             <div class="result-row"><span>Sell</span><strong>{{ shadowDecision(item).sell }}</strong></div>
             <div class="result-row"><span>Confidence</span><strong>{{ formatPercent(item.confidence_score || 0) }}</strong></div>
+            <div class="result-row"><span>Reviewed</span><strong>{{ shadowDecision(item).reviewed }}</strong></div>
             <div class="result-row"><span>Created</span><strong>{{ item.created_at || "--" }}</strong></div>
+          </div>
+          <div class="hero-actions">
+            <n-button
+              size="small"
+              secondary
+              :loading="reviewingShadowId === item.id"
+              @click="markShadowReviewed(item.id)"
+            >
+              Mark Reviewed
+            </n-button>
           </div>
         </article>
       </div>
@@ -394,6 +408,7 @@ const batchRows = ref([]);
 const sampleVerdict = ref("same_group");
 const sampleNote = ref("");
 const reviewNote = ref("");
+const shadowReviewNote = ref("");
 const sampleRows = ref([]);
 const report = ref(null);
 const lastError = ref("");
@@ -406,6 +421,7 @@ const savingSample = ref(false);
 const loadingSamples = ref(false);
 const loadingReport = ref(false);
 const labelingReviewId = ref("");
+const reviewingShadowId = ref(null);
 
 const reportStatusLabel = computed(() => {
   if (!report.value?.gate?.ready)
@@ -518,6 +534,22 @@ const labelReviewQueue = async (reviewId, expectedVerdict) => {
   }
 };
 
+const markShadowReviewed = async (intentId) => {
+  clearError();
+  reviewingShadowId.value = intentId;
+  try {
+    await cardFlipApi.markMarketplaceShadowIntentReviewed(intentId, {
+      note: shadowReviewNote.value,
+    });
+    shadowReviewNote.value = "";
+    await loadShadowIntents();
+  } catch (error) {
+    captureError(error);
+  } finally {
+    reviewingShadowId.value = null;
+  }
+};
+
 const validateBatch = async () => {
   clearError();
   validatingBatch.value = true;
@@ -624,23 +656,27 @@ function formatScore(value) {
 }
 
 function shadowDecision(item) {
+  const pack = item?.decision_pack || {};
   const snapshot = item?.snapshot || {};
   const candidate = snapshot.candidate || {};
   const decision = snapshot.decision || {};
-  const buy = candidate.buy || {};
-  const sell = candidate.sell || {};
+  const buy = pack.buy || candidate.buy || {};
+  const sell = pack.sell || candidate.sell || {};
   const thresholdParts = [
-    decision.threshold_source || "--",
-    formatMoney(decision.min_net_profit || 0),
-    formatPercent(decision.min_roi || 0),
-    formatPercent(decision.min_confidence || 0),
+    pack.threshold_source || decision.threshold_source || "--",
+    formatMoney(pack.min_net_profit || decision.min_net_profit || 0),
+    formatPercent(pack.min_roi || decision.min_roi || 0),
+    formatPercent(pack.min_confidence || decision.min_confidence || 0),
   ];
+  const reviewedAt = item?.reviewed_at || pack.reviewed_at || "";
+  const reviewNoteText = item?.review_note || pack.review_note || "";
   return {
-    itemType: candidate.item_type || decision.item_type || "--",
-    virtualOnly: decision.virtual_only ? "virtual-only" : "mixed",
+    itemType: pack.item_type || candidate.item_type || decision.item_type || "--",
+    virtualOnly: (pack.virtual_only ?? decision.virtual_only) ? "virtual-only" : "mixed",
     threshold: thresholdParts.join(" / "),
-    buy: `${buy.source || item?.buy_platform || "--"} ${formatMoney(buy.list_price || 0)}`,
-    sell: `${sell.source || item?.sell_platform || "--"} ${formatMoney(sell.list_price || 0)}`,
+    buy: `${buy.platform || buy.source || item?.buy_platform || "--"} ${formatMoney(buy.list_price || 0)}`,
+    sell: `${sell.platform || sell.source || item?.sell_platform || "--"} ${formatMoney(sell.list_price || 0)}`,
+    reviewed: reviewedAt ? `${reviewedAt}${reviewNoteText ? ` / ${reviewNoteText}` : ""}` : "Not reviewed",
   };
 }
 </script>

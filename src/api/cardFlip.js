@@ -215,6 +215,9 @@ const cardFlipApi = {
   getMarketplaceShadowIntent(intentId) {
     return request.get(`/marketplace/shadow/intents/${intentId}`);
   },
+  markMarketplaceShadowIntentReviewed(intentId, payload = {}) {
+    return request.post(`/marketplace/shadow/intents/${intentId}/review`, payload);
+  },
   listMarketplaceShadowRuns(params = {}) {
     return request.get("/marketplace/shadow/runs", {
       params: {

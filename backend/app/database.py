@@ -637,6 +637,9 @@ def init_db() -> None:
         decision_status TEXT NOT NULL DEFAULT 'blocked',
         blocked_reason TEXT NOT NULL DEFAULT '',
         snapshot_json TEXT NOT NULL DEFAULT '{}',
+        reviewed_at TEXT,
+        reviewed_by TEXT NOT NULL DEFAULT '',
+        review_note TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(run_id) REFERENCES marketplace_shadow_runs(id) ON DELETE SET NULL
     );
@@ -1101,6 +1104,11 @@ def init_db() -> None:
             "normalization_blocked": "normalization_blocked INTEGER NOT NULL DEFAULT 0",
             "normalization_reason": "normalization_reason TEXT NOT NULL DEFAULT ''",
             "normalization_version": "normalization_version TEXT NOT NULL DEFAULT ''",
+        })
+        _ensure_table_columns(conn, "marketplace_shadow_intents", {
+            "reviewed_at": "reviewed_at TEXT",
+            "reviewed_by": "reviewed_by TEXT NOT NULL DEFAULT ''",
+            "review_note": "review_note TEXT NOT NULL DEFAULT ''",
         })
         conn.execute(
             """
